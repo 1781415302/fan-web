@@ -1,0 +1,10 @@
+frontend/node_modules/
+frontend/dist/
+
+backend/data/*.db
+backend/data/*.db-*
+
+.playwright-cli/
+output/playwright/
+
+anime/

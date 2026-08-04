@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  mode: debug
+
+database:
+  path: ./data/fan-web.db
+
+jwt:
+  secret: "fan-web-secret-key-change-in-production"
+  expire: 168h
+
+admin:
+  username: admin
+  password: admin123
+
+video:
+  root_path: ../anime
