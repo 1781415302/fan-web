@@ -7,8 +7,11 @@ import { ApiError } from '../api'
 import { getStreamUrl } from '../api/episode'
 import { getAnime, listEpisodes } from '../api/anime'
 import { getAnimeProgress, reportProgress } from '../api/progress'
+import { useThemeStore } from '../stores/theme'
 import type { Anime, Episode } from '../types/anime'
 import type { AnimeProgress } from '../types/progress'
+
+const themeStore = useThemeStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -141,7 +144,7 @@ function createPlayer(episode: Episode) {
     container: playerContainer.value,
     url: getStreamUrl(episode.id),
     poster: anime.value.cover || undefined,
-    theme: '#22c55e',
+    theme: themeStore.accentColor,
     autoplay: false,
     playbackRate: false,
     pip: true,
@@ -374,17 +377,17 @@ onBeforeUnmount(() => {
 .back-link:hover { color: var(--accent-color); }
 .watch-kicker-row { display: flex; align-items: center; gap: 10px; }
 .watch-kicker-row .eyebrow { margin-bottom: 0; }
-.watch-state { padding: 5px 9px; border: 1px solid rgba(115, 217, 207, 0.32); border-radius: 999px; background: rgba(115, 217, 207, 0.08); color: var(--accent-color); font-size: 12px; }
+.watch-state { padding: 5px 9px; border: 1px solid var(--accent-soft-border); border-radius: 999px; background: var(--accent-glow); color: var(--accent-color); font-size: 12px; }
 h1 { max-width: 860px; margin-top: 12px; color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
 .watch-meta { margin-top: 8px; color: var(--text-secondary); font-size: 14px; }
 .watch-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .episode-select-label { display: flex; min-width: 190px; flex-direction: column; gap: 7px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .episode-select-label select { min-height: 46px; padding: 0 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-color); color: var(--text-color); outline: none; cursor: pointer; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
-.episode-select-label select:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.episode-select-label select:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-glow); }
 .watch-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; padding-top: 28px; }
 .player-column { min-width: 0; }
 .player-shell { overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-lg); }
-.player-container { width: 100%; aspect-ratio: 16 / 9; min-height: 260px; overflow: hidden; background: #090d12; }
+.player-container { width: 100%; aspect-ratio: 16 / 9; min-height: 260px; overflow: hidden; background: var(--player-bg); }
 .player-status { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border-color); color: var(--text-secondary); font-size: 13px; }
 .status-message { color: var(--text-color); }
 .status-time { color: var(--text-muted-color); font-variant-numeric: tabular-nums; }
@@ -397,7 +400,7 @@ h1 { max-width: 860px; margin-top: 12px; color: var(--text-color); font-size: 36
 .episode-list { max-height: 548px; overflow-y: auto; padding: 8px; }
 .episode-item { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out; }
 .episode-item:hover { background: var(--surface-hover); }
-.episode-item.active { border-color: rgba(34, 197, 94, 0.48); background: rgba(34, 197, 94, 0.1); }
+.episode-item.active { border-color: var(--primary-soft-border); background: var(--primary-soft-bg); }
 .episode-state { flex: 0 0 auto; font-size: 12px; }
 .state-已看 { color: var(--success-color); }
 .state-进行中 { color: var(--warning-color); }

@@ -304,7 +304,7 @@ onBeforeUnmount(() => {
 .search-input:focus {
   border-color: var(--accent-color);
   background: var(--surface-raised-color);
-  box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12);
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
 
 .result-count {
@@ -317,7 +317,7 @@ onBeforeUnmount(() => {
 .scan-result {
   margin-bottom: 24px;
   padding: 20px;
-  border: 1px solid rgba(115, 217, 207, 0.28);
+  border: 1px solid var(--accent-soft-border);
   border-left: 3px solid var(--accent-color);
   border-radius: var(--radius-md);
   background: var(--surface-color);
@@ -462,7 +462,7 @@ onBeforeUnmount(() => {
 
 .anime-card:hover,
 .anime-card:focus-visible {
-  border-color: rgba(115, 217, 207, 0.68);
+  border-color: var(--accent-soft-border);
   background: var(--surface-raised-color);
   box-shadow: var(--shadow-md);
 }

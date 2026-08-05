@@ -206,7 +206,7 @@ h1 { color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1
 .form-field { min-width: 0; }
 .form-field label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .form-field input { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font-size: 16px; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
-.form-field input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.form-field input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-glow); }
 .form-error { grid-column: 1 / -1; margin: 0; color: var(--danger-color); font-size: 14px; }
 .form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 .table-heading { padding: 20px 22px 16px; border-bottom: 1px solid var(--border-color); }

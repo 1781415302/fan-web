@@ -147,9 +147,9 @@ async function handleSubmit() {
   flex: 0 0 40px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(34, 197, 94, 0.62);
+  border: 1px solid var(--primary-soft-border);
   border-radius: var(--radius-sm);
-  background: rgba(34, 197, 94, 0.12);
+  background: var(--primary-soft-bg);
   color: var(--primary-hover-color);
   font-size: 12px;
   font-weight: 800;
@@ -210,7 +210,7 @@ input {
 input:focus {
   border-color: var(--accent-color);
   background: var(--bg-color);
-  box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12);
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
 
 .field-hint {
@@ -223,9 +223,9 @@ input:focus {
 .form-error {
   margin: -2px 0 0;
   padding: 11px 12px;
-  border: 1px solid rgba(255, 137, 144, 0.38);
+  border: 1px solid var(--danger-soft-border);
   border-radius: var(--radius-sm);
-  background: rgba(255, 137, 144, 0.08);
+  background: var(--danger-soft-bg);
   color: var(--danger-color);
   font-size: 14px;
   line-height: 1.45;

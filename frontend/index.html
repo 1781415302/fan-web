@@ -6,6 +6,18 @@
     <meta name="theme-color" content="#0e1117" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>番剧库</title>
+    <script>
+      // 首屏前应用已保存的界面风格，避免切换闪烁。
+      ;(function () {
+        try {
+          var saved = localStorage.getItem('fan_web_ui')
+          var valid = saved === 'modern' || saved === 'cinema' || saved === 'glass' || saved === 'apple'
+          document.documentElement.dataset.ui = valid ? saved : 'modern'
+        } catch (e) {
+          document.documentElement.dataset.ui = 'modern'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -309,7 +309,7 @@ watch(animeId, () => void load(), { immediate: true })
 .detail-info { min-width: 0; align-self: center; }
 .detail-kicker-row { display: flex; align-items: center; gap: 10px; }
 .detail-kicker-row .eyebrow { margin-bottom: 0; }
-.detail-state { padding: 5px 9px; border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 999px; background: rgba(34, 197, 94, 0.1); color: var(--primary-hover-color); font-size: 12px; }
+.detail-state { padding: 5px 9px; border: 1px solid var(--primary-soft-border); border-radius: 999px; background: var(--primary-soft-bg); color: var(--primary-hover-color); font-size: 12px; }
 h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 40px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
 .sub-title { margin-bottom: 10px; color: var(--text-secondary); font-size: 15px; }
 .meta { max-width: 800px; margin-bottom: 24px; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 14px; }
@@ -332,7 +332,7 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .summary { max-width: 820px; color: var(--text-secondary); font-size: 15px; line-height: 1.85; white-space: pre-wrap; }
 .summary-collapsed { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .summary-toggle, .edit-dismiss { min-height: 40px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent-color); font-size: 13px; cursor: pointer; }
-.summary-toggle:hover, .edit-dismiss:hover { background: var(--surface-hover); color: #b5fff7; }
+.summary-toggle:hover, .edit-dismiss:hover { background: var(--surface-hover); color: var(--accent-hover-text); }
 .edit-form { margin: 32px 0; padding: 22px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-sm); }
 .edit-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -340,7 +340,7 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .form-field label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .form-field input, .form-field textarea { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font: inherit; resize: vertical; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
 .form-field textarea { min-height: 124px; }
-.form-field input:focus, .form-field textarea:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.form-field input:focus, .form-field textarea:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-glow); }
 .form-actions { margin-top: 20px; }
 .episode-section { padding-top: 32px; }
 .episode-heading { display: flex; align-items: end; gap: 18px; margin-bottom: 18px; }
@@ -348,8 +348,8 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
 .episode-tile { display: flex; min-height: 72px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
 .episode-tile:hover, .episode-tile:focus-visible { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); outline: none; }
-.episode-tile.tile-已看 { border-color: rgba(134, 239, 172, 0.35); }
-.episode-tile.tile-进行中 { border-color: rgba(255, 191, 117, 0.6); }
+.episode-tile.tile-已看 { border-color: var(--success-border); }
+.episode-tile.tile-进行中 { border-color: var(--warning-border); }
 .episode-number { font-size: 14px; font-weight: 600; }
 .episode-status { font-size: 12px; }
 .status-已看 { color: var(--success-color); }

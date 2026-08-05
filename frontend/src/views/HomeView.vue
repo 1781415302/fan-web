@@ -201,7 +201,7 @@ onMounted(() => void loadRecent())
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--primary-color);
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 0 4px var(--primary-glow);
 }
 
 .recent-section {
@@ -245,7 +245,7 @@ onMounted(() => void loadRecent())
 }
 
 .section-link:hover {
-  color: #b5fff7;
+  color: var(--accent-hover-text);
 }
 
 .recent-list {
@@ -287,7 +287,7 @@ onMounted(() => void loadRecent())
 
 .recent-card:hover .recent-cover {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .recent-card:hover .recent-title {

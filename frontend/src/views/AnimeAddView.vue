@@ -166,7 +166,7 @@ h1 { color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1
 .search-label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .search-control { display: flex; gap: 10px; }
 .search-control input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font-size: 16px; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
-.search-control input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.search-control input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-glow); }
 .results-section { margin-top: 32px; }
 .results-heading, .confirm-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .section-kicker { margin-bottom: 5px; color: var(--text-muted-color); font-size: 11px; font-weight: 700; text-transform: uppercase; }
@@ -182,8 +182,8 @@ h1 { color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1
 .result-summary { display: -webkit-box; overflow: hidden; margin-top: 7px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .selection-mark { min-width: 48px; color: var(--text-muted-color); font-size: 12px; text-align: right; }
 .search-item.selected .selection-mark { color: var(--accent-color); }
-.confirm-section { margin-top: 32px; padding: 22px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-md); }
-.selected-badge { padding: 5px 9px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 999px; background: rgba(34, 197, 94, 0.1); color: var(--primary-hover-color); font-size: 12px; }
+.confirm-section { margin-top: 32px; padding: 22px; border: 1px solid var(--primary-soft-border); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-md); }
+.selected-badge { padding: 5px 9px; border: 1px solid var(--primary-soft-border); border-radius: 999px; background: var(--primary-soft-bg); color: var(--primary-hover-color); font-size: 12px; }
 .confirm-info { display: flex; gap: 16px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--border-color); }
 .confirm-cover { display: flex; width: 84px; height: 126px; flex: 0 0 84px; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); object-fit: cover; color: var(--text-muted-color); font-size: 11px; }
 .confirm-name { color: var(--text-color); font-size: 17px; font-weight: 600; }
@@ -191,7 +191,7 @@ h1 { color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1
 .form-field label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
 .label-hint { color: var(--text-muted-color); font-weight: 400; }
 .form-field input { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font-size: 16px; }
-.form-field input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.form-field input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px var(--accent-glow); }
 .form-hint { margin-top: 7px; color: var(--text-muted-color); font-size: 12px; }
 .confirm-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
 @media (max-width: 600px) { h1 { font-size: 32px; } .search-control { flex-direction: column; } .search-control .primary-btn { width: 100%; } .search-item { align-items: flex-start; } .result-cover { width: 56px; height: 80px; flex-basis: 56px; } .selection-mark { display: none; } .confirm-section { padding: 18px; } .confirm-actions .primary-btn { width: 100%; } }
