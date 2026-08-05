@@ -93,6 +93,53 @@ func (s *ScannerService) Scan(dirPath string) ([]models.Episode, error) {
 	return episodes, nil
 }
 
+func (s *ScannerService) ListSubDirs() ([]string, error) {
+	root, err := s.resolveDirectory(".")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("读取视频根目录失败: %w", err)
+	}
+
+	dirs := make([]string, 0)
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.HasPrefix(name, ".") || strings.Contains(name, ":Zone.Identifier") {
+			continue
+		}
+		dirs = append(dirs, name)
+	}
+	sort.Strings(dirs)
+	return dirs, nil
+}
+
+func (s *ScannerService) HasVideoFiles(dirPath string) (bool, error) {
+	fullPath, err := s.resolveDirectory(dirPath)
+	if err != nil {
+		return false, err
+	}
+	entries, err := os.ReadDir(fullPath)
+	if err != nil {
+		return false, fmt.Errorf("读取目录失败: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.Contains(entry.Name(), ":Zone.Identifier") {
+			continue
+		}
+		if videoExts[strings.ToLower(filepath.Ext(entry.Name()))] {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *ScannerService) DirectoryExists(dirPath string) bool {
+	_, err := s.resolveDirectory(dirPath)
+	return err == nil
+}
+
 // ResolveFilePath resolves a scanned episode file and keeps it inside dirPath.
 func (s *ScannerService) ResolveFilePath(dirPath, fileName string) (string, error) {
 	directory, err := s.resolveDirectory(dirPath)

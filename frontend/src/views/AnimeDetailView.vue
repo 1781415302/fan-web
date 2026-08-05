@@ -22,6 +22,7 @@ const scanning = ref(false)
 const saving = ref(false)
 const showEdit = ref(false)
 const coverFailed = ref(false)
+const showFullSummary = ref(false)
 const editForm = reactive({ title: '', title_cn: '', summary: '', ep_count: 0, file_path: '' })
 
 async function load() {
@@ -44,6 +45,7 @@ async function load() {
     episodes.value = currentEpisodes
     progressByEpisode.value = new Map(currentProgress.map((progress) => [progress.episode_id, progress]))
     coverFailed.value = false
+    showFullSummary.value = false
   } catch (e: unknown) {
     error.value = e instanceof ApiError ? e.message : '加载番剧失败'
     anime.value = null
@@ -121,11 +123,33 @@ const progressTotal = computed(() => {
   return episodes.value.length
 })
 
+const progressPercent = computed(() => {
+  if (progressTotal.value <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((watchedCount.value / progressTotal.value) * 100)))
+})
+
 function episodeStatus(episode: Episode) {
   const progress = progressByEpisode.value.get(episode.id)
   if (progress?.watched) return '已看'
   if ((progress?.position || 0) > 0) return '进行中'
   return '未看'
+}
+
+const continueEpisode = computed(() => {
+  const inProgress = episodes.value.find((episode) => {
+    const progress = progressByEpisode.value.get(episode.id)
+    return !progress?.watched && (progress?.position || 0) > 0
+  })
+  return inProgress || episodes.value.find((episode) => !progressByEpisode.value.get(episode.id)?.watched) || null
+})
+
+const summaryExpandable = computed(() => {
+  const summary = anime.value?.summary || ''
+  return summary.split(/\r?\n/).length > 6 || summary.length > 260
+})
+
+function openEpisode(episodeID: number) {
+  void router.push({ name: 'watch', params: { id: animeId.value, epId: episodeID } })
 }
 
 async function refreshProgress() {
@@ -146,107 +170,191 @@ watch(animeId, () => void load(), { immediate: true })
     <div v-if="loading" class="empty-state" aria-live="polite">加载中...</div>
     <div v-else-if="!anime" class="empty-state">番剧不存在</div>
     <template v-else>
-      <div class="detail-header">
-        <img
-          v-if="anime.cover && !coverFailed"
-          :src="anime.cover"
-          :alt="`${displayTitle()}封面`"
-          class="detail-cover"
-          @error="coverFailed = true"
-        />
-        <div v-else class="detail-cover placeholder-cover">无封面</div>
+      <header class="detail-hero">
+        <div class="detail-cover-wrap">
+          <img
+            v-if="anime.cover && !coverFailed"
+            :src="anime.cover"
+            :alt="`${displayTitle()}封面`"
+            class="detail-cover"
+            @error="coverFailed = true"
+          />
+          <div v-else class="detail-cover placeholder-cover">无封面</div>
+        </div>
         <div class="detail-info">
-          <p class="eyebrow">番剧详情</p>
+          <div class="detail-kicker-row">
+            <p class="eyebrow">番剧详情</p>
+            <span class="detail-state">本地收藏</span>
+          </div>
           <h1 id="detail-title">{{ displayTitle() }}</h1>
           <p v-if="anime.title_cn && anime.title" class="sub-title">{{ anime.title }}</p>
-          <p class="meta">
-            <span>已观看 {{ watchedCount }}/{{ progressTotal }}</span>
-            <span> · {{ anime.ep_count > 0 ? `全${anime.ep_count}话` : '集数未知' }}</span>
-            <span v-if="anime.file_path"> · 目录：{{ anime.file_path }}</span>
-          </p>
-          <p class="summary">{{ anime.summary || '暂无简介' }}</p>
+          <p class="meta">{{ anime.ep_count > 0 ? `全${anime.ep_count}话` : '集数未知' }}<span v-if="anime.file_path"> · {{ anime.file_path }}</span></p>
+          <div class="detail-stats" aria-label="番剧统计">
+            <div class="detail-stat">
+              <span>观看进度</span>
+              <strong>{{ watchedCount }} / {{ progressTotal }}</strong>
+            </div>
+            <div class="detail-stat">
+              <span>当前状态</span>
+              <strong>{{ continueEpisode ? `第 ${continueEpisode.ep_number} 话` : '已看完' }}</strong>
+            </div>
+            <div class="detail-stat">
+              <span>已入库集数</span>
+              <strong>{{ episodes.length }} 集</strong>
+            </div>
+          </div>
+          <div class="detail-progress">
+            <div class="progress-meta">
+              <span>观看完成度</span>
+              <strong>{{ progressPercent }}%</strong>
+            </div>
+            <div
+              class="progress-track"
+              role="progressbar"
+              aria-label="观看完成度"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-valuenow="progressPercent"
+            >
+              <span class="progress-fill" :style="{ width: `${progressPercent}%` }"></span>
+            </div>
+          </div>
           <div class="actions">
-            <button type="button" class="action-btn" @click="openEdit">编辑</button>
+            <button v-if="continueEpisode" type="button" class="primary-btn" @click="openEpisode(continueEpisode.id)">
+              继续播放
+            </button>
+            <button type="button" class="action-btn" @click="openEdit">编辑信息</button>
             <button type="button" class="action-btn" :disabled="scanning" @click="handleScan">
               {{ scanning ? '扫描中...' : '扫描文件' }}
             </button>
-            <button type="button" class="action-btn danger" @click="handleDelete">删除</button>
+            <button type="button" class="action-btn danger" @click="handleDelete">删除番剧</button>
           </div>
-          <p v-if="scanMessage" class="scan-msg">{{ scanMessage }}</p>
+          <p v-if="scanMessage" class="scan-msg" role="status">{{ scanMessage }}</p>
           <p v-if="scanError" class="error-msg" role="alert">{{ scanError }}</p>
         </div>
-      </div>
+      </header>
+
+      <section class="detail-summary" aria-labelledby="summary-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Synopsis</p>
+            <h2 id="summary-title">简介</h2>
+          </div>
+          <button v-if="summaryExpandable" type="button" class="summary-toggle" @click="showFullSummary = !showFullSummary">
+            {{ showFullSummary ? '收起简介' : '展开简介' }}
+          </button>
+        </div>
+        <p class="summary" :class="{ 'summary-collapsed': summaryExpandable && !showFullSummary }">
+          {{ anime.summary || '暂无简介' }}
+        </p>
+      </section>
 
       <form v-if="showEdit" class="edit-form" @submit.prevent="saveEdit">
-        <h2>编辑番剧</h2>
-        <div class="form-field"><label for="edit-title">标题</label><input id="edit-title" v-model="editForm.title" type="text" required /></div>
-        <div class="form-field"><label for="edit-title-cn">中文标题</label><input id="edit-title-cn" v-model="editForm.title_cn" type="text" /></div>
-        <div class="form-field"><label for="edit-summary">简介</label><textarea id="edit-summary" v-model="editForm.summary" rows="4"></textarea></div>
-        <div class="form-field"><label for="edit-ep-count">总集数</label><input id="edit-ep-count" v-model.number="editForm.ep_count" type="number" min="0" /></div>
-        <div class="form-field"><label for="edit-file-path">文件目录</label><input id="edit-file-path" v-model="editForm.file_path" type="text" placeholder="留空则扫描根目录" /></div>
+        <div class="edit-heading">
+          <div>
+            <p class="section-kicker">Metadata</p>
+            <h2 id="edit-form-title">编辑番剧</h2>
+          </div>
+          <button type="button" class="edit-dismiss" @click="showEdit = false">取消编辑</button>
+        </div>
+        <div class="edit-grid">
+          <div class="form-field"><label for="edit-title">原名</label><input id="edit-title" v-model="editForm.title" type="text" required /></div>
+          <div class="form-field"><label for="edit-title-cn">中文标题</label><input id="edit-title-cn" v-model="editForm.title_cn" type="text" /></div>
+          <div class="form-field edit-field-wide"><label for="edit-summary">简介</label><textarea id="edit-summary" v-model="editForm.summary" rows="5"></textarea></div>
+          <div class="form-field"><label for="edit-ep-count">总集数</label><input id="edit-ep-count" v-model.number="editForm.ep_count" type="number" min="0" /></div>
+          <div class="form-field"><label for="edit-file-path">文件目录</label><input id="edit-file-path" v-model="editForm.file_path" type="text" placeholder="留空则扫描根目录" /></div>
+        </div>
         <div class="form-actions">
-          <button type="submit" class="action-btn" :disabled="saving">{{ saving ? '保存中...' : '保存' }}</button>
+          <button type="submit" class="primary-btn" :disabled="saving">{{ saving ? '保存中...' : '保存修改' }}</button>
           <button type="button" class="action-btn" @click="showEdit = false">取消</button>
         </div>
       </form>
 
-      <div class="episode-section">
-          <h2>集数列表（{{ episodes.length }}）</h2>
-        <div v-if="episodes.length === 0" class="empty-state">暂无集数，请扫描文件</div>
-        <div v-else class="table-scroll">
-          <table class="episode-table">
-            <thead><tr><th>集数</th><th>文件名</th><th>状态</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr v-for="episode in episodes" :key="episode.id">
-                <td class="ep-num">第 {{ episode.ep_number }} 话</td>
-                <td class="ep-file">{{ episode.file_path }}</td>
-                <td><span class="episode-status" :class="`status-${episodeStatus(episode)}`">{{ episodeStatus(episode) }}</span></td>
-                <td><router-link class="play-link" :to="{ name: 'watch', params: { id: anime.id, epId: episode.id } }">播放</router-link></td>
-              </tr>
-            </tbody>
-          </table>
+      <section class="episode-section" aria-labelledby="episodes-title">
+        <div class="episode-heading">
+          <div>
+            <p class="section-kicker">Episodes</p>
+            <h2 id="episodes-title">集数列表</h2>
+          </div>
+          <span class="episode-count">{{ episodes.length }} 集已入库</span>
+          <button v-if="continueEpisode" type="button" class="primary-btn" @click="openEpisode(continueEpisode.id)">
+            从第 {{ continueEpisode.ep_number }} 话继续
+          </button>
         </div>
-      </div>
+        <div v-if="episodes.length === 0" class="empty-state">暂无集数，请扫描文件</div>
+        <div v-else class="episode-grid">
+          <button
+            v-for="episode in episodes"
+            :key="episode.id"
+            type="button"
+            class="episode-tile"
+            :class="`tile-${episodeStatus(episode)}`"
+            :aria-label="`第 ${episode.ep_number} 话，${episodeStatus(episode)}`"
+            @click="openEpisode(episode.id)"
+          >
+            <span class="episode-number">第 {{ episode.ep_number }} 话</span>
+            <span class="episode-status" :class="`status-${episodeStatus(episode)}`">{{ episodeStatus(episode) }}</span>
+          </button>
+        </div>
+      </section>
     </template>
   </section>
 </template>
 
 <style scoped>
-.detail-page { padding-bottom: 40px; }
-.eyebrow { color: var(--primary-hover-color); font-size: 13px; margin-bottom: 2px; }
-.error-msg { margin-bottom: 16px; color: #f87171; font-size: 14px; }
-.detail-header { display: flex; gap: 24px; margin-bottom: 32px; }
-.detail-cover { flex: 0 0 180px; width: 180px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; }
-.placeholder-cover { display: flex; align-items: center; justify-content: center; background: var(--surface-color); color: var(--text-secondary); font-size: 14px; }
-.detail-info { min-width: 0; flex: 1; }
-h1 { margin-bottom: 4px; color: var(--text-color); font-size: 24px; overflow-wrap: anywhere; }
-.sub-title { margin-bottom: 8px; color: var(--text-secondary); font-size: 14px; }
-.meta { margin-bottom: 12px; color: var(--text-secondary); font-size: 14px; }
-.summary { max-width: 760px; margin-bottom: 16px; color: var(--text-color); font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+.detail-page { max-width: 1180px; margin: 0 auto; padding-bottom: 32px; }
+.detail-hero { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 34px; padding: 12px 0 40px; border-bottom: 1px solid var(--border-color); }
+.detail-cover-wrap { width: 220px; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--surface-color); box-shadow: var(--shadow-lg); }
+.detail-cover { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; object-fit: cover; color: var(--text-muted-color); font-size: 13px; }
+.detail-info { min-width: 0; align-self: center; }
+.detail-kicker-row { display: flex; align-items: center; gap: 10px; }
+.detail-kicker-row .eyebrow { margin-bottom: 0; }
+.detail-state { padding: 5px 9px; border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 999px; background: rgba(34, 197, 94, 0.1); color: var(--primary-hover-color); font-size: 12px; }
+h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 40px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.sub-title { margin-bottom: 10px; color: var(--text-secondary); font-size: 15px; }
+.meta { max-width: 800px; margin-bottom: 24px; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 14px; }
+.detail-stats { display: grid; max-width: 680px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.detail-stat { min-width: 0; padding-left: 14px; border-left: 1px solid var(--border-color); }
+.detail-stat:first-child { padding-left: 0; border-left: 0; }
+.detail-stat span { display: block; color: var(--text-muted-color); font-size: 12px; }
+.detail-stat strong { display: block; margin-top: 6px; overflow: hidden; color: var(--text-color); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.detail-progress { max-width: 680px; margin-bottom: 24px; }
+.progress-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; }
+.progress-meta strong { color: var(--accent-color); }
+.progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--border-color); }
+.progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent-color); transition: width 240ms ease-out; }
 .actions, .form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.action-btn { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-color); font-size: 14px; cursor: pointer; }
-.action-btn:hover { border-color: var(--primary-color); }
-.action-btn:disabled { opacity: 0.5; cursor: wait; }
-.action-btn.danger { border-color: #7f1d1d; color: #f87171; }
-.action-btn.danger:hover { border-color: #ef4444; background: #450a0a; }
-.scan-msg { margin-top: 8px; color: var(--text-secondary); font-size: 14px; }
-.edit-form { margin-bottom: 32px; padding: 20px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface-color); }
-.edit-form h2, .episode-section h2 { margin-bottom: 16px; font-size: 18px; }
-.form-field { margin-bottom: 14px; }
-.form-field label { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 14px; }
-.form-field input, .form-field textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-color); outline: none; font: inherit; }
-.form-field input:focus, .form-field textarea:focus { border-color: var(--primary-color); }
-.table-scroll { overflow-x: auto; }
-.episode-table { width: 100%; min-width: 640px; border-collapse: collapse; }
-.episode-table th, .episode-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); text-align: left; font-size: 14px; }
-.episode-table th { color: var(--text-secondary); font-weight: 600; }
-.ep-num { white-space: nowrap; color: var(--primary-hover-color); }
-.ep-file { max-width: 520px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.episode-status { font-size: 12px; white-space: nowrap; }
-.status-已看 { color: #86efac; }
-.status-进行中 { color: #facc15; }
-.status-未看 { color: var(--text-secondary); }
-.play-link { color: var(--primary-hover-color); font-size: 13px; white-space: nowrap; }
-.empty-state { padding: 40px 0; color: var(--text-secondary); text-align: center; }
-@media (max-width: 640px) { .detail-header { flex-direction: column; } .detail-cover { flex-basis: auto; width: 140px; } }
+.scan-msg { margin-top: 12px; color: var(--success-color); font-size: 13px; }
+.detail-summary { padding: 32px 0; border-bottom: 1px solid var(--border-color); }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.section-kicker { margin-bottom: 5px; color: var(--text-muted-color); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.section-heading h2, .edit-heading h2, .episode-heading h2 { color: var(--text-color); font-size: 21px; font-weight: 700; }
+.summary { max-width: 820px; color: var(--text-secondary); font-size: 15px; line-height: 1.85; white-space: pre-wrap; }
+.summary-collapsed { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
+.summary-toggle, .edit-dismiss { min-height: 40px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--accent-color); font-size: 13px; cursor: pointer; }
+.summary-toggle:hover, .edit-dismiss:hover { background: var(--surface-hover); color: #b5fff7; }
+.edit-form { margin: 32px 0; padding: 22px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-sm); }
+.edit-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.edit-field-wide { grid-column: 1 / -1; }
+.form-field label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.form-field input, .form-field textarea { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font: inherit; resize: vertical; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.form-field textarea { min-height: 124px; }
+.form-field input:focus, .form-field textarea:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.form-actions { margin-top: 20px; }
+.episode-section { padding-top: 32px; }
+.episode-heading { display: flex; align-items: end; gap: 18px; margin-bottom: 18px; }
+.episode-count { margin-right: auto; color: var(--text-muted-color); font-size: 13px; }
+.episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
+.episode-tile { display: flex; min-height: 72px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.episode-tile:hover, .episode-tile:focus-visible { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); outline: none; }
+.episode-tile.tile-已看 { border-color: rgba(134, 239, 172, 0.35); }
+.episode-tile.tile-进行中 { border-color: rgba(255, 191, 117, 0.6); }
+.episode-number { font-size: 14px; font-weight: 600; }
+.episode-status { font-size: 12px; }
+.status-已看 { color: var(--success-color); }
+.status-进行中 { color: var(--warning-color); }
+.status-未看 { color: var(--text-muted-color); }
+@media (max-width: 760px) { .detail-hero { grid-template-columns: 160px minmax(0, 1fr); gap: 24px; } .detail-cover-wrap { width: 160px; } h1 { font-size: 32px; } .episode-heading { align-items: flex-start; flex-wrap: wrap; } .episode-heading .episode-count { margin-right: 0; } }
+@media (max-width: 560px) { .detail-hero { display: block; } .detail-cover-wrap { width: 148px; margin-bottom: 24px; } h1 { font-size: 30px; } .detail-stats { gap: 8px; } .detail-stat { padding-left: 8px; } .detail-stat strong { font-size: 13px; } .edit-grid { grid-template-columns: 1fr; } .edit-field-wide { grid-column: auto; } .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; } .episode-heading .primary-btn { width: 100%; } }
 </style>

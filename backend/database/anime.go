@@ -68,6 +68,14 @@ func GetAnimeByID(id int64) (*models.Anime, error) {
 	return scanAnime(DB.QueryRow(animeSelect+" WHERE id = ?", id))
 }
 
+func GetAnimeByBangumiID(bangumiID int) (*models.Anime, error) {
+	anime, err := scanAnime(DB.QueryRow(animeSelect+" WHERE bangumi_id = ?", bangumiID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return anime, err
+}
+
 func GetEpisodeByID(id int64) (*models.Episode, error) {
 	return scanEpisode(DB.QueryRow(episodeSelect+" WHERE id = ?", id))
 }
@@ -86,6 +94,15 @@ func CreateAnime(anime *models.Anime) (*models.Anime, error) {
 		return nil, err
 	}
 	return GetAnimeByID(id)
+}
+
+func CreateEpisode(episode *models.Episode) error {
+	_, err := DB.Exec(
+		`INSERT INTO episodes (anime_id, ep_number, title, file_path, duration)
+		 VALUES (?, ?, ?, ?, ?)`,
+		episode.AnimeID, episode.EpNumber, episode.Title, episode.FilePath, episode.Duration,
+	)
+	return err
 }
 
 func UpdateAnime(anime *models.Anime) error {

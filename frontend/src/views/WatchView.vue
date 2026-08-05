@@ -141,7 +141,7 @@ function createPlayer(episode: Episode) {
     container: playerContainer.value,
     url: getStreamUrl(episode.id),
     poster: anime.value.cover || undefined,
-    theme: '#3b82f6',
+    theme: '#22c55e',
     autoplay: false,
     playbackRate: false,
     pip: true,
@@ -287,14 +287,15 @@ onBeforeUnmount(() => {
       <router-link :to="{ name: 'anime-detail', params: { id: animeId } }">返回番剧详情</router-link>
     </div>
     <template v-else>
-      <div class="watch-heading">
-        <div>
-          <router-link class="back-link" :to="{ name: 'anime-detail', params: { id: animeId } }">返回详情</router-link>
-          <p class="eyebrow">正在观看</p>
+      <header class="watch-heading">
+        <div class="watch-title-block">
+          <router-link class="back-link" :to="{ name: 'anime-detail', params: { id: animeId } }">返回番剧详情</router-link>
+          <div class="watch-kicker-row">
+            <p class="eyebrow">正在观看</p>
+            <span class="watch-state">{{ currentStatus }}</span>
+          </div>
           <h1 id="watch-title">{{ displayTitle }}</h1>
-          <p class="watch-meta">
-            第 {{ currentEpisode.ep_number }} 话 · {{ currentStatus }} · 已观看 {{ watchedCount }}/{{ totalEpisodeCount }}
-          </p>
+          <p class="watch-meta">第 {{ currentEpisode.ep_number }} 话 · 已观看 {{ watchedCount }}/{{ totalEpisodeCount }}</p>
         </div>
         <div class="watch-controls">
           <label class="episode-select-label">
@@ -316,22 +317,28 @@ onBeforeUnmount(() => {
             </select>
           </label>
         </div>
-      </div>
+      </header>
 
       <div class="watch-layout">
-        <div class="player-column">
-          <div ref="playerContainer" class="player-container" aria-label="视频播放器"></div>
-          <p v-if="playerError" class="error-msg" role="alert">{{ playerError }}</p>
-          <div class="player-status" aria-live="polite">
-            <span>{{ statusMessage }}</span>
-            <span>{{ formatTime(currentPosition) }} / {{ formatTime(currentDuration) }}</span>
+        <section class="player-column" aria-labelledby="player-region-title">
+          <h2 id="player-region-title" class="visually-hidden">视频播放器</h2>
+          <div class="player-shell">
+            <div ref="playerContainer" class="player-container" role="region" aria-label="视频播放器"></div>
+            <div class="player-status" aria-live="polite">
+              <span class="status-message">{{ statusMessage }}</span>
+              <span class="status-time">{{ formatTime(currentPosition) }} / {{ formatTime(currentDuration) }}</span>
+            </div>
           </div>
+          <p v-if="playerError" class="error-msg" role="alert">{{ playerError }}</p>
           <p v-if="progressError" class="progress-error" role="alert">{{ progressError }}</p>
-        </div>
+        </section>
 
         <aside class="episode-panel" aria-label="集数列表">
           <div class="episode-panel-heading">
-            <h2>集数</h2>
+            <div>
+              <p class="panel-kicker">Episodes</p>
+              <h2>集数列表</h2>
+            </div>
             <span>{{ watchedCount }}/{{ totalEpisodeCount }} 已看</span>
           </div>
           <div class="episode-list">
@@ -350,50 +357,53 @@ onBeforeUnmount(() => {
         </aside>
       </div>
 
-      <div class="watch-navigation">
+      <nav class="watch-navigation" aria-label="集数导航">
         <button type="button" class="action-btn" :disabled="currentIndex <= 0" @click="changeEpisode(-1)">上一集</button>
         <router-link class="action-btn" :to="{ name: 'anime-detail', params: { id: animeId } }">详情</router-link>
         <button type="button" class="action-btn" :disabled="currentIndex < 0 || currentIndex >= episodes.length - 1" @click="changeEpisode(1)">下一集</button>
-      </div>
+      </nav>
     </template>
   </section>
 </template>
 
 <style scoped>
-.watch-page { padding-bottom: 40px; }
-.watch-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
-.back-link { display: inline-block; margin-bottom: 12px; color: var(--text-secondary); font-size: 13px; text-decoration: none; }
-.back-link:hover { color: var(--primary-hover-color); }
-.eyebrow { color: var(--primary-hover-color); font-size: 13px; margin-bottom: 2px; }
-h1 { color: var(--text-color); font-size: 24px; overflow-wrap: anywhere; }
-.watch-meta { margin-top: 4px; color: var(--text-secondary); font-size: 14px; }
-.watch-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
-.episode-select-label { display: flex; min-width: 190px; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 12px; }
-.episode-select-label select { height: 36px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface-color); color: var(--text-color); outline: none; }
-.episode-select-label select:focus { border-color: var(--primary-color); }
-.watch-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+.watch-page { max-width: 1320px; margin: 0 auto; padding-bottom: 32px; }
+.watch-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; padding: 8px 0 28px; border-bottom: 1px solid var(--border-color); }
+.watch-title-block { min-width: 0; }
+.back-link { display: inline-flex; min-height: 40px; align-items: center; margin-bottom: 14px; color: var(--text-secondary); font-size: 13px; text-decoration: none; }
+.back-link:hover { color: var(--accent-color); }
+.watch-kicker-row { display: flex; align-items: center; gap: 10px; }
+.watch-kicker-row .eyebrow { margin-bottom: 0; }
+.watch-state { padding: 5px 9px; border: 1px solid rgba(115, 217, 207, 0.32); border-radius: 999px; background: rgba(115, 217, 207, 0.08); color: var(--accent-color); font-size: 12px; }
+h1 { max-width: 860px; margin-top: 12px; color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.watch-meta { margin-top: 8px; color: var(--text-secondary); font-size: 14px; }
+.watch-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.episode-select-label { display: flex; min-width: 190px; flex-direction: column; gap: 7px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.episode-select-label select { min-height: 46px; padding: 0 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-color); color: var(--text-color); outline: none; cursor: pointer; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.episode-select-label select:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.watch-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; padding-top: 28px; }
 .player-column { min-width: 0; }
-.player-container { width: 100%; aspect-ratio: 16 / 9; min-height: 240px; overflow: hidden; background: #000; }
-.player-status { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; color: var(--text-secondary); font-size: 13px; }
-.progress-error { color: #f87171; font-size: 13px; }
-.episode-panel { min-width: 0; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface-color); }
-.episode-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border-color); }
-.episode-panel-heading h2 { font-size: 17px; }
-.episode-panel-heading span { color: var(--text-secondary); font-size: 12px; }
-.episode-list { max-height: 520px; overflow-y: auto; padding: 6px; }
-.episode-item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; padding: 7px 9px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text-color); text-align: left; cursor: pointer; }
+.player-shell { overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-lg); }
+.player-container { width: 100%; aspect-ratio: 16 / 9; min-height: 260px; overflow: hidden; background: #090d12; }
+.player-status { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border-color); color: var(--text-secondary); font-size: 13px; }
+.status-message { color: var(--text-color); }
+.status-time { color: var(--text-muted-color); font-variant-numeric: tabular-nums; }
+.progress-error { margin-top: 10px; color: var(--danger-color); font-size: 13px; }
+.episode-panel { min-width: 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-sm); }
+.episode-panel-heading { display: flex; align-items: end; justify-content: space-between; gap: 8px; padding: 16px; border-bottom: 1px solid var(--border-color); }
+.panel-kicker { margin-bottom: 4px; color: var(--text-muted-color); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.episode-panel-heading h2 { color: var(--text-color); font-size: 18px; }
+.episode-panel-heading > span { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.episode-list { max-height: 548px; overflow-y: auto; padding: 8px; }
+.episode-item { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out; }
 .episode-item:hover { background: var(--surface-hover); }
-.episode-item.active { border-color: var(--primary-color); background: rgba(59, 130, 246, 0.12); }
+.episode-item.active { border-color: rgba(34, 197, 94, 0.48); background: rgba(34, 197, 94, 0.1); }
 .episode-state { flex: 0 0 auto; font-size: 12px; }
-.state-已看 { color: #86efac; }
-.state-进行中 { color: #facc15; }
-.state-未看 { color: var(--text-secondary); }
+.state-已看 { color: var(--success-color); }
+.state-进行中 { color: var(--warning-color); }
+.state-未看 { color: var(--text-muted-color); }
 .watch-navigation { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; }
-.action-btn { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-color); font-size: 14px; text-decoration: none; cursor: pointer; }
-.action-btn:hover:not(:disabled) { border-color: var(--primary-color); }
-.action-btn:disabled { cursor: not-allowed; opacity: 0.4; }
-.error-msg { margin-bottom: 16px; color: #f87171; font-size: 14px; }
-.empty-state { padding: 60px 0; color: var(--text-secondary); text-align: center; }
-@media (max-width: 860px) { .watch-layout { grid-template-columns: minmax(0, 1fr); } .episode-panel { order: 2; } .episode-list { display: grid; max-height: 260px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); } }
-@media (max-width: 560px) { .watch-heading { align-items: stretch; flex-direction: column; gap: 14px; } .watch-controls { justify-content: stretch; } .episode-select-label { min-width: 0; flex: 1; } .player-container { min-height: 180px; } .watch-navigation .action-btn { flex: 1; padding-inline: 8px; } }
+.watch-navigation .action-btn { min-width: 96px; }
+@media (max-width: 920px) { .watch-layout { grid-template-columns: minmax(0, 1fr); } .episode-panel { order: 2; } .episode-list { display: grid; max-height: 280px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+@media (max-width: 640px) { .watch-heading { grid-template-columns: 1fr; gap: 18px; } .watch-controls { justify-content: stretch; } .episode-select-label { min-width: 0; flex: 1; } h1 { font-size: 30px; } .player-container { min-height: 190px; } .player-status { align-items: flex-start; flex-direction: column; gap: 4px; } .watch-navigation .action-btn { min-width: 0; flex: 1; padding-inline: 8px; } }
 </style>

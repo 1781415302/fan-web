@@ -2,12 +2,15 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
+
+var ErrBangumiNotFound = errors.New("未找到该条目")
 
 const (
 	bangumiBaseURL = "https://api.bgm.tv"
@@ -137,7 +140,7 @@ func (s *BangumiService) doRequest(apiURL string, target interface{}) error {
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("未找到该条目")
+		return ErrBangumiNotFound
 	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("Bangumi API 返回状态码 %d", response.StatusCode)

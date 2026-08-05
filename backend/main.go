@@ -37,6 +37,8 @@ func main() {
 	animeHandler := handlers.NewAnimeHandler(bangumiService, scannerService)
 	bangumiHandler := handlers.NewBangumiHandler(bangumiService)
 	episodeHandler := handlers.NewEpisodeHandler(authService, scannerService)
+	libraryService := services.NewLibraryService(bangumiService, cfg.Video.RootPath)
+	libraryHandler := handlers.NewLibraryHandler(libraryService)
 	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 
 	r := gin.Default()
@@ -68,6 +70,7 @@ func main() {
 		protected.DELETE("/animes/:id", animeHandler.Delete)
 		protected.POST("/animes/:id/scan", animeHandler.Scan)
 		protected.GET("/animes/:id/episodes", animeHandler.Episodes)
+		protected.POST("/library/scan", libraryHandler.Scan)
 
 		protected.GET("/bangumi/search", bangumiHandler.Search)
 		protected.GET("/bangumi/subject/:id", bangumiHandler.Subject)

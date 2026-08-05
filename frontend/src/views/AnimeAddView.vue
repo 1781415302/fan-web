@@ -64,101 +64,135 @@ function markCoverFailed(id: number) {
 
 <template>
   <section class="add-page" aria-labelledby="add-title">
-    <div class="page-heading">
-      <p class="eyebrow">库管理</p>
+    <header class="page-heading">
+      <p class="eyebrow">Library intake</p>
       <h1 id="add-title">添加番剧</h1>
       <p class="page-desc">从 Bangumi 获取番剧信息，再关联本地视频目录。</p>
-    </div>
+    </header>
 
     <form class="search-section" @submit.prevent="handleSearch">
       <div class="search-bar">
-        <input v-model="keyword" type="search" aria-label="Bangumi 搜索关键词" placeholder="输入番剧名称搜索 Bangumi..." />
-        <button type="submit" class="primary-btn" :disabled="searching">{{ searching ? '搜索中...' : '搜索' }}</button>
+        <label for="bangumi-search" class="search-label">搜索 Bangumi</label>
+        <div class="search-control">
+          <input id="bangumi-search" v-model="keyword" type="search" placeholder="输入番剧名称或关键词" />
+          <button type="submit" class="primary-btn" :disabled="searching">{{ searching ? '搜索中...' : '搜索' }}</button>
+        </div>
       </div>
       <p v-if="searchError" class="error-msg" role="alert">{{ searchError }}</p>
     </form>
 
+    <section v-if="results.length" class="results-section" aria-labelledby="results-title">
+      <div class="results-heading">
+        <div>
+          <p class="section-kicker">Search results</p>
+          <h2 id="results-title">选择番剧</h2>
+        </div>
+        <span>{{ results.length }} 条结果</span>
+      </div>
+      <div class="search-results">
+        <button
+          v-for="item in results"
+          :key="item.id"
+          type="button"
+          class="search-item"
+          :class="{ selected: selected?.id === item.id }"
+          :aria-pressed="selected?.id === item.id"
+          @click="selectItem(item)"
+        >
+          <img
+            v-if="item.cover && !failedCovers.has(item.id)"
+            :src="item.cover"
+            :alt="`${displayName(item)}封面`"
+            class="result-cover"
+            loading="lazy"
+            @error="markCoverFailed(item.id)"
+          />
+          <span v-else class="result-cover placeholder-cover">无封面</span>
+          <span class="result-info">
+            <strong class="result-name">{{ displayName(item) }}</strong>
+            <span v-if="item.name_cn && item.name" class="result-sub">{{ item.name }}</span>
+            <span class="result-meta">{{ item.eps_count > 0 ? `全${item.eps_count}话` : '集数未知' }}</span>
+            <span class="result-summary">{{ item.summary || '暂无简介' }}</span>
+          </span>
+          <span class="selection-mark" aria-hidden="true">{{ selected?.id === item.id ? '已选择' : '选择' }}</span>
+        </button>
+      </div>
+    </section>
+
     <div v-if="!searching && keyword.trim() && results.length === 0 && !searchError" class="empty-state">没有找到相关番剧</div>
-    <div v-if="results.length" class="search-results" aria-label="Bangumi 搜索结果">
-      <button
-        v-for="item in results"
-        :key="item.id"
-        type="button"
-        class="search-item"
-        :class="{ selected: selected?.id === item.id }"
-        @click="selectItem(item)"
-      >
-        <img
-          v-if="item.cover && !failedCovers.has(item.id)"
-          :src="item.cover"
-          :alt="`${displayName(item)}封面`"
-          class="result-cover"
-          loading="lazy"
-          @error="markCoverFailed(item.id)"
-        />
-        <span v-else class="result-cover placeholder-cover">无封面</span>
-        <span class="result-info">
-          <strong class="result-name">{{ displayName(item) }}</strong>
-          <span v-if="item.name_cn && item.name" class="result-sub">{{ item.name }}</span>
-          <span class="result-meta">{{ item.eps_count > 0 ? `全${item.eps_count}话` : '集数未知' }}</span>
-          <span class="result-summary">{{ item.summary || '暂无简介' }}</span>
-        </span>
-      </button>
-    </div>
 
     <form v-if="selected" class="confirm-section" @submit.prevent="handleCreate">
-      <h2>确认添加</h2>
+      <div class="confirm-heading">
+        <div>
+          <p class="section-kicker">Selected title</p>
+          <h2>确认添加</h2>
+        </div>
+        <span class="selected-badge">已选</span>
+      </div>
       <div class="confirm-info">
-        <img v-if="selected.cover" :src="selected.cover" :alt="`${displayName(selected)}封面`" class="confirm-cover" />
+        <img
+          v-if="selected.cover && !failedCovers.has(selected.id)"
+          :src="selected.cover"
+          :alt="`${displayName(selected)}封面`"
+          class="confirm-cover"
+          @error="markCoverFailed(selected.id)"
+        />
+        <span v-else class="confirm-cover placeholder-cover">无封面</span>
         <div>
           <p class="confirm-name">{{ displayName(selected) }}</p>
           <p class="confirm-meta">Bangumi ID：{{ selected.id }}</p>
         </div>
       </div>
       <div class="form-field">
-        <label for="file-path">文件目录名</label>
+        <label for="file-path">文件目录名 <span class="label-hint">可选</span></label>
         <input id="file-path" v-model="filePath" type="text" placeholder="留空扫描根目录，如 Re_Zero" />
         <p class="form-hint">视频根目录下的相对目录名，不能填写绝对路径或 ..。</p>
       </div>
       <p v-if="createError" class="error-msg" role="alert">{{ createError }}</p>
-      <button type="submit" class="primary-btn" :disabled="creating">{{ creating ? '添加中...' : '确认添加' }}</button>
+      <div class="confirm-actions">
+        <button type="submit" class="primary-btn" :disabled="creating">{{ creating ? '添加中...' : '确认添加' }}</button>
+      </div>
     </form>
   </section>
 </template>
 
 <style scoped>
-.add-page { max-width: 820px; margin: 0 auto; padding-bottom: 40px; }
-.page-heading { margin-bottom: 24px; }
-.eyebrow { color: var(--primary-hover-color); font-size: 13px; margin-bottom: 2px; }
-h1 { color: var(--text-color); font-size: 24px; }
-.page-desc { margin-top: 4px; color: var(--text-secondary); font-size: 14px; }
-.search-bar { display: flex; gap: 10px; margin-bottom: 16px; }
-.search-bar input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--surface-color); color: var(--text-color); outline: none; }
-.search-bar input:focus { border-color: var(--primary-color); }
-.primary-btn { min-height: 38px; padding: 0 18px; border: 0; border-radius: 4px; background: var(--primary-color); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-.primary-btn:hover { background: var(--primary-hover-color); }
-.primary-btn:disabled { opacity: 0.6; cursor: wait; }
-.error-msg { margin: 8px 0; color: #f87171; font-size: 14px; }
-.empty-state { padding: 40px 0; color: var(--text-secondary); text-align: center; }
+.add-page { max-width: 920px; margin: 0 auto; padding-bottom: 32px; }
+.page-heading { padding: 12px 0 28px; border-bottom: 1px solid var(--border-color); }
+h1 { color: var(--text-color); font-size: 36px; font-weight: 700; line-height: 1.15; }
+.page-desc { margin-top: 10px; color: var(--text-secondary); font-size: 15px; }
+.search-section { margin-top: 28px; padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-sm); }
+.search-bar { display: block; }
+.search-label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.search-control { display: flex; gap: 10px; }
+.search-control input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font-size: 16px; transition: border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.search-control input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.results-section { margin-top: 32px; }
+.results-heading, .confirm-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.section-kicker { margin-bottom: 5px; color: var(--text-muted-color); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.results-heading h2, .confirm-heading h2 { color: var(--text-color); font-size: 21px; }
+.results-heading > span { color: var(--text-muted-color); font-size: 13px; }
 .search-results { display: flex; flex-direction: column; gap: 10px; }
-.search-item { display: flex; width: 100%; gap: 12px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface-color); color: inherit; text-align: left; cursor: pointer; }
-.search-item:hover, .search-item.selected { border-color: var(--primary-color); }
-.result-cover { flex: 0 0 60px; width: 60px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; }
-.placeholder-cover { display: flex; align-items: center; justify-content: center; background: var(--surface-hover); color: var(--text-secondary); font-size: 11px; }
-.result-info { display: flex; min-width: 0; flex-direction: column; }
+.search-item { display: flex; width: 100%; min-height: 104px; align-items: center; gap: 14px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: inherit; text-align: left; cursor: pointer; appearance: none; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.search-item:hover, .search-item.selected { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); }
+.result-cover { display: flex; width: 68px; height: 96px; flex: 0 0 68px; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); object-fit: cover; color: var(--text-muted-color); font-size: 11px; }
+.result-info { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .result-name { color: var(--text-color); font-size: 15px; }
-.result-sub, .result-meta { margin-top: 2px; color: var(--text-secondary); font-size: 13px; }
-.result-summary { display: -webkit-box; overflow: hidden; margin-top: 6px; color: var(--text-secondary); font-size: 13px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.confirm-section { margin-top: 32px; padding: 20px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface-color); }
-.confirm-section h2 { margin-bottom: 16px; font-size: 18px; }
-.confirm-info { display: flex; gap: 14px; margin-bottom: 16px; }
-.confirm-cover { width: 80px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; }
-.confirm-name { color: var(--text-color); font-size: 16px; font-weight: 600; }
-.confirm-meta { margin-top: 4px; color: var(--text-secondary); font-size: 13px; }
-.form-field { margin-bottom: 14px; }
-.form-field label { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 14px; }
-.form-field input { width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-color); outline: none; }
-.form-field input:focus { border-color: var(--primary-color); }
-.form-hint { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
-@media (max-width: 600px) { .search-bar { flex-direction: column; } .primary-btn { width: 100%; } .result-cover { flex-basis: 48px; width: 48px; } .confirm-cover { width: 64px; } }
+.result-sub, .result-meta { margin-top: 3px; color: var(--text-secondary); font-size: 13px; }
+.result-summary { display: -webkit-box; overflow: hidden; margin-top: 7px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.selection-mark { min-width: 48px; color: var(--text-muted-color); font-size: 12px; text-align: right; }
+.search-item.selected .selection-mark { color: var(--accent-color); }
+.confirm-section { margin-top: 32px; padding: 22px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: var(--radius-md); background: var(--surface-color); box-shadow: var(--shadow-md); }
+.selected-badge { padding: 5px 9px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 999px; background: rgba(34, 197, 94, 0.1); color: var(--primary-hover-color); font-size: 12px; }
+.confirm-info { display: flex; gap: 16px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--border-color); }
+.confirm-cover { display: flex; width: 84px; height: 126px; flex: 0 0 84px; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--radius-sm); object-fit: cover; color: var(--text-muted-color); font-size: 11px; }
+.confirm-name { color: var(--text-color); font-size: 17px; font-weight: 600; }
+.confirm-meta { margin-top: 5px; color: var(--text-secondary); font-size: 13px; }
+.form-field label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.label-hint { color: var(--text-muted-color); font-weight: 400; }
+.form-field input { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-muted-color); color: var(--text-color); outline: none; font-size: 16px; }
+.form-field input:focus { border-color: var(--accent-color); box-shadow: 0 0 0 4px rgba(115, 217, 207, 0.12); }
+.form-hint { margin-top: 7px; color: var(--text-muted-color); font-size: 12px; }
+.confirm-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+@media (max-width: 600px) { h1 { font-size: 32px; } .search-control { flex-direction: column; } .search-control .primary-btn { width: 100%; } .search-item { align-items: flex-start; } .result-cover { width: 56px; height: 80px; flex-basis: 56px; } .selection-mark { display: none; } .confirm-section { padding: 18px; } .confirm-actions .primary-btn { width: 100%; } }
 </style>
