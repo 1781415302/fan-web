@@ -3,6 +3,9 @@ frontend/dist/
 
 backend/data/*.db
 backend/data/*.db-*
+backend/web/dist/
+
+dist/
 
 .playwright-cli/
 output/playwright/

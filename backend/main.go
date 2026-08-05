@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +15,7 @@ import (
 	"fan-web/handlers"
 	"fan-web/middleware"
 	"fan-web/services"
+	"fan-web/web"
 )
 
 func main() {
@@ -82,9 +86,36 @@ func main() {
 		admin.DELETE("/users/:id", adminUserHandler.Delete)
 	}
 
+	distFS, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		log.Fatalf("加载前端资源失败: %v", err)
+	}
+	r.NoRoute(serveFrontend(http.FS(distFS)))
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("服务启动，监听 %s\n", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
+	}
+}
+
+// serveFrontend 托管嵌入的前端静态资源，并为单页应用做 index.html 回退。
+func serveFrontend(fsys http.FileSystem) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") || c.Request.URL.Path == "/api" {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "接口不存在"})
+			return
+		}
+
+		path := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if path != "" && path != "index.html" {
+			if f, err := fsys.Open(path); err == nil {
+				f.Close()
+				c.FileFromFS(c.Request.URL.Path, fsys)
+				return
+			}
+		}
+
+		c.FileFromFS("/", fsys)
 	}
 }
