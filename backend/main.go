@@ -1,11 +1,16 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,13 +29,21 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
+	portFlag := flag.Int("port", 0, "服务器端口，覆盖配置文件")
+	flag.Parse()
+	if *portFlag > 0 {
+		cfg.Server.Port = *portFlag
+	}
+
 	gin.SetMode(cfg.Server.Mode)
 
 	if err := database.Init(cfg.Database.Path); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
-	if err := database.InitAdmin(cfg.Admin.Username, cfg.Admin.Password); err != nil {
-		log.Fatalf("管理员初始化失败: %v", err)
+	if cfg.Configured {
+		if err := database.InitAdmin(cfg.Admin.Username, cfg.Admin.Password); err != nil {
+			log.Fatalf("管理员初始化失败: %v", err)
+		}
 	}
 
 	authService := services.NewAuthService(cfg.JWT.Secret, cfg.JWT.Expire)
@@ -43,6 +56,7 @@ func main() {
 	episodeHandler := handlers.NewEpisodeHandler(authService, scannerService)
 	libraryService := services.NewLibraryService(bangumiService, cfg.Video.RootPath)
 	libraryHandler := handlers.NewLibraryHandler(libraryService)
+	setupHandler := handlers.NewSetupHandler("config.yaml", cfg, authService, scannerService, libraryService)
 	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 
 	r := gin.Default()
@@ -52,8 +66,11 @@ func main() {
 	}
 
 	api := r.Group("/api")
+	api.Use(middleware.RequireSetup(func() bool { return cfg.Configured }))
 	{
 		api.GET("/health", handlers.Health)
+		api.GET("/setup/status", setupHandler.Status)
+		api.POST("/setup", setupHandler.Submit)
 		api.GET("/episodes/:id/stream", episodeHandler.Stream)
 
 		auth := api.Group("/auth")
@@ -92,11 +109,42 @@ func main() {
 	}
 	r.NoRoute(serveFrontend(http.FS(distFS)))
 
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Printf("服务启动，监听 %s\n", addr)
-	if err := r.Run(addr); err != nil {
+	listener, actualPort, err := listenWithFallback(cfg.Server.Port, 10)
+	if err != nil {
+		log.Fatalf("端口绑定失败: %v", err)
+	}
+	log.Printf("服务启动，监听 :%d → http://127.0.0.1:%d", actualPort, actualPort)
+	if err := http.Serve(listener, r); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
+}
+
+// listenWithFallback 从起始端口开始监听，端口被占用时自动顺延，最多尝试 maxAttempts 次。
+func listenWithFallback(startPort, maxAttempts int) (net.Listener, int, error) {
+	for i := 0; i < maxAttempts; i++ {
+		port := startPort + i
+		addr := fmt.Sprintf(":%d", port)
+		listener, err := net.Listen("tcp", addr)
+		if err == nil {
+			return listener, port, nil
+		}
+		if !isAddrInUse(err) {
+			return nil, 0, fmt.Errorf("监听 %s 失败: %w", addr, err)
+		}
+		log.Printf("端口 %d 被占用，尝试 %d", port, port+1)
+	}
+	return nil, 0, fmt.Errorf("端口 %d~%d 均被占用", startPort, startPort+maxAttempts-1)
+}
+
+func isAddrInUse(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		var sysErr *os.SyscallError
+		if errors.As(opErr.Err, &sysErr) {
+			return sysErr.Err == syscall.EADDRINUSE
+		}
+	}
+	return false
 }
 
 // serveFrontend 托管嵌入的前端静态资源，并为单页应用做 index.html 回退。

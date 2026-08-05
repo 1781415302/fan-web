@@ -36,6 +36,16 @@ func NewScannerService(rootPath string) *ScannerService {
 	return &ScannerService{rootPath: rootPath}
 }
 
+// SetRootPath 更新视频根目录，初始化完成时调用。
+func (s *ScannerService) SetRootPath(rootPath string) {
+	s.rootPath = rootPath
+}
+
+// RootPath 返回当前视频根目录。
+func (s *ScannerService) RootPath() string {
+	return s.rootPath
+}
+
 func ValidateRelativeVideoPath(dirPath string) error {
 	if strings.ContainsRune(dirPath, '\x00') || strings.Contains(dirPath, "\\") {
 		return ErrInvalidVideoPath

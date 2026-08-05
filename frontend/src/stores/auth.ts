@@ -61,6 +61,13 @@ export const useAuthStore = defineStore('auth', () => {
     initialized.value = true
   }
 
+  function setSession(newToken: string, newUser: User) {
+    token.value = newToken
+    user.value = newUser
+    localStorage.setItem(TOKEN_STORAGE_KEY, newToken)
+    initialized.value = true
+  }
+
   async function logout() {
     try {
       if (token.value) {
@@ -89,6 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     login,
     logout,
+    setSession,
   }
 })
 

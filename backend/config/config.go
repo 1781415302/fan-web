@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	JWT      JWTConfig      `yaml:"jwt"`
-	Admin    AdminConfig    `yaml:"admin"`
-	Video    VideoConfig    `yaml:"video"`
+	Configured bool `yaml:"-"`
+	Server     ServerConfig   `yaml:"server"`
+	Database   DatabaseConfig `yaml:"database"`
+	JWT        JWTConfig      `yaml:"jwt"`
+	Admin      AdminConfig    `yaml:"admin"`
+	Video      VideoConfig    `yaml:"video"`
 }
 
 type ServerConfig struct {
@@ -62,10 +63,23 @@ type VideoConfig struct {
 	RootPath string `yaml:"root_path"`
 }
 
+// Default 返回未初始化时的默认配置。
+func Default() *Config {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	return cfg
+}
+
 // Load 从指定路径加载配置文件。
+// 配置文件不存在时返回带默认值的配置，Configured 为 false，调用方可进入初始化流程。
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			cfg := Default()
+			cfg.Configured = false
+			return cfg, nil
+		}
 		return nil, err
 	}
 
@@ -73,28 +87,44 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-
-	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 8080
-	}
-	if cfg.Server.Mode == "" {
-		cfg.Server.Mode = "debug"
-	}
-	if cfg.Database.Path == "" {
-		cfg.Database.Path = "./data/fan-web.db"
-	}
-	if cfg.JWT.Secret == "" {
-		cfg.JWT.Secret = "default-secret"
-	}
-	if cfg.JWT.Expire == 0 {
-		cfg.JWT.Expire = 168 * time.Hour
-	}
-	if cfg.Admin.Username == "" {
-		cfg.Admin.Username = "admin"
-	}
-	if cfg.Admin.Password == "" {
-		cfg.Admin.Password = "admin123"
-	}
+	cfg.Configured = true
+	cfg.applyDefaults()
 
 	return &cfg, nil
+}
+
+// Save 将配置写入指定路径。
+func (c *Config) Save(path string) error {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+	return nil
+}
+
+func (c *Config) applyDefaults() {
+	if c.Server.Port == 0 {
+		c.Server.Port = 8080
+	}
+	if c.Server.Mode == "" {
+		c.Server.Mode = "debug"
+	}
+	if c.Database.Path == "" {
+		c.Database.Path = "./data/fan-web.db"
+	}
+	if c.JWT.Secret == "" {
+		c.JWT.Secret = "default-secret"
+	}
+	if c.JWT.Expire == 0 {
+		c.JWT.Expire = 168 * time.Hour
+	}
+	if c.Admin.Username == "" {
+		c.Admin.Username = "admin"
+	}
+	if c.Admin.Password == "" {
+		c.Admin.Password = "admin123"
+	}
 }

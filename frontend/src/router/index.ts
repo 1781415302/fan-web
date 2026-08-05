@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useAuthStore } from '../stores/auth'
+import { getSetupStatus } from '../api/setup'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -12,6 +13,11 @@ declare module 'vue-router' {
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/setup',
+      name: 'setup',
+      component: () => import('../views/SetupView.vue'),
+    },
     {
       path: '/login',
       name: 'login',
@@ -62,6 +68,21 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
+
+  let configured = true
+  try {
+    configured = await getSetupStatus()
+  } catch {
+    // 请求失败（例如网络不可用）时按已初始化处理，避免误跳转。
+  }
+
+  if (!configured && to.name !== 'setup') {
+    return { name: 'setup' }
+  }
+  if (configured && to.name === 'setup') {
+    return { name: 'login' }
+  }
+
   await authStore.initialize()
 
   if (to.name === 'login') {

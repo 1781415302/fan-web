@@ -10,7 +10,9 @@
 - **观看进度**：自动记录每位用户的观看进度，续播提醒
 - **番组信息**：集成 Bangumi 搜索与番剧详情
 - **用户系统**：JWT 认证、登录限流，管理员可管理用户
+- **零配置初始化**：首次运行自动进入 WebUI 引导页，在线设置管理员与视频目录，自动生成配置
 - **单文件部署**：前端资源嵌入后端二进制，无需 nginx
+- **低资源占用**：常驻内存约 15 MB，空闲 CPU 近乎为 0，可在低配 VPS 运行
 
 ## 技术栈
 
@@ -73,26 +75,43 @@
 
 ## 部署到 VPS
 
-1. 在 VPS 上构建（推荐，避免本机环境差异），或上传本机构建的产物：
+### 首次运行（零配置初始化）
 
-   ```bash
-   ./build.sh
-   ```
+可执行文件**无需自带配置文件**。首次运行会以默认配置启动（端口 8080），浏览器访问后自动进入初始化引导页：
 
-2. 将可执行文件与配置一起部署：
+1. 上传并运行：
 
    ```bash
    mkdir -p /opt/fan-web && cd /opt/fan-web
    cp <产物路径>/fan-web-server .
-   cp backend/config.yaml .
-   # 修改 config.yaml 中的视频目录等配置
-   ```
-
-3. 运行：
-
-   ```bash
    ./fan-web-server
    ```
+
+2. 浏览器访问 `http://<vps-ip>:8080`，在引导页填写：管理员用户名/密码、**视频根目录（手动输入服务器绝对路径）**、可选端口。
+
+3. 提交后自动生成 `config.yaml`、创建管理员并进入系统。后续可直接用管理员账号登录。
+
+> 视频目录在浏览器中无法直接选择，需手动输入服务器上的路径，如 `/home/user/anime`。
+
+### 端口说明
+
+端口按以下优先级决定：
+
+1. 命令行参数：`./fan-web-server -port 9090`
+2. 配置文件 `config.yaml` 的 `server.port`
+3. 默认 `8080`
+
+默认/配置端口被占用时，会自动顺延尝试后续端口（最多 10 个），并在终端打印实际访问地址。
+
+### 常规部署（已有配置）
+
+```bash
+mkdir -p /opt/fan-web && cd /opt/fan-web
+cp <产物路径>/fan-web-server .
+cp backend/config.yaml .
+# 修改 config.yaml 中的视频目录等配置
+./fan-web-server
+```
 
 访问 `http://<vps-ip>:8080`，使用管理员账号登录。
 
@@ -127,6 +146,8 @@ video:
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/health` | 健康检查 |
+| GET | `/api/setup/status` | 查询是否已完成初始化 |
+| POST | `/api/setup` | 首次初始化（创建管理员 + 生成配置） |
 | POST | `/api/auth/login` | 登录（带限流） |
 | GET | `/api/auth/me` | 当前用户信息 |
 | GET/POST/PUT/DELETE | `/api/animes` `/api/animes/:id` | 番剧增删改查 |

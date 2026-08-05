@@ -46,6 +46,11 @@ func NewLibraryService(bangumi *BangumiService, rootPath string) *LibraryService
 	return &LibraryService{bangumi: bangumi, rootPath: rootPath}
 }
 
+// SetRootPath 更新视频根目录，初始化完成时调用。
+func (s *LibraryService) SetRootPath(rootPath string) {
+	s.rootPath = rootPath
+}
+
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	result := &LibraryScanResult{Unidentified: make([]UnidentifiedFile, 0)}
 	allFiles, err := s.collectFiles()
