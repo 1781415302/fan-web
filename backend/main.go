@@ -86,6 +86,7 @@ func main() {
 
 		protected.GET("/animes", animeHandler.List)
 		protected.GET("/animes/:id", animeHandler.Get)
+		protected.GET("/animes/:id/cover", animeHandler.Cover)
 		protected.POST("/animes", animeHandler.Create)
 		protected.PUT("/animes/:id", animeHandler.Update)
 		protected.DELETE("/animes/:id", animeHandler.Delete)

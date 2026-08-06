@@ -3,8 +3,11 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -16,12 +19,17 @@ import (
 )
 
 type AnimeHandler struct {
-	bangumi *services.BangumiService
-	scanner *services.ScannerService
+	bangumi     *services.BangumiService
+	scanner     *services.ScannerService
+	coverClient *http.Client
 }
 
 func NewAnimeHandler(bangumi *services.BangumiService, scanner *services.ScannerService) *AnimeHandler {
-	return &AnimeHandler{bangumi: bangumi, scanner: scanner}
+	return &AnimeHandler{
+		bangumi:     bangumi,
+		scanner:     scanner,
+		coverClient: &http.Client{Timeout: 15 * time.Second},
+	}
 }
 
 func (h *AnimeHandler) List(c *gin.Context) {
@@ -68,6 +76,65 @@ func (h *AnimeHandler) Get(c *gin.Context) {
 		return
 	}
 	utils.Success(c, anime)
+}
+
+// Cover proxies trusted Bangumi cover URLs so mobile clients only need to
+// reach the configured server, not the external image host directly.
+func (h *AnimeHandler) Cover(c *gin.Context) {
+	id, ok := animeID(c)
+	if !ok {
+		return
+	}
+	anime, err := database.GetAnimeByID(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	coverURL, err := url.Parse(strings.TrimSpace(anime.Cover))
+	if err != nil || !isTrustedCoverURL(coverURL) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, coverURL.String(), nil)
+	if err != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	request.Header.Set("User-Agent", "fan-web/1.0 (private anime library)")
+	client := h.coverClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	contentType := response.Header.Get("Content-Type")
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		c.Status(http.StatusUnsupportedMediaType)
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.DataFromReader(http.StatusOK, response.ContentLength, contentType, response.Body, nil)
+}
+
+func isTrustedCoverURL(coverURL *url.URL) bool {
+	if coverURL == nil || (coverURL.Scheme != "https" && coverURL.Scheme != "http") {
+		return false
+	}
+	host := strings.ToLower(coverURL.Hostname())
+	return host == "lain.bgm.tv" || strings.HasSuffix(host, ".bgm.tv")
 }
 
 type createAnimeRequest struct {
