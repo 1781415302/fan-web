@@ -27,13 +27,13 @@ class PendingProgress {
   final String updatedAt;
 
   Map<String, dynamic> toJson() => {
-        'server_url': serverUrl,
-        'user_id': userId,
-        'episode_id': episodeId,
-        'position': position,
-        'watched': watched,
-        'updated_at': updatedAt,
-      };
+    'server_url': serverUrl,
+    'user_id': userId,
+    'episode_id': episodeId,
+    'position': position,
+    'watched': watched,
+    'updated_at': updatedAt,
+  };
 
   factory PendingProgress.fromJson(Map<String, dynamic> json) {
     return PendingProgress(
@@ -61,79 +61,119 @@ class ProgressOutbox {
 
   final Ref _ref;
   static const _storageKey = 'progress_outbox_v1';
+  Future<void> _storageChain = Future<void>.value();
+  Future<void> _syncChain = Future<void>.value();
 
   SharedPreferences get _prefs => _ref.read(sharedPreferencesProvider);
   ProgressApi get _progressApi => _ref.read(progressApiProvider);
 
   /// 写入一条待同步记录。如果同一身份键已存在，取 watched 逻辑或，
   /// position 取更新时间更新的那条。
-  Future<void> save(PendingProgress record) async {
-    final all = await _loadAll();
+  Future<void> save(PendingProgress record) => _enqueueStorage(() async {
+    final all = _loadAll();
     final existing = all[record.identityKey];
+    final latest =
+        existing == null ||
+            _isAtLeastAsNew(record.updatedAt, existing.updatedAt)
+        ? record
+        : existing;
     final merged = existing == null
         ? record
         : PendingProgress(
-            serverUrl: record.serverUrl,
-            userId: record.userId,
-            episodeId: record.episodeId,
-            position: record.position,
+            serverUrl: latest.serverUrl,
+            userId: latest.userId,
+            episodeId: latest.episodeId,
+            position: latest.position,
             watched: record.watched || existing.watched,
-            updatedAt: record.updatedAt,
+            updatedAt: latest.updatedAt,
           );
     all[record.identityKey] = merged;
     await _saveAll(all);
-  }
+  });
 
   /// 删除指定记录（仅当内容完全匹配时）。
-  Future<void> removeIfMatched(PendingProgress record) async {
-    final all = await _loadAll();
-    final existing = all[record.identityKey];
-    if (existing == null) return;
-    if (existing.position == record.position &&
-        existing.watched == record.watched &&
-        existing.updatedAt == record.updatedAt) {
-      all.remove(record.identityKey);
-      await _saveAll(all);
-    }
-  }
+  Future<void> removeIfMatched(PendingProgress record) =>
+      _enqueueStorage(() async {
+        final all = _loadAll();
+        final existing = all[record.identityKey];
+        if (existing == null) return;
+        if (existing.position == record.position &&
+            existing.watched == record.watched &&
+            existing.updatedAt == record.updatedAt) {
+          all.remove(record.identityKey);
+          await _saveAll(all);
+        }
+      });
 
   /// 获取指定用户和服务器的所有待同步记录。
-  Future<List<PendingProgress>> getPending(String serverUrl, int userId) async {
-    final all = await _loadAll();
-    return all.values
-        .where((r) => r.serverUrl == serverUrl && r.userId == userId)
-        .toList()
-      ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
-  }
+  Future<List<PendingProgress>> getPending(String serverUrl, int userId) =>
+      _enqueueStorage(() async {
+        final all = _loadAll();
+        return all.values
+            .where((r) => r.serverUrl == serverUrl && r.userId == userId)
+            .toList()
+          ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
+      });
 
   /// 清除指定用户和服务器的所有待同步记录。
-  Future<void> clearForUser(int userId, String? serverUrl) async {
-    final all = await _loadAll();
-    all.removeWhere((key, record) =>
-        record.userId == userId &&
-        (serverUrl == null || record.serverUrl == serverUrl));
-    await _saveAll(all);
-  }
+  Future<void> clearForUser(int userId, String? serverUrl) =>
+      _enqueueStorage(() async {
+        final all = _loadAll();
+        all.removeWhere(
+          (key, record) =>
+              record.userId == userId &&
+              (serverUrl == null || record.serverUrl == serverUrl),
+        );
+        await _saveAll(all);
+      });
 
   /// 尝试同步所有待同步记录。
-  Future<void> syncAll(String serverUrl, int userId, String token) async {
-    final pending = await getPending(serverUrl, userId);
-    for (final record in pending) {
-      try {
-        await _progressApi.reportProgress(
-          record.episodeId,
-          record.position,
-          record.watched,
-        );
-        await removeIfMatched(record);
-      } catch (_) {
-        // 发送失败保留记录，下次重试
-        break;
-      }
-    }
+  Future<void> syncAll(String serverUrl, int userId, String token) =>
+      _enqueueSync(() async {
+        final pending = await getPending(serverUrl, userId);
+        for (final record in pending) {
+          try {
+            await _progressApi.reportProgress(
+              record.episodeId,
+              record.position,
+              record.watched,
+            );
+            await removeIfMatched(record);
+          } catch (_) {
+            // 发送失败保留记录，下次重试
+            break;
+          }
+        }
+      });
+
+  Future<T> _enqueueStorage<T>(Future<T> Function() operation) {
+    final result = _storageChain.then((_) => operation());
+    _storageChain = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
   }
 
-  Future<Map<String, PendingProgress>> _loadAll() async {
+  Future<T> _enqueueSync<T>(Future<T> Function() operation) {
+    final result = _syncChain.then((_) => operation());
+    _syncChain = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
+  }
+
+  bool _isAtLeastAsNew(String candidate, String current) {
+    final candidateTime = DateTime.tryParse(candidate);
+    final currentTime = DateTime.tryParse(current);
+    if (candidateTime != null && currentTime != null) {
+      return !candidateTime.isBefore(currentTime);
+    }
+    return candidate.compareTo(current) >= 0;
+  }
+
+  Map<String, PendingProgress> _loadAll() {
     try {
       final json = _prefs.getString(_storageKey);
       if (json == null || json.isEmpty) return {};

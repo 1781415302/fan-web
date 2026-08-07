@@ -141,49 +141,12 @@ class AuthNotifier extends Notifier<AuthState> {
         token: storedToken,
         serverUrl: serverUrl,
       );
-    } on DioException catch (error) {
-      // 仅连接/超时类网络错误才进入降级状态
-      final isNetworkError = error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.sendTimeout ||
-          error.type == DioExceptionType.receiveTimeout ||
-          error.type == DioExceptionType.connectionError ||
-          error.type == DioExceptionType.unknown;
-      // 嵌套的 ApiException 表示服务端返回了业务错误（如 2001）
-      final nestedApiError = error.error;
-      if (nestedApiError is ApiException) {
-        // 服务端明确返回认证失败
-        await _clearStoredToken();
-        _apiClient.setToken(null);
-        state = AuthState.unauthenticated(serverUrl: storedServerUrl);
-      } else if (isNetworkError) {
-        // 网络故障：保留 token，进入降级状态
-        final snapshot = _loadUserSnapshot();
-        if (snapshot != null) {
-          state = AuthState.authenticated(
-            user: snapshot,
-            token: storedToken,
-            serverUrl: storedServerUrl,
-            isSessionDegraded: true,
-          );
-        } else {
-          state = AuthState.unauthenticated(serverUrl: storedServerUrl);
-        }
+    } catch (error) {
+      if (_isUnauthorizedError(error)) {
+        await _invalidateSession(storedServerUrl);
       } else {
-        // HTTP 401 等非网络错误，token 失效
-        await _clearStoredToken();
-        _apiClient.setToken(null);
-        state = AuthState.unauthenticated(serverUrl: storedServerUrl);
+        _enterDegradedSession(serverUrl: storedServerUrl, token: storedToken);
       }
-    } on ApiException catch (_) {
-      // 认证失败（2001 等）
-      await _clearStoredToken();
-      _apiClient.setToken(null);
-      state = AuthState.unauthenticated(serverUrl: storedServerUrl);
-    } catch (_) {
-      // 其他异常（格式错误等），保守处理为 token 失效
-      await _clearStoredToken();
-      _apiClient.setToken(null);
-      state = AuthState.unauthenticated(serverUrl: storedServerUrl);
     }
   }
 
@@ -195,10 +158,7 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final user = await _authApi.getCurrentUser();
       await _saveUserSnapshot(user);
-      state = state.copyWith(
-        user: user,
-        isSessionDegraded: false,
-      );
+      state = state.copyWith(user: user, isSessionDegraded: false);
       // 会话恢复成功后同步 outbox
       final serverUrl = state.serverUrl;
       final token = state.token;
@@ -206,8 +166,11 @@ class AuthNotifier extends Notifier<AuthState> {
         final outbox = ref.read(progressOutboxProvider);
         unawaited(outbox.syncAll(serverUrl, user.id, token));
       }
-    } catch (_) {
-      // 仍然失败，保持降级状态
+    } catch (error) {
+      if (_isUnauthorizedError(error)) {
+        await _invalidateSession(state.serverUrl);
+      }
+      // 非认证错误保留 token 和降级状态，等待下次恢复。
     }
   }
 
@@ -263,13 +226,54 @@ class AuthNotifier extends Notifier<AuthState> {
     state = AuthState.unauthenticated(serverUrl: state.serverUrl);
   }
 
+  bool _isUnauthorizedError(Object error) {
+    if (error is ApiException) {
+      return error.code == 2001;
+    }
+    if (error is DioException) {
+      if (error.response?.statusCode == 401) {
+        return true;
+      }
+      final nestedError = error.error;
+      return nestedError is ApiException && nestedError.code == 2001;
+    }
+    return false;
+  }
+
+  Future<void> _invalidateSession(String? serverUrl) async {
+    await _clearStoredToken();
+    _apiClient.setToken(null);
+    state = AuthState.unauthenticated(serverUrl: serverUrl);
+  }
+
+  void _enterDegradedSession({
+    required String serverUrl,
+    required String token,
+  }) {
+    _apiClient.setToken(token);
+    final snapshot = _loadUserSnapshot();
+    if (snapshot == null) {
+      state = AuthState.unauthenticated(serverUrl: serverUrl);
+      return;
+    }
+    state = AuthState.authenticated(
+      user: snapshot,
+      token: token,
+      serverUrl: serverUrl,
+      isSessionDegraded: true,
+    );
+  }
+
   Future<void> _clearStoredToken() async {
     await _preferences.remove(fanWebTokenKey);
   }
 
   Future<void> _saveUserSnapshot(User user) async {
     try {
-      _preferences.setString(fanWebUserSnapshotKey, jsonEncode(user.toJson()));
+      await _preferences.setString(
+        fanWebUserSnapshotKey,
+        jsonEncode(user.toJson()),
+      );
     } catch (_) {}
   }
 
