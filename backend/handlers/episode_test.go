@@ -1,16 +1,19 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
 	"fan-web/database"
+	"fan-web/middleware"
 	"fan-web/models"
 	"fan-web/services"
 )
@@ -92,5 +95,94 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	}
 	if got := rangeRecorder.Body.String(); got != "2345" {
 		t.Fatalf("unexpected range body: %q", got)
+	}
+}
+
+func TestReportProgressWatchedIrreversible(t *testing.T) {
+	rootPath := t.TempDir()
+	databasePath := filepath.Join(t.TempDir(), "progress-irr-test.db")
+	if err := database.Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if err := database.InitAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := database.CreateAnime(&models.Anime{Title: "Irr Anime"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ReplaceEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epID := episodes[0].ID
+
+	auth := services.NewAuthService("irr-test-secret", 24*60*60*1e9)
+	token, _, err := auth.IssueToken(*user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewEpisodeHandler(auth, services.NewScannerService(rootPath))
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/api/progress/:episode_id", middleware.JWTAuth(auth), handler.ReportProgress)
+	router.GET("/api/progress/:episode_id", middleware.JWTAuth(auth), handler.GetProgress)
+
+	// 先上报已看
+	reportURL := "/api/progress/" + strconv.FormatInt(epID, 10)
+	watchedBody, _ := json.Marshal(map[string]any{"position": 590, "watched": true})
+	w1 := httptest.NewRecorder()
+	r1 := httptest.NewRequest(http.MethodPost, reportURL, bytes.NewReader(watchedBody))
+	r1.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w1, r1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("report watched failed: %d %s", w1.Code, w1.Body.String())
+	}
+
+	// 再上报未看
+	unwatchedBody, _ := json.Marshal(map[string]any{"position": 10, "watched": false})
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest(http.MethodPost, reportURL, bytes.NewReader(unwatchedBody))
+	r2.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("report unwatched failed: %d %s", w2.Code, w2.Body.String())
+	}
+
+	// 查询接口应返回 watched=true
+	w3 := httptest.NewRecorder()
+	r3 := httptest.NewRequest(http.MethodGet, reportURL, nil)
+	r3.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(w3, r3)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Watched  bool `json:"watched"`
+			Position int  `json:"position"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w3.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 0 {
+		t.Fatalf("expected code 0, got %d", resp.Code)
+	}
+	if !resp.Data.Watched {
+		t.Fatalf("watched should be irreversible: expected true after reporting false, got false")
+	}
+	if resp.Data.Position != 10 {
+		t.Fatalf("position should update to 10, got %d", resp.Data.Position)
 	}
 }

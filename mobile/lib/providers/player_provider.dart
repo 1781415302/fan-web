@@ -8,7 +8,9 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 
 import '../api/progress_api.dart';
+import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
+import 'auth_provider.dart';
 
 @immutable
 class PlayerLaunchInfo {
@@ -76,7 +78,7 @@ class PlayerState {
     this.restoredPosition,
     this.volume = 1,
     this.brightness = 0.5,
-    this.subtitleFontSize = 24,
+    this.subtitleFontSize = 20,
   });
 
   final bool isInitialized;
@@ -199,6 +201,18 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   Future<void> _initialize() async {
+    // 先尝试同步之前未上传的进度
+    try {
+      final authState = ref.read(authProvider);
+      final serverUrl = authState.serverUrl ?? config.serverUrl;
+      final userId = authState.user?.id ?? 0;
+      final token = authState.token ?? config.token;
+      if (userId > 0 && token.isNotEmpty) {
+        final outbox = ref.read(progressOutboxProvider);
+        unawaited(outbox.syncAll(serverUrl, userId, token));
+      }
+    } catch (_) {}
+
     try {
       final progress = await _progressApi.getEpisodeProgress(config.episodeId);
       if (_disposed || _disposing) {
@@ -617,16 +631,32 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return Future<void>.value();
     }
     final safePosition = position.inSeconds < 0 ? 0 : position.inSeconds;
+    final now = DateTime.now().toIso8601String();
+    final authState = ref.read(authProvider);
+    final serverUrl = authState.serverUrl ?? config.serverUrl;
+    final userId = authState.user?.id ?? 0;
+    final outbox = ref.read(progressOutboxProvider);
+    // 先写入 outbox，防止进程被杀死导致进度丢失
+    final record = PendingProgress(
+      serverUrl: serverUrl,
+      userId: userId,
+      episodeId: config.episodeId,
+      position: safePosition,
+      watched: watched,
+      updatedAt: now,
+    );
     final previous = _reportChain ?? Future<void>.value();
     final next = previous.then<void>((_) async {
       try {
+        await outbox.save(record);
         await _progressApi.reportProgress(
           config.episodeId,
           safePosition,
           watched,
         );
+        await outbox.removeIfMatched(record);
       } catch (_) {
-        // 上报失败不打断播放或后续上报。
+        // 上报失败不打断播放或后续上报，outbox 中的记录会在下次重试。
       }
     });
     _reportChain = next;

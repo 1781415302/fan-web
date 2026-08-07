@@ -134,5 +134,41 @@ void main() {
       final result = pickContinueEpisode([ep1, ep2], <int, EpisodeProgress>{});
       expect(result?.id, 1);
     });
+
+    test('watched=true with any position is always watched status', () {
+      expect(
+        EpisodeTile.statusOf(
+          const EpisodeProgress(
+            episodeId: 1,
+            position: 0,
+            watched: true,
+            updatedAt: '',
+          ),
+        ),
+        EpisodeStatus.watched,
+      );
+      expect(
+        EpisodeTile.statusOf(
+          const EpisodeProgress(
+            episodeId: 1,
+            position: 500,
+            watched: true,
+            updatedAt: '',
+          ),
+        ),
+        EpisodeStatus.watched,
+      );
+      expect(
+        EpisodeTile.statusOf(
+          const EpisodeProgress(
+            episodeId: 1,
+            position: 999,
+            watched: true,
+            updatedAt: '',
+          ),
+        ),
+        EpisodeStatus.watched,
+      );
+    });
   });
 }

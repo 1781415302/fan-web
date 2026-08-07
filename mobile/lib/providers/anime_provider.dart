@@ -31,6 +31,8 @@ class AnimeListState {
     this.isRefreshing = false,
     this.isLoadingMore = false,
     this.error,
+    this.refreshError,
+    this.loadMoreError,
   });
 
   final List<AnimeListItem> items;
@@ -41,6 +43,8 @@ class AnimeListState {
   final bool isRefreshing;
   final bool isLoadingMore;
   final String? error;
+  final String? refreshError;
+  final String? loadMoreError;
 
   bool get hasMore => items.length < total;
 
@@ -53,7 +57,11 @@ class AnimeListState {
     bool? isRefreshing,
     bool? isLoadingMore,
     String? error,
+    String? refreshError,
+    String? loadMoreError,
     bool clearError = false,
+    bool clearRefreshError = false,
+    bool clearLoadMoreError = false,
   }) {
     return AnimeListState(
       items: items ?? this.items,
@@ -64,19 +72,32 @@ class AnimeListState {
       isRefreshing: isRefreshing ?? this.isRefreshing,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       error: error ?? (clearError ? null : this.error),
+      refreshError: refreshError ??
+          (clearRefreshError ? null : this.refreshError),
+      loadMoreError: loadMoreError ??
+          (clearLoadMoreError ? null : this.loadMoreError),
     );
   }
 }
 
 class AnimeListNotifier extends Notifier<AnimeListState> {
-  static const _cacheKey = 'anime_list_cache';
+  static const _cacheKeyPrefix = 'anime_list_cache_v2';
 
   late AnimeApi _animeApi;
 
+  /// 构建按服务器和用户隔离的缓存键
+  String _cacheKey() {
+    final auth = ref.read(authProvider);
+    final serverUrl = auth.serverUrl ?? '';
+    final userId = auth.user?.id ?? 0;
+    final normalized = serverUrl.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    return '${_cacheKeyPrefix}_${normalized}_$userId';
+  }
+
   @override
   AnimeListState build() {
-    // Reset list state whenever the authenticated account changes.
-    ref.watch(authProvider.select((authState) => authState.token));
+    // 监听用户身份和服务器变化（不只看 token 字符串）
+    ref.watch(authProvider.select((s) => (s.serverUrl, s.user?.id)));
     _animeApi = ref.watch(animeApiProvider);
     return const AnimeListState();
   }
@@ -86,7 +107,6 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
-    // 尝试从缓存加载，有缓存则立即显示，再后台刷新网络数据
     final cached = _loadFromCache();
     if (cached != null && cached.items.isNotEmpty) {
       state = state.copyWith(
@@ -96,17 +116,19 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         pageSize: cached.pageSize == 0 ? state.pageSize : cached.pageSize,
         isLoading: false,
         clearError: true,
+        clearRefreshError: true,
       );
       unawaited(_fetchFirstPage());
       return;
     }
 
-    // 无缓存，显示加载态并从网络获取
     state = state.copyWith(
       isLoading: true,
       isRefreshing: false,
       isLoadingMore: false,
       clearError: true,
+      clearRefreshError: true,
+      clearLoadMoreError: true,
     );
     await _fetchFirstPage();
   }
@@ -121,14 +143,15 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         pageSize: result.pageSize == 0 ? state.pageSize : result.pageSize,
         isLoading: false,
         clearError: true,
+        clearRefreshError: true,
       );
       _saveToCache(result);
     } catch (error) {
+      final msg = describeApiError(error);
       if (state.items.isEmpty) {
-        state = state.copyWith(isLoading: false, error: describeApiError(error));
+        state = state.copyWith(isLoading: false, error: msg);
       } else {
-        // 有缓存数据时保留，仅记录错误供下拉刷新重试
-        state = state.copyWith(error: describeApiError(error));
+        state = state.copyWith(refreshError: msg);
       }
     }
   }
@@ -142,16 +165,14 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         'page': result.page,
         'page_size': result.pageSize,
       });
-      prefs.setString(_cacheKey, cacheData);
-    } catch (_) {
-      // 缓存写入失败不影响正常使用。
-    }
+      prefs.setString(_cacheKey(), cacheData);
+    } catch (_) {}
   }
 
   PaginatedAnimes? _loadFromCache() {
     try {
       final prefs = ref.read(sharedPreferencesProvider);
-      final cached = prefs.getString(_cacheKey);
+      final cached = prefs.getString(_cacheKey());
       if (cached == null || cached.isEmpty) return null;
       final json = jsonDecode(cached) as Map<String, dynamic>;
       return PaginatedAnimes.fromJson(json);
@@ -165,7 +186,10 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
-    state = state.copyWith(isRefreshing: true, clearError: true);
+    state = state.copyWith(
+      isRefreshing: true,
+      clearRefreshError: true,
+    );
     try {
       final result = await _animeApi.list(page: 1, pageSize: state.pageSize);
       state = state.copyWith(
@@ -175,12 +199,13 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         pageSize: result.pageSize == 0 ? state.pageSize : result.pageSize,
         isRefreshing: false,
         clearError: true,
+        clearRefreshError: true,
       );
       _saveToCache(result);
     } catch (error) {
       state = state.copyWith(
         isRefreshing: false,
-        error: describeApiError(error),
+        refreshError: describeApiError(error),
       );
     }
   }
@@ -194,7 +219,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
     }
 
     final nextPage = state.currentPage + 1;
-    state = state.copyWith(isLoadingMore: true, clearError: true);
+    state = state.copyWith(isLoadingMore: true, clearLoadMoreError: true);
     try {
       final result = await _animeApi.list(
         page: nextPage,
@@ -206,12 +231,12 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         currentPage: result.page,
         pageSize: result.pageSize == 0 ? state.pageSize : result.pageSize,
         isLoadingMore: false,
-        clearError: true,
+        clearLoadMoreError: true,
       );
     } catch (error) {
       state = state.copyWith(
         isLoadingMore: false,
-        error: describeApiError(error),
+        loadMoreError: describeApiError(error),
       );
     }
   }

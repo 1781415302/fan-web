@@ -111,3 +111,110 @@ func TestProgressDefaultUpsertAndUserIsolation(t *testing.T) {
 		t.Fatalf("unexpected list progress for second user: %#v", otherItems)
 	}
 }
+
+func TestWatchedIsIrreversible(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "progress-irreversible-test.db")
+	if err := Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if DB != nil {
+			_ = DB.Close()
+		}
+	})
+
+	if _, err := DB.Exec(`INSERT INTO users (username, password, is_admin) VALUES (?, ?, ?)`, "irr-user", "x", 0); err != nil {
+		t.Fatal(err)
+	}
+	user, err := GetUserByUsername("irr-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := CreateAnime(&models.Anime{Title: "Irreversible Anime", EpCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ReplaceEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epID := episodes[0].ID
+
+	// 无记录 -> 未看
+	p, err := GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Watched {
+		t.Fatalf("expected unwatched for no record, got watched")
+	}
+
+	// 未看 -> 观看中
+	if err := UpsertProgress(user.ID, epID, 60, false); err != nil {
+		t.Fatal(err)
+	}
+	p, err = GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Watched || p.Position != 60 {
+		t.Fatalf("expected in-progress (pos=60, watched=false), got pos=%d watched=%v", p.Position, p.Watched)
+	}
+
+	// 观看中 -> 看完
+	if err := UpsertProgress(user.ID, epID, 590, true); err != nil {
+		t.Fatal(err)
+	}
+	p, err = GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Watched {
+		t.Fatalf("expected watched after reporting true, got unwatched")
+	}
+
+	// 看完 -> position=0, watched=false 仍为看完
+	if err := UpsertProgress(user.ID, epID, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	p, err = GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Watched {
+		t.Fatalf("watched should be irreversible after position=0 watched=false, got unwatched")
+	}
+	if p.Position != 0 {
+		t.Fatalf("position should update to 0, got %d", p.Position)
+	}
+
+	// 看完 -> position>0, watched=false 仍为看完
+	if err := UpsertProgress(user.ID, epID, 100, false); err != nil {
+		t.Fatal(err)
+	}
+	p, err = GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Watched {
+		t.Fatalf("watched should be irreversible after position=100 watched=false, got unwatched")
+	}
+	if p.Position != 100 {
+		t.Fatalf("position should update to 100, got %d", p.Position)
+	}
+
+	// 看完 -> watched=true 仍为看完
+	if err := UpsertProgress(user.ID, epID, 200, true); err != nil {
+		t.Fatal(err)
+	}
+	p, err = GetProgress(user.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Watched || p.Position != 200 {
+		t.Fatalf("expected watched=true pos=200, got watched=%v pos=%d", p.Watched, p.Position)
+	}
+}

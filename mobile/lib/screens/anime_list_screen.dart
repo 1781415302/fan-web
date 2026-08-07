@@ -126,6 +126,25 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
     }
 
     final slivers = <Widget>[_buildGridSliver(state.items)];
+    if (state.refreshError != null) {
+      slivers.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Center(
+              child: Text(
+                '刷新失败：${state.refreshError}（显示缓存内容）',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppTheme.foreground.withValues(alpha: 0.6),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (state.isLoadingMore) {
       slivers.add(
         const SliverToBoxAdapter(
@@ -140,7 +159,7 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
           ),
         ),
       );
-    } else if (state.error != null) {
+    } else if (state.loadMoreError != null) {
       slivers.add(
         SliverToBoxAdapter(
           child: Padding(
@@ -153,7 +172,7 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
                   );
                 },
                 icon: const Icon(Icons.refresh),
-                label: Text(state.error!),
+                label: Text(state.loadMoreError!),
               ),
             ),
           ),

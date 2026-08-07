@@ -11,6 +11,13 @@ class User {
   final bool isAdmin;
   final String createdAt;
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'is_admin': isAdmin,
+        'created_at': createdAt,
+      };
+
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: _readInt(json['id']),
