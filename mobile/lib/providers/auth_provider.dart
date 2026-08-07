@@ -9,6 +9,7 @@ import '../api/api_client.dart';
 import '../api/auth_api.dart';
 import '../models/user.dart';
 import '../services/progress_outbox.dart';
+import 'anime_provider.dart';
 
 const fanWebTokenKey = 'fan_web_token';
 const fanWebServerUrlKey = 'fan_web_server_url';
@@ -140,22 +141,46 @@ class AuthNotifier extends Notifier<AuthState> {
         token: storedToken,
         serverUrl: serverUrl,
       );
-    } on DioException catch (_) {
-      // 网络错误（超时、连接失败）：保留 token，进入降级状态
-      final snapshot = _loadUserSnapshot();
-      if (snapshot != null) {
-        state = AuthState.authenticated(
-          user: snapshot,
-          token: storedToken,
-          serverUrl: storedServerUrl,
-          isSessionDegraded: true,
-        );
+    } on DioException catch (error) {
+      // 仅连接/超时类网络错误才进入降级状态
+      final isNetworkError = error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.unknown;
+      // 嵌套的 ApiException 表示服务端返回了业务错误（如 2001）
+      final nestedApiError = error.error;
+      if (nestedApiError is ApiException) {
+        // 服务端明确返回认证失败
+        await _clearStoredToken();
+        _apiClient.setToken(null);
+        state = AuthState.unauthenticated(serverUrl: storedServerUrl);
+      } else if (isNetworkError) {
+        // 网络故障：保留 token，进入降级状态
+        final snapshot = _loadUserSnapshot();
+        if (snapshot != null) {
+          state = AuthState.authenticated(
+            user: snapshot,
+            token: storedToken,
+            serverUrl: storedServerUrl,
+            isSessionDegraded: true,
+          );
+        } else {
+          state = AuthState.unauthenticated(serverUrl: storedServerUrl);
+        }
       } else {
-        // 没有用户快照，无法进入降级状态，回退到未认证
+        // HTTP 401 等非网络错误，token 失效
+        await _clearStoredToken();
+        _apiClient.setToken(null);
         state = AuthState.unauthenticated(serverUrl: storedServerUrl);
       }
+    } on ApiException catch (_) {
+      // 认证失败（2001 等）
+      await _clearStoredToken();
+      _apiClient.setToken(null);
+      state = AuthState.unauthenticated(serverUrl: storedServerUrl);
     } catch (_) {
-      // ApiException（401/2001 等）：token 确实失效
+      // 其他异常（格式错误等），保守处理为 token 失效
       await _clearStoredToken();
       _apiClient.setToken(null);
       state = AuthState.unauthenticated(serverUrl: storedServerUrl);
@@ -174,6 +199,13 @@ class AuthNotifier extends Notifier<AuthState> {
         user: user,
         isSessionDegraded: false,
       );
+      // 会话恢复成功后同步 outbox
+      final serverUrl = state.serverUrl;
+      final token = state.token;
+      if (serverUrl != null && token != null && token.isNotEmpty) {
+        final outbox = ref.read(progressOutboxProvider);
+        unawaited(outbox.syncAll(serverUrl, user.id, token));
+      }
     } catch (_) {
       // 仍然失败，保持降级状态
     }
@@ -217,6 +249,10 @@ class AuthNotifier extends Notifier<AuthState> {
       if (userId != null) {
         await _clearProgressOutbox(userId, serverUrl);
       }
+      // 清除番剧列表缓存
+      try {
+        await ref.read(animeListProvider.notifier).clearCache();
+      } catch (_) {}
       state = AuthState.unauthenticated(serverUrl: serverUrl);
     }
   }

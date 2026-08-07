@@ -201,7 +201,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   Future<void> _initialize() async {
-    // 先尝试同步之前未上传的进度
+    // 先同步 outbox 中待上传的进度，确保服务端有最新位置后再查询断点
     try {
       final authState = ref.read(authProvider);
       final serverUrl = authState.serverUrl ?? config.serverUrl;
@@ -209,9 +209,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
       final token = authState.token ?? config.token;
       if (userId > 0 && token.isNotEmpty) {
         final outbox = ref.read(progressOutboxProvider);
-        unawaited(outbox.syncAll(serverUrl, userId, token));
+        await outbox.syncAll(serverUrl, userId, token);
       }
     } catch (_) {}
+    if (_disposed || _disposing) {
+      return;
+    }
 
     try {
       final progress = await _progressApi.getEpisodeProgress(config.episodeId);
@@ -613,8 +616,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
   }
 
-  Future<void> _queueCurrentProgress({bool forceWatched = false}) {
-    return _queueProgressReport(
+  Future<void> _queueCurrentProgress({bool forceWatched = false}) async {
+    await _queueProgressReport(
       position: state.position,
       watched: forceWatched || _isWatched(state.position),
     );
@@ -623,12 +626,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<void> _queueProgressReport({
     required Duration position,
     required bool watched,
-  }) {
+  }) async {
     if (_disposed && !_disposing) {
-      return Future<void>.value();
+      return;
     }
     if (!_hasOpened && !_disposing) {
-      return Future<void>.value();
+      return;
     }
     final safePosition = position.inSeconds < 0 ? 0 : position.inSeconds;
     final now = DateTime.now().toIso8601String();
@@ -636,7 +639,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     final serverUrl = authState.serverUrl ?? config.serverUrl;
     final userId = authState.user?.id ?? 0;
     final outbox = ref.read(progressOutboxProvider);
-    // 先写入 outbox，防止进程被杀死导致进度丢失
+    // 立即持久化到 outbox，防止进程在网络请求期间被杀死导致进度丢失
     final record = PendingProgress(
       serverUrl: serverUrl,
       userId: userId,
@@ -645,10 +648,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
       watched: watched,
       updatedAt: now,
     );
+    await outbox.save(record);
+    if (_disposed || _disposing) {
+      return Future<void>.value();
+    }
+    // 网络发送放入串行队列，失败时 outbox 中的记录保留
     final previous = _reportChain ?? Future<void>.value();
     final next = previous.then<void>((_) async {
       try {
-        await outbox.save(record);
         await _progressApi.reportProgress(
           config.episodeId,
           safePosition,

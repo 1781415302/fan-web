@@ -26,6 +26,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   List<Episode> _episodes = const [];
   Map<int, EpisodeProgress> _progressByEpisode = const {};
   String? _error;
+  String? _refreshError;
   bool _isLoading = true;
   bool _summaryExpanded = false;
 
@@ -44,6 +45,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
       setState(() {
         _isLoading = true;
         _error = null;
+        _refreshError = null;
       });
     }
 
@@ -95,13 +97,14 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
         _progressByEpisode = {
           for (final item in progress) item.episodeId: item,
         };
+        _refreshError = null;
       });
     } catch (error) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _error = apiErrorMessage(error);
+        _refreshError = apiErrorMessage(error);
       });
     }
   }
@@ -157,6 +160,14 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           _buildSummary(anime),
           const SizedBox(height: 28),
           _buildEpisodes(),
+          if (_refreshError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              '进度刷新失败：$_refreshError',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.warning, fontSize: 13),
+            ),
+          ],
         ],
       ),
     );

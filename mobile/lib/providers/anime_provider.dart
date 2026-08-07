@@ -85,13 +85,21 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
 
   late AnimeApi _animeApi;
 
-  /// 构建按服务器和用户隔离的缓存键
+  /// 构建按服务器和用户隔离的缓存键（使用 base64 避免碰撞）
   String _cacheKey() {
     final auth = ref.read(authProvider);
     final serverUrl = auth.serverUrl ?? '';
     final userId = auth.user?.id ?? 0;
-    final normalized = serverUrl.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-    return '${_cacheKeyPrefix}_${normalized}_$userId';
+    final encoded = base64Url.encode(utf8.encode(serverUrl));
+    return '${_cacheKeyPrefix}_$encoded _$userId';
+  }
+
+  /// 清除当前用户的缓存（登出时调用）
+  Future<void> clearCache() async {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      await prefs.remove(_cacheKey());
+    } catch (_) {}
   }
 
   @override
