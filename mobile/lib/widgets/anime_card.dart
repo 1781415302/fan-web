@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -191,38 +192,27 @@ class AnimeCover extends ConsumerWidget {
     final placeholder = _placeholder();
     final image = imageUrl.isEmpty
         ? placeholder
-        : Image.network(
-            imageUrl,
-            headers: headers,
+        : CachedNetworkImage(
+            imageUrl: imageUrl,
+            httpHeaders: headers,
             fit: BoxFit.cover,
-            cacheWidth: 300,
-            filterQuality: FilterQuality.medium,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) {
-                return child;
-              }
-              final expected = progress.expectedTotalBytes;
-              final value = expected == null
-                  ? null
-                  : progress.cumulativeBytesLoaded / expected;
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  placeholder,
-                  Center(
-                    child: SizedBox.square(
-                      dimension: 24,
-                      child: CircularProgressIndicator(
-                        value: value,
-                        strokeWidth: 2,
-                        color: AppTheme.accent,
-                      ),
+            memCacheWidth: 300,
+            placeholder: (context, url) => Stack(
+              fit: StackFit.expand,
+              children: [
+                placeholder,
+                Center(
+                  child: SizedBox.square(
+                    dimension: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.accent,
                     ),
                   ),
-                ],
-              );
-            },
-            errorBuilder: (context, error, stackTrace) => placeholder,
+                ),
+              ],
+            ),
+            errorWidget: (context, url, error) => placeholder,
           );
 
     return Semantics(

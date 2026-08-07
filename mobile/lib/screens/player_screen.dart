@@ -143,11 +143,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _syncSubtitlePadding(subtitlePadding);
 
     return PopScope<void>(
-      canPop: false,
+      canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          unawaited(_exit(notifier));
+        if (!didPop || _isExiting) {
+          return;
         }
+        _isExiting = true;
+        _cancelControlsHide();
+        unawaited(notifier.pauseAndReport());
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -508,7 +511,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _isExiting = true;
     _cancelControlsHide();
     if (notifier != null) {
-      await notifier.pauseAndReport();
+      unawaited(notifier.pauseAndReport());
     }
     if (mounted) {
       context.pop();

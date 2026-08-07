@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../api/progress_api.dart';
 import 'anime_provider.dart';
@@ -180,11 +181,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     });
     unawaited(_initialize());
     unawaited(_loadBrightness());
-    return PlayerState(
-      isInitialized: true,
-      isLoading: true,
-      volume: _clamp01(player.state.volume / 100),
-    );
+    unawaited(_loadVolume());
+    return PlayerState(isInitialized: true, isLoading: true);
   }
 
   PlayerState get currentState => state;
@@ -223,7 +221,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
     try {
       await player.open(
-        Media(buildStreamUrl(config.serverUrl, config.episodeId, config.token)),
+        buildStreamMedia(
+          config.serverUrl,
+          config.episodeId,
+          config.token,
+          _savedPosition,
+        ),
         play: false,
       );
       if (_disposed || _disposing) {
@@ -232,19 +235,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
       _hasOpened = true;
       _openCompleted = true;
       _startProgressTimer();
-      final duration = player.state.duration;
-      if (duration > Duration.zero) {
-        await _restoreAndStart(duration);
-      } else if (_savedPosition == 0) {
-        _restoreHandled = true;
-        _setState(state.copyWith(isRestoring: false));
-        await _startPlaybackIfReady();
-      }
+      final duration = await _waitForDuration();
+      await _restoreAndStart(duration);
     } catch (_) {
       _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       return;
-    } finally {
-      _setState(state.copyWith(isLoading: false));
     }
   }
 
@@ -278,9 +273,6 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   void _handleDuration(Duration duration) {
     _setState(state.copyWith(duration: duration));
-    if (duration > Duration.zero) {
-      unawaited(_restoreAndStart(duration));
-    }
   }
 
   void _handleBuffering(bool buffering) {
@@ -331,36 +323,132 @@ class PlayerNotifier extends Notifier<PlayerState> {
     );
   }
 
+  Future<Duration> _waitForDuration() async {
+    final current = player.state.duration;
+    if (current > Duration.zero) {
+      return current;
+    }
+    try {
+      return await player.stream.duration
+          .firstWhere((duration) => duration > Duration.zero)
+          .timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      return player.state.duration;
+    }
+  }
+
   Future<void> _restoreAndStart(Duration duration) async {
+    if (_disposed || _disposing || !_openCompleted || _restoreHandled) {
+      return;
+    }
+
+    if (_savedPosition <= 0) {
+      _restoreHandled = true;
+      _setState(state.copyWith(isLoading: false, isRestoring: false));
+      await _startPlaybackIfReady();
+      return;
+    }
+
+    if (duration > Duration.zero && _savedPosition >= duration.inSeconds) {
+      try {
+        await player.seek(Duration.zero);
+      } catch (_) {
+        // 已看完或服务端记录越界时，仍允许从头播放。
+      }
+      _restoreHandled = true;
+      _setState(
+        state.copyWith(
+          isLoading: false,
+          isRestoring: false,
+          position: Duration.zero,
+        ),
+      );
+      await _startPlaybackIfReady();
+      return;
+    }
+
+    final target = Duration(seconds: _savedPosition);
+    final restored = await _confirmResumePosition(target);
     if (_disposed || _disposing) {
       return;
     }
-    if (!_restoreHandled) {
-      if (_savedPosition <= 0) {
-        _restoreHandled = true;
-        _setState(state.copyWith(isRestoring: false));
-      } else if (duration > Duration.zero) {
-        _restoreHandled = true;
-        if (_savedPosition < duration.inSeconds) {
-          final target = Duration(seconds: _savedPosition);
-          try {
-            await player.seek(target);
-          } catch (_) {
-            // seek 失败时从当前解码位置继续，不阻塞播放。
-          }
-          _setState(
-            state.copyWith(
-              position: target,
-              isRestoring: false,
-              restoredPosition: _savedPosition,
-            ),
-          );
-        } else {
-          _setState(state.copyWith(isRestoring: false));
-        }
+    if (!restored) {
+      _setState(
+        state.copyWith(
+          isLoading: false,
+          isRestoring: false,
+          error: '断点恢复失败，请返回后重试',
+        ),
+      );
+      return;
+    }
+
+    _restoreHandled = true;
+    _setState(
+      state.copyWith(
+        position: player.state.position,
+        isLoading: false,
+        isRestoring: false,
+        restoredPosition: _savedPosition,
+      ),
+    );
+    await _startPlaybackIfReady();
+  }
+
+  Future<bool> _confirmResumePosition(Duration target) async {
+    if (_isPositionNear(player.state.position, target)) {
+      return true;
+    }
+    // Media.start 在 libmpv 的 on_load 钩子中生效，先等待原生层完成起播定位。
+    if (await _waitForPosition(target, const Duration(seconds: 4))) {
+      return true;
+    }
+
+    // 极慢网络下 on_load 可能延迟；文件已加载后再用 seek 做有限兜底。
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (_disposed || _disposing) {
+        return false;
+      }
+      if (_isPositionNear(player.state.position, target)) {
+        return true;
+      }
+      try {
+        await player.seek(target);
+      } catch (_) {
+        // 下一轮继续尝试，避免一次 seek 请求失败导致从 0 播放。
+      }
+      if (_isPositionNear(player.state.position, target)) {
+        return true;
+      }
+      if (await _waitForPosition(target, const Duration(milliseconds: 1200))) {
+        return true;
       }
     }
-    await _startPlaybackIfReady();
+    return false;
+  }
+
+  Future<bool> _waitForPosition(Duration target, Duration timeout) async {
+    final completer = Completer<bool>();
+    late final StreamSubscription<Duration> subscription;
+    Timer? timer;
+
+    void complete(bool value) {
+      if (!completer.isCompleted) {
+        completer.complete(value);
+      }
+    }
+
+    subscription = player.stream.position.listen((position) {
+      if (_isPositionNear(position, target)) {
+        complete(true);
+      }
+    });
+    timer = Timer(timeout, () => complete(false));
+
+    final result = await completer.future;
+    timer.cancel();
+    await subscription.cancel();
+    return result;
   }
 
   Future<void> _startPlaybackIfReady() async {
@@ -433,11 +521,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
     final normalized = _clamp01(value);
     try {
-      await player.setVolume(normalized * 100);
-      _setState(state.copyWith(volume: normalized));
+      await VolumeController.instance.setVolume(normalized);
     } catch (_) {
       // 某些平台不支持设置音量时保持播放不中断。
     }
+    _setState(state.copyWith(volume: normalized));
   }
 
   Future<void> setBrightness(double value) async {
@@ -451,7 +539,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       );
       _brightnessChanged = true;
     } catch (_) {
-      // 桌面平台或无窗口绑定时忽略亮度设置失败。
+      // 某些平台不支持设置亮度时保持播放不中断。
     }
     _setState(state.copyWith(brightness: normalized));
   }
@@ -491,12 +579,23 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   Future<void> _loadBrightness() async {
     try {
-      final value = await ScreenBrightness.instance.application;
+      final value = await ScreenBrightness.instance.system;
       if (!_disposed && !_disposing) {
         _setState(state.copyWith(brightness: _clamp01(value)));
       }
     } catch (_) {
       // 读取失败时使用默认亮度，不影响播放器。
+    }
+  }
+
+  Future<void> _loadVolume() async {
+    try {
+      final value = await VolumeController.instance.getVolume();
+      if (!_disposed && !_disposing) {
+        _setState(state.copyWith(volume: _clamp01(value)));
+      }
+    } catch (_) {
+      // 读取失败时使用默认音量，不影响播放器。
     }
   }
 
@@ -593,9 +692,27 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 }
 
+bool _isPositionNear(Duration actual, Duration target) {
+  return (actual.inSeconds - target.inSeconds).abs() <= 2;
+}
+
 String buildStreamUrl(String serverUrl, int episodeId, String token) {
   final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
   return '$normalized/api/episodes/$episodeId/stream?token=${Uri.encodeComponent(token)}';
+}
+
+Media buildStreamMedia(
+  String serverUrl,
+  int episodeId,
+  String token,
+  int startPositionSeconds,
+) {
+  return Media(
+    buildStreamUrl(serverUrl, episodeId, token),
+    start: startPositionSeconds > 0
+        ? Duration(seconds: startPositionSeconds)
+        : null,
+  );
 }
 
 double _clamp01(double value) => value.clamp(0.0, 1.0).toDouble();

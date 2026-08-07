@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/anime_api.dart';
@@ -66,6 +69,8 @@ class AnimeListState {
 }
 
 class AnimeListNotifier extends Notifier<AnimeListState> {
+  static const _cacheKey = 'anime_list_cache';
+
   late AnimeApi _animeApi;
 
   @override
@@ -81,12 +86,32 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
+    // 尝试从缓存加载，有缓存则立即显示，再后台刷新网络数据
+    final cached = _loadFromCache();
+    if (cached != null && cached.items.isNotEmpty) {
+      state = state.copyWith(
+        items: cached.items,
+        total: cached.total,
+        currentPage: cached.page,
+        pageSize: cached.pageSize == 0 ? state.pageSize : cached.pageSize,
+        isLoading: false,
+        clearError: true,
+      );
+      unawaited(_fetchFirstPage());
+      return;
+    }
+
+    // 无缓存，显示加载态并从网络获取
     state = state.copyWith(
       isLoading: true,
       isRefreshing: false,
       isLoadingMore: false,
       clearError: true,
     );
+    await _fetchFirstPage();
+  }
+
+  Future<void> _fetchFirstPage() async {
     try {
       final result = await _animeApi.list(page: 1, pageSize: state.pageSize);
       state = state.copyWith(
@@ -97,8 +122,41 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         isLoading: false,
         clearError: true,
       );
+      _saveToCache(result);
     } catch (error) {
-      state = state.copyWith(isLoading: false, error: apiErrorMessage(error));
+      if (state.items.isEmpty) {
+        state = state.copyWith(isLoading: false, error: describeApiError(error));
+      } else {
+        // 有缓存数据时保留，仅记录错误供下拉刷新重试
+        state = state.copyWith(error: describeApiError(error));
+      }
+    }
+  }
+
+  void _saveToCache(PaginatedAnimes result) {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      final cacheData = jsonEncode({
+        'items': result.items.map((item) => item.toJson()).toList(),
+        'total': result.total,
+        'page': result.page,
+        'page_size': result.pageSize,
+      });
+      prefs.setString(_cacheKey, cacheData);
+    } catch (_) {
+      // 缓存写入失败不影响正常使用。
+    }
+  }
+
+  PaginatedAnimes? _loadFromCache() {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      final cached = prefs.getString(_cacheKey);
+      if (cached == null || cached.isEmpty) return null;
+      final json = jsonDecode(cached) as Map<String, dynamic>;
+      return PaginatedAnimes.fromJson(json);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -118,10 +176,11 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         isRefreshing: false,
         clearError: true,
       );
+      _saveToCache(result);
     } catch (error) {
       state = state.copyWith(
         isRefreshing: false,
-        error: apiErrorMessage(error),
+        error: describeApiError(error),
       );
     }
   }
@@ -152,7 +211,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
     } catch (error) {
       state = state.copyWith(
         isLoadingMore: false,
-        error: apiErrorMessage(error),
+        error: describeApiError(error),
       );
     }
   }

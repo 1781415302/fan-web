@@ -43,6 +43,18 @@ class Anime {
   final int epCount;
   final String filePath;
   final String createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'title_cn': titleCn,
+        'bangumi_id': bangumiId,
+        'cover': cover,
+        'summary': summary,
+        'ep_count': epCount,
+        'file_path': filePath,
+        'created_at': createdAt,
+      };
 }
 
 class AnimeListItem {
@@ -57,6 +69,11 @@ class AnimeListItem {
 
   final Anime anime;
   final int watchedCount;
+
+  Map<String, dynamic> toJson() => {
+        ...anime.toJson(),
+        'watched_count': watchedCount,
+      };
 }
 
 class Episode {

@@ -19,6 +19,15 @@ abstract final class AppTheme {
     fontFamily: 'Inter',
     scaffoldBackgroundColor: background,
     dividerColor: _dividerColor,
+    // Android 预测性返回在手指越过提交阈值后可能已经把页面推进到过渡终点；
+    // 使用普通 Material 返回过渡，确保松手时始终有完整的退出动画。
+    pageTransitionsTheme: PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(
+          backgroundColor: background,
+        ),
+      },
+    ),
     colorScheme:
         ColorScheme.fromSeed(
           seedColor: accent,
@@ -130,9 +139,7 @@ abstract final class AppTheme {
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: ButtonStyle(
-        foregroundColor: const WidgetStatePropertyAll(accent),
-      ),
+      style: ButtonStyle(foregroundColor: const WidgetStatePropertyAll(accent)),
     ),
     iconTheme: const IconThemeData(color: foreground),
     snackBarTheme: const SnackBarThemeData(
