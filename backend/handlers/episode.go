@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,56 @@ func NewEpisodeHandler(auth *services.AuthService, scanner *services.ScannerServ
 
 // Stream serves a video file after validating the JWT from the query string.
 func (h *EpisodeHandler) Stream(c *gin.Context) {
+	fullPath, ok := h.resolveEpisodePath(c)
+	if !ok {
+		return
+	}
+
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	http.ServeFile(c.Writer, c.Request, fullPath)
+}
+
+// Subtitles lists embedded text tracks, or returns one selected track as VTT.
+// The token is accepted in the query because ArtPlayer loads subtitle files
+// with fetch() and cannot attach the app's Authorization interceptor.
+func (h *EpisodeHandler) Subtitles(c *gin.Context) {
+	fullPath, ok := h.resolveEpisodePath(c)
+	if !ok {
+		return
+	}
+
+	trackParam := strings.TrimSpace(c.Query("track"))
+	if trackParam == "" {
+		tracks, err := services.ReadMatroskaSubtitleTracks(fullPath)
+		if err != nil {
+			utils.Error(c, utils.CodeInternal, "读取字幕轨道失败")
+			return
+		}
+		utils.Success(c, tracks)
+		return
+	}
+
+	trackNumber, err := strconv.ParseUint(trackParam, 10, 64)
+	if err != nil || trackNumber == 0 {
+		utils.Error(c, utils.CodeInvalidParams, "无效的字幕轨道")
+		return
+	}
+	track, vtt, err := services.ReadMatroskaSubtitleVTT(fullPath, trackNumber)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			utils.Error(c, utils.CodeNotFound, "字幕轨道不存在")
+			return
+		}
+		utils.Error(c, utils.CodeInternal, "读取字幕失败")
+		return
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Content-Disposition", `inline; filename="subtitle-`+strconv.FormatUint(track.TrackNumber, 10)+`.vtt"`)
+	c.Data(http.StatusOK, "text/vtt; charset=utf-8", vtt)
+}
+
+func (h *EpisodeHandler) resolveEpisodePath(c *gin.Context) (string, bool) {
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
 		parts := strings.Fields(strings.TrimSpace(c.GetHeader("Authorization")))
@@ -37,45 +88,42 @@ func (h *EpisodeHandler) Stream(c *gin.Context) {
 	claims, err := h.auth.ParseToken(token)
 	if err != nil {
 		utils.Error(c, utils.CodeUnauthenticated, "未登录")
-		return
+		return "", false
 	}
 	if _, err := database.GetUserByID(claims.UserID); err != nil {
 		utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
-		return
+		return "", false
 	}
 
 	episodeID, ok := parsePositiveID(c.Param("id"))
 	if !ok {
 		utils.Error(c, utils.CodeInvalidParams, "无效的集数 ID")
-		return
+		return "", false
 	}
 	episode, err := database.GetEpisodeByID(episodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			utils.Error(c, utils.CodeNotFound, "集数不存在")
-			return
+			return "", false
 		}
 		utils.Error(c, utils.CodeInternal, "查询集数失败")
-		return
+		return "", false
 	}
 	anime, err := database.GetAnimeByID(episode.AnimeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			utils.Error(c, utils.CodeNotFound, "番剧不存在")
-			return
+			return "", false
 		}
 		utils.Error(c, utils.CodeInternal, "查询番剧失败")
-		return
+		return "", false
 	}
 	fullPath, err := h.scanner.ResolveFilePath(anime.FilePath, episode.FilePath)
 	if err != nil {
 		utils.Error(c, utils.CodeNotFound, "视频文件不存在或不可访问")
-		return
+		return "", false
 	}
-
-	c.Header("Cache-Control", "private, no-store")
-	c.Header("Referrer-Policy", "no-referrer")
-	http.ServeFile(c.Writer, c.Request, fullPath)
+	return fullPath, true
 }
 
 func toProgressResponse(progress models.WatchProgress, includeEpisodeID bool) gin.H {

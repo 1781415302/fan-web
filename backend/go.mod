@@ -3,9 +3,11 @@ module fan-web
 go 1.21
 
 require (
+	github.com/at-wat/ebml-go v0.18.0
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/remko/go-mkvparse v0.14.0
 	golang.org/x/crypto v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.36.0

@@ -66,6 +66,7 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/api/episodes/:id/stream", handler.Stream)
+	router.GET("/api/episodes/:id/subtitles", handler.Subtitles)
 
 	unauthenticated := httptest.NewRecorder()
 	unauthenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/1/stream", nil)
@@ -95,6 +96,56 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	}
 	if got := rangeRecorder.Body.String(); got != "2345" {
 		t.Fatalf("unexpected range body: %q", got)
+	}
+
+	subtitleUnauthenticated := httptest.NewRecorder()
+	subtitleUnauthenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(episodes[0].ID, 10)+"/subtitles", nil)
+	router.ServeHTTP(subtitleUnauthenticated, subtitleUnauthenticatedRequest)
+	if subtitleUnauthenticated.Code != http.StatusOK {
+		t.Fatalf("expected subtitle application error with HTTP 200, got %d", subtitleUnauthenticated.Code)
+	}
+	var subtitleErrorResponse struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(subtitleUnauthenticated.Body.Bytes(), &subtitleErrorResponse); err != nil {
+		t.Fatal(err)
+	}
+	if subtitleErrorResponse.Code != 2001 {
+		t.Fatalf("expected subtitle unauthenticated code 2001, got %d", subtitleErrorResponse.Code)
+	}
+
+	subtitleURL := "/api/episodes/" + strconv.FormatInt(episodes[0].ID, 10) + "/subtitles?token=" + token
+	subtitleRecorder := httptest.NewRecorder()
+	subtitleRequest := httptest.NewRequest(http.MethodGet, subtitleURL, nil)
+	router.ServeHTTP(subtitleRecorder, subtitleRequest)
+	if subtitleRecorder.Code != http.StatusOK {
+		t.Fatalf("expected empty subtitle list with HTTP 200, got %d", subtitleRecorder.Code)
+	}
+	var subtitleResponse struct {
+		Code int                      `json:"code"`
+		Data []services.SubtitleTrack `json:"data"`
+	}
+	if err := json.Unmarshal(subtitleRecorder.Body.Bytes(), &subtitleResponse); err != nil {
+		t.Fatal(err)
+	}
+	if subtitleResponse.Code != 0 || len(subtitleResponse.Data) != 0 {
+		t.Fatalf("expected no subtitles for MP4, got code=%d data=%#v", subtitleResponse.Code, subtitleResponse.Data)
+	}
+
+	missingTrackRecorder := httptest.NewRecorder()
+	missingTrackRequest := httptest.NewRequest(http.MethodGet, subtitleURL+"&track=1", nil)
+	router.ServeHTTP(missingTrackRecorder, missingTrackRequest)
+	if missingTrackRecorder.Code != http.StatusOK {
+		t.Fatalf("expected missing subtitle track application error with HTTP 200, got %d", missingTrackRecorder.Code)
+	}
+	var missingTrackResponse struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(missingTrackRecorder.Body.Bytes(), &missingTrackResponse); err != nil {
+		t.Fatal(err)
+	}
+	if missingTrackResponse.Code != 1002 {
+		t.Fatalf("expected missing subtitle track code 1002, got %d", missingTrackResponse.Code)
 	}
 }
 

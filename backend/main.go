@@ -72,6 +72,7 @@ func main() {
 		api.GET("/setup/status", setupHandler.Status)
 		api.POST("/setup", setupHandler.Submit)
 		api.GET("/episodes/:id/stream", episodeHandler.Stream)
+		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
 
 		auth := api.Group("/auth")
 		auth.POST("/login", loginRateLimiter.Middleware(), authHandler.Login)

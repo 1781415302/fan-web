@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
-import { getStreamUrl } from '../api/episode'
+import { getStreamUrl, getSubtitleTracks, getSubtitleUrl, type SubtitleTrack } from '../api/episode'
 import { getAnime, listEpisodes } from '../api/anime'
 import { getAnimeProgress, reportProgress } from '../api/progress'
 import { useThemeStore } from '../stores/theme'
@@ -30,6 +30,7 @@ const currentPosition = ref(0)
 const currentDuration = ref(0)
 type PlaybackRateOption = 0.5 | 1 | 1.25 | 1.5 | 2
 const playbackRate = ref<PlaybackRateOption>(1)
+const subtitleTracks = ref<SubtitleTrack[]>([])
 const playerContainer = ref<HTMLDivElement | null>(null)
 
 let player: Artplayer | null = null
@@ -137,9 +138,43 @@ function destroyPlayer() {
   oldPlayer.destroy()
 }
 
+const emptySubtitleUrl = 'data:text/vtt;charset=utf-8,WEBVTT%0A%0A'
+
+function createSubtitleControl(episode: Episode) {
+  const tracks = subtitleTracks.value
+  return {
+    name: 'subtitle',
+    html: '字幕',
+    tooltip: '字幕',
+    position: 'right' as const,
+    selector: [
+      { html: '关闭字幕', value: 'off' },
+      ...tracks.map((track, index) => ({
+        html: track.label,
+        value: track.track_number,
+        default: index === 0,
+      })),
+    ],
+    onSelect(this: Artplayer, selector: { value?: string | number }) {
+      if (selector.value === 'off') {
+        void this.subtitle.switch(emptySubtitleUrl, { name: '关闭字幕', type: 'vtt' })
+        return '字幕'
+      }
+      const track = tracks.find((item) => item.track_number === Number(selector.value))
+      if (!track) return '字幕'
+      void this.subtitle.switch(getSubtitleUrl(episode.id, track.track_number), {
+        name: track.label,
+        type: 'vtt',
+      })
+      return '字幕'
+    },
+  }
+}
+
 function createPlayer(episode: Episode) {
   if (!playerContainer.value || !anime.value) return
 
+  const defaultSubtitle = subtitleTracks.value[0]
   const instance = new Artplayer({
     container: playerContainer.value,
     url: getStreamUrl(episode.id),
@@ -154,6 +189,14 @@ function createPlayer(episode: Episode) {
     hotkey: true,
     mutex: true,
     playsInline: true,
+    subtitle: defaultSubtitle
+      ? {
+          url: getSubtitleUrl(episode.id, defaultSubtitle.track_number),
+          name: defaultSubtitle.label,
+          type: 'vtt',
+        }
+      : undefined,
+    controls: subtitleTracks.value.length ? [createSubtitleControl(episode)] : [],
   })
 
   player = instance
@@ -221,15 +264,17 @@ async function load() {
   }
 
   try {
-    const [currentAnime, currentEpisodes, progressList] = await Promise.all([
+    const [currentAnime, currentEpisodes, progressList, availableSubtitleTracks] = await Promise.all([
       getAnime(animeId.value),
       listEpisodes(animeId.value),
       getAnimeProgress(animeId.value),
+      getSubtitleTracks(episodeId.value).catch(() => []),
     ])
     if (serial !== loadSerial) return
 
     anime.value = currentAnime
     episodes.value = currentEpisodes
+    subtitleTracks.value = availableSubtitleTracks
     progressByEpisode.value = new Map(progressList.map((progress) => [progress.episode_id, progress]))
     const selectedEpisode = currentEpisodes.find((episode) => episode.id === episodeId.value)
     if (!selectedEpisode) {
