@@ -23,7 +23,8 @@ cp -r "$ROOT/frontend/dist" "$ROOT/backend/web/dist"
 echo "==> [3/3] 编译后端..."
 cd "$ROOT/backend"
 mkdir -p "$OUT_DIR"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "$OUT" .
+VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || echo dev)}"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.AppVersion=$VERSION" -o "$OUT" .
 
 echo "完成: $OUT"
 echo "部署时需在可执行文件旁放置 config.yaml（修改视频目录等配置）。"

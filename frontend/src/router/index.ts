@@ -60,6 +60,12 @@ const router = createRouter({
       component: () => import('../views/AdminUsersView.vue'),
     },
     {
+      path: '/admin/update',
+      name: 'admin-update',
+      meta: { requiresAuth: true, requiresAdmin: true },
+      component: () => import('../views/UpdateView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: { name: 'home' },
     },

@@ -23,14 +23,20 @@ import (
 	"fan-web/web"
 )
 
+var AppVersion = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "打印版本号并退出")
+	portFlag := flag.Int("port", 0, "服务器端口，覆盖配置文件")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(AppVersion)
+		os.Exit(0)
+	}
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
-
-	portFlag := flag.Int("port", 0, "服务器端口，覆盖配置文件")
-	flag.Parse()
 	if *portFlag > 0 {
 		cfg.Server.Port = *portFlag
 	}
@@ -57,6 +63,7 @@ func main() {
 	libraryService := services.NewLibraryService(bangumiService, cfg.Video.RootPath)
 	libraryHandler := handlers.NewLibraryHandler(libraryService)
 	setupHandler := handlers.NewSetupHandler("config.yaml", cfg, authService, scannerService, libraryService)
+	updateHandler := handlers.NewUpdateHandler(AppVersion)
 	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 
 	r := gin.Default()
@@ -69,6 +76,7 @@ func main() {
 	api.Use(middleware.RequireSetup(func() bool { return cfg.Configured }))
 	{
 		api.GET("/health", handlers.Health)
+		api.GET("/version", updateHandler.Version)
 		api.GET("/setup/status", setupHandler.Status)
 		api.POST("/setup", setupHandler.Submit)
 		api.GET("/episodes/:id/stream", episodeHandler.Stream)
@@ -103,6 +111,8 @@ func main() {
 		admin.GET("/users", adminUserHandler.List)
 		admin.POST("/users", adminUserHandler.Create)
 		admin.DELETE("/users/:id", adminUserHandler.Delete)
+		admin.GET("/update/check", updateHandler.Check)
+		admin.POST("/update/perform", updateHandler.Perform)
 	}
 
 	distFS, err := fs.Sub(web.Dist, "dist")

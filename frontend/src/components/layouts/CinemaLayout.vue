@@ -24,6 +24,7 @@ const { appStore, authStore, handleLogout } = useShell()
         </router-link>
         <template v-if="authStore.initialized && authStore.isAuthenticated && authStore.isAdmin">
           <router-link to="/admin/users" class="cinema-nav-link">用户管理</router-link>
+          <router-link to="/admin/update" class="cinema-nav-link">系统更新</router-link>
         </template>
       </nav>
 

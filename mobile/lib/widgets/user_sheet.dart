@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/app_updater.dart';
 import '../theme/app_theme.dart';
+import 'update_dialog.dart';
 
 /// App 版本号，与 pubspec.yaml 的 version 保持同步。
 const appVersion = '1.0.0';
@@ -87,6 +90,18 @@ Future<void> showUserSheet(BuildContext context, WidgetRef ref) async {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.of(sheetContext).pop();
+                    await _checkUpdate(context);
+                  },
+                  icon: const Icon(Icons.system_update_outlined),
+                  label: Text('检查更新（当前 $appVersion）'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
                   onPressed: () {
                     Navigator.of(sheetContext).pop();
                     unawaited(_confirmLogout(context, ref));
@@ -107,6 +122,39 @@ Future<void> showUserSheet(BuildContext context, WidgetRef ref) async {
       );
     },
   );
+}
+
+Future<void> _checkUpdate(BuildContext context) async {
+  BuildContext? dialogContext;
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (c) {
+      dialogContext = c;
+      return const AlertDialog(content: LinearProgressIndicator());
+    },
+  );
+  try {
+    final result = await checkAppUpdate(appVersion);
+    if (dialogContext != null && dialogContext!.mounted) {
+      Navigator.of(dialogContext!).pop();
+    }
+    if (!context.mounted) return;
+    if (result.hasUpdate) {
+      await showUpdateDialog(context, result);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已是最新版本')),
+      );
+    }
+  } catch (e) {
+    if (dialogContext != null && dialogContext!.mounted) {
+      Navigator.of(dialogContext!).pop();
+    }
+    if (!context.mounted) return;
+    final msg = e is DioException ? '无法连接更新服务器' : '检查更新失败: $e';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 }
 
 Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
