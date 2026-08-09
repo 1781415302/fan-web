@@ -36,8 +36,24 @@ func JWTAuth(authService *services.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// 校验用户仍存在：管理员删除用户后，已签发的 token 立即失效。
+		user, err := database.GetUserByID(claims.UserID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			} else {
+				utils.Error(c, utils.CodeInternal, "查询用户失败")
+			}
+			c.Abort()
+			return
+		}
+
+		// 用数据库中的最新信息覆盖 claims，避免误用过期角色。
+		claims.Username = user.Username
+		claims.IsAdmin = user.IsAdmin
+
 		c.Set(claimsContextKey, claims)
-		c.Set(userIDContextKey, claims.UserID)
+		c.Set(userIDContextKey, user.ID)
 		c.Next()
 	}
 }
