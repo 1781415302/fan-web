@@ -29,8 +29,18 @@ const statusMessage = ref('')
 const currentPosition = ref(0)
 const currentDuration = ref(0)
 type PlaybackRateOption = 0.5 | 1 | 1.25 | 1.5 | 2
+type SubtitleFontSizeOption = 20 | 24 | 28
+const subtitleFontSizeOptions: ReadonlyArray<{ value: SubtitleFontSizeOption; label: string }> = [
+  { value: 20, label: '小' },
+  { value: 24, label: '中' },
+  { value: 28, label: '大' },
+]
+const subtitleFontSizeStorageKey = 'fan_web_subtitle_font_size'
+const subtitleFullscreenReferenceHeight = 540
+const subtitleFullscreenMaxScale = 2
 const playbackRate = ref<PlaybackRateOption>(1)
 const subtitleTracks = ref<SubtitleTrack[]>([])
+const subtitleFontSize = ref<SubtitleFontSizeOption>(readSubtitleFontSize())
 const playerContainer = ref<HTMLDivElement | null>(null)
 
 let player: Artplayer | null = null
@@ -140,6 +150,58 @@ function destroyPlayer() {
 
 const emptySubtitleUrl = 'data:text/vtt;charset=utf-8,WEBVTT%0A%0A'
 
+function isSubtitleFontSize(value: number): value is SubtitleFontSizeOption {
+  return subtitleFontSizeOptions.some((option) => option.value === value)
+}
+
+function readSubtitleFontSize(): SubtitleFontSizeOption {
+  const storedValue = Number(window.localStorage.getItem(subtitleFontSizeStorageKey))
+  return isSubtitleFontSize(storedValue) ? storedValue : 20
+}
+
+function renderedSubtitleFontSize(instance: Artplayer) {
+  if (!instance.fullscreen && !instance.fullscreenWeb) return subtitleFontSize.value
+
+  const playerHeight = instance.template.$player.getBoundingClientRect().height
+  const fullscreenScale = Math.min(
+    subtitleFullscreenMaxScale,
+    Math.max(1, playerHeight / subtitleFullscreenReferenceHeight),
+  )
+  return Math.round(subtitleFontSize.value * fullscreenScale)
+}
+
+function applySubtitleFontSize(instance: Artplayer) {
+  instance.cssVar('--art-subtitle-font-size', `${renderedSubtitleFontSize(instance)}px`)
+}
+
+function scheduleSubtitleFontSize(instance: Artplayer) {
+  window.requestAnimationFrame(() => {
+    if (player === instance) applySubtitleFontSize(instance)
+  })
+}
+
+function createSubtitleSizeControl() {
+  return {
+    name: 'subtitle-size',
+    html: '字号',
+    tooltip: '字幕字号',
+    position: 'right' as const,
+    selector: subtitleFontSizeOptions.map((option) => ({
+      html: option.label,
+      value: option.value,
+      default: subtitleFontSize.value === option.value,
+    })),
+    onSelect(this: Artplayer, selector: { value?: number | string }) {
+      const size = Number(selector.value)
+      if (!isSubtitleFontSize(size)) return '字号'
+      subtitleFontSize.value = size
+      window.localStorage.setItem(subtitleFontSizeStorageKey, String(size))
+      applySubtitleFontSize(this)
+      return '字号'
+    },
+  }
+}
+
 function createSubtitleControl(episode: Episode) {
   const tracks = subtitleTracks.value
   return {
@@ -196,12 +258,16 @@ function createPlayer(episode: Episode) {
           type: 'vtt',
         }
       : undefined,
-    controls: subtitleTracks.value.length ? [createSubtitleControl(episode)] : [],
+    controls: subtitleTracks.value.length
+      ? [createSubtitleControl(episode), createSubtitleSizeControl()]
+      : [],
   })
 
   player = instance
   activeEpisode = episode
   instance.playbackRate = playbackRate.value
+  applySubtitleFontSize(instance)
+  instance.on('resize', () => scheduleSubtitleFontSize(instance))
   playerError.value = ''
   progressError.value = ''
   statusMessage.value = currentProgress.value?.position ? '正在恢复播放位置' : '准备播放'
