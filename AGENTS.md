@@ -1,0 +1,63 @@
+# fan-web 项目记忆（AGENTS.md）
+
+本文件是 **fan-web** 仓库的开发规范。任何开发工作（含 AI 助手）开始前必须阅读本文件。详细背景知识参见 `docs/` 目录下的开发指南。
+
+## 一、项目事实（必须知道）
+
+- **fan-web** 是自托管个人看番网站：Go 后端 + Vue3 前端一体编译成**单文件无依赖可执行程序**；另有 Flutter Android App（`mobile/`）。
+- 发布与自动更新都通过 **GitHub Releases**：服务器端与移动端**共用同一个版本号 tag**（如 `v1.2.0`），但各自只下载**自己对应的产物**。
+- 线上仓库：`github.com/1781415302/fan-web`，发布者 owner 为 `1781415302`。
+
+## 二、开发前必须遵循的规则（铁律）
+
+### R1. `backend/web/dist/` 是构建产物，绝不手改、绝不提交
+- `backend/web/dist/` 整个目录被 `.gitignore` 忽略；由 `build.sh` 从 `frontend/dist` 拷贝生成。
+- 仓库中**只 track 了占位文件 `backend/web/dist/index.html`**。构建后它会显示 `modified/deleted`，这是正常现象，**不要提交该文件**、不要 `git add backend/web/dist`。
+- 需要真正构建产物时用 `./build.sh`，不手动 copy。
+
+### R2. 版本号与发布规范（发布前必读）
+- 版本号统一 `vX.Y.Z`（UTF-8 无 b）。当前版本语义：
+  - Go 后端：`build.sh` / 交叉编译时通过 `-ldflags "-X main.AppVersion=vX.Y.Z"` 注入，默认 `dev`。
+  - 移动端：`mobile/pubspec.yaml` 的 `version` 与 `mobile/lib/widgets/user_sheet.dart` 的 `appVersion` 常量，**两者必须同步**且与要打的 tag 一致。
+- **`mobile/pubspec.yaml` 的 build number（`+号后的整数`）= Android versionCode，每次发布必须递增**，否则老用户无法原地升级安装。
+- 发布产物命名（对齐既有 Release）：
+  - 服务器：`fan-web-server-{goos}-{goarch}`（Windows 加 `.exe`），平台为 linux-amd64 / linux-arm64 / darwin-arm64 / windows-amd64，共 4 个。
+  - 移动端：`fan-web-app-vX.Y.Z.apk`。
+  - 校验和：`SHA256SUMS.txt`（对齐 v1.1.1 格式，只含 4 个服务器二进制的 sha256）。
+- 每个 Release 必须**两个端各自独立判断**是否提示更新：
+  - 服务器端只在 Release 附带当前平台二进制时 `has_update=true`；
+  - 移动端只在 Release 附带 APK 时认为有更新。
+  - 因此：**只发服务器产物 → App 不弹更新；只发 APK → 服务器不弹更新**。发布时按实际改动决定附不带哪类产物。
+
+### R3. 提交前验证
+- 后端改动：`cd backend && go build ./... && go test ./...`。
+- 前端改动：`cd frontend && npm run build`（含 `vue-tsc -b` 类型检查）。
+- 移动端改动：`cd mobile && flutter analyze lib/`（必要时 `flutter test`）。
+- 发布流程执行 `./build.sh` 验证单文件可构建。
+
+### R4. 不要误提交底下这些杂项文件
+`.agents/`、`.commandcode/`、`fan-web.code-workspace`、`mobile/icon.png:Zone.Identifier` 是本地工具残留，不入库。
+
+## 常用命令（速查）
+
+```bash
+# 前端（需 node 在 PATH；nvm 管理）
+cd frontend && npm run build        # vue-tsc -b + vite build
+# 后端（需 go 在 PATH）
+cd backend && go build ./...
+cd backend && go test ./...
+# 移动端（需 Flutter/Dart 在 PATH）
+cd mobile && flutter analyze
+cd mobile && flutter test
+cd mobile && flutter build apk --release
+# 构建单文件服务器（产出 dist/fan-web-server）
+./build.sh
+# 本地开发运行（前后端）
+./dev.sh
+```
+
+## 详阅参考
+- `docs/开发指南.md`（服务器端 + Web 前端）
+- `docs/移动端开发指南.md`（Flutter App）
+- `docs/阶段六-快捷更新交接文档.md`（更新机制设计）
+- 发布完整流程：用 opencode 的发布 skill（`.opencode/skills/publish-release`）
