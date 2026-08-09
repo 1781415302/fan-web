@@ -232,3 +232,131 @@ func TestSetupSubmitAlreadyConfigured(t *testing.T) {
 		t.Fatalf("expected forbidden code 2002, got %d", response.Code)
 	}
 }
+
+func TestSetupSubmitSaveFailureRollsBackAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dbPath := filepath.Join(t.TempDir(), "setup-savefail.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+
+	// 配置保存失败：父目录不存在。
+	configPath := filepath.Join(t.TempDir(), "missing", "config.yaml")
+	cfg := config.Default()
+	cfg.Configured = false
+	cfg.Server.Port = 7777
+	cfg.Video.RootPath = "/original"
+	cfg.Admin.Username = "keep-admin"
+	handler := NewSetupHandler(configPath, cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+
+	router := gin.New()
+	router.POST("/api/setup", handler.Submit)
+
+	payload := map[string]interface{}{
+		"admin_username":  "new-admin",
+		"admin_password":  "password",
+		"video_root_path": t.TempDir(),
+		"port":            9090,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	var response struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code == 0 {
+		t.Fatalf("expected setup to fail when config save fails, got success")
+	}
+
+	// 1. 本次管理员必须回滚。
+	if _, err := database.GetUserByUsername("new-admin"); err == nil {
+		t.Fatal("expected rolled-back admin user to not exist")
+	}
+
+	// 2. 内存配置不得被污染。
+	if cfg.Admin.Username != "keep-admin" || cfg.Video.RootPath != "/original" || cfg.Server.Port != 7777 {
+		t.Fatalf("expected in-memory config unchanged, got %+v", cfg)
+	}
+	if cfg.Configured {
+		t.Fatal("expected Configured to stay false after failure")
+	}
+}
+
+func TestSetupSubmitRetryAfterFixingConfigPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dbPath := filepath.Join(t.TempDir(), "setup-retry.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+
+	badConfigPath := filepath.Join(t.TempDir(), "missing", "config.yaml")
+	goodConfigPath := filepath.Join(t.TempDir(), "config.yaml")
+	videoRoot := t.TempDir()
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(badConfigPath, cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+
+	router := gin.New()
+	router.POST("/api/setup", handler.Submit)
+
+	payload := map[string]interface{}{
+		"admin_username":  "samedev",
+		"admin_password":  "password",
+		"video_root_path": videoRoot,
+	}
+	body, _ := json.Marshal(payload)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	var failResp struct {
+		Code int `json:"code"`
+	}
+	_ = json.Unmarshal(recorder.Body.Bytes(), &failResp)
+	if failResp.Code == 0 {
+		t.Fatal("first attempt should fail (bad config path)")
+	}
+
+	// 修正 config path 后，同一用户名应能重试成功。
+	handler.configPath = goodConfigPath
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	var okResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &okResp); err != nil {
+		t.Fatal(err)
+	}
+	if okResp.Code != 0 {
+		t.Fatalf("expected retry to succeed after fixing config path, got %d body=%s", okResp.Code, recorder.Body.String())
+	}
+	if _, err := database.GetUserByUsername("samedev"); err != nil {
+		t.Fatalf("admin user should exist after successful retry: %v", err)
+	}
+}

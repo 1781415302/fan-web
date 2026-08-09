@@ -3,13 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Configured bool `yaml:"-"`
+	Configured bool           `yaml:"-"`
 	Server     ServerConfig   `yaml:"server"`
 	Database   DatabaseConfig `yaml:"database"`
 	JWT        JWTConfig      `yaml:"jwt"`
@@ -93,15 +94,57 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Save 将配置写入指定路径。
+// PreflightSave 在提交任何持久化修改前，验证目标配置路径的父目录可写且可创建临时文件。
+// 用于初始化流程提前暴露配置目录问题，避免先写入数据库后再因配置失败无法回滚。
+func (c *Config) PreflightSave(path string) error {
+	dir := filepath.Dir(path)
+	tmpPath := filepath.Join(dir, "."+filepath.Base(path)+".preflight")
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("配置目录不可写: %w", err)
+	}
+	_ = f.Close()
+	_ = os.Remove(tmpPath)
+	return nil
+}
+
+// Save 将配置原子写入指定路径：
+// 在同一目录创建隐藏临时文件、完整写入并 Sync、关闭校验，然后 Rename 覆盖目标。
+// 任一环节失败都会清理临时文件，目标文件保持不变。
 func (c *Config) Save(path string) error {
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
+
+	dir := filepath.Dir(path)
+	tmpPath := filepath.Join(dir, "."+filepath.Base(path)+".tmp")
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("创建临时配置文件失败: %w", err)
 	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("写入临时配置文件失败: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("同步临时配置文件失败: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("关闭临时配置文件失败: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("替换配置文件失败: %w", err)
+	}
+	cleanup = false
 	return nil
 }
 
