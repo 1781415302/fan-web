@@ -29,6 +29,14 @@ description: 发布 fan-web 新版本到 GitHub Releases。使用场景：用户
 - **`mobile/lib/widgets/user_sheet.dart`** 的 `const appVersion = 'X.Y.Z'` 必须与 `pubspec.yaml` 同步（App 内"检查更新"用它比对）。
 - 两个文件都要改，否者 App 端更新检测会误报或无法升级。
 
+### 移动端发布签名（keystore）铁律
+移动端正式发布**必须用 release 签名**（从 v1.2.2 起）。签名链：
+- **keystore**：`mobile/android/app/fan-web-release.jks`
+- **配置**：`mobile/android/key.properties`（含 storePassword / keyPassword / keyAlias=fanweb / storeFile=fan-web-release.jks）
+- 两者都被 `.gitignore` 忽略（`mobile/android/key.properties`、`*.keystore`、`*.jks`），**绝不提交**。
+- 若 `key.properties` 或 keystore 丢失：**无法再用原签名**，换新 keystore 会导致所有用户需卸载重装。务必提示用户异地备份。
+- 构建时校验：`aapt dump badging <apk> | grep package:` 的签名证书 DN 应为 `CN=fan-web, ...`（release），而非 `CN=Android Debug`。用 `apksigner verify --print-certs <apk>` 查看。
+
 ## 三、验证改动
 
 按 `AGENTS.md` R3 依次：
@@ -76,11 +84,19 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X ma
 校验版本注入：`chmod +x /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 && /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 -version` 输出应为 `vX.Y.Z`。
 
 ### 5.3 构建 APK（仅本次需出 App 时）
+先确认 release 签名就绪：`mobile/android/key.properties` 存在（见第二节"移动端发布签名铁律"），否则 `flutter build` 会回退 debug 签名（证书 DN 为 `CN=Android Debug`），**不要**把 debug 签名 APK 当正式版发布。
+
 ```bash
 cd mobile && flutter build apk --release
 cp build/app/outputs/flutter-apk/app-release.apk /tmp/rel-vX.Y.Z/fan-web-app-vX.Y.Z.apk
 ```
-可校验版本：`aapt dump badging <apk> | grep package:` 应显示 `versionName='X.Y.Z'` 且 `versionCode` 递增。
+校验版本与签名：
+```bash
+AAPT=$(find /home/bishe/Android /usr -name "aapt" -type f 2>/dev/null | head -1)
+SIGNER=$(find /home/bishe/Android -name "apksigner" -type f 2>/dev/null | head -1)
+"$AAPT" dump badging <apk> | grep '^package:'                   # versionName / versionCode
+"$SIGNER" verify --print-certs <apk> | grep 'Signer #1 certificate DN'   # 应为 CN=fan-web（release 签名）
+```
 
 ### 5.4 生成校验和（只含 4 个服务器二进制，不含 APK，对齐 v1.1.1）
 ```bash

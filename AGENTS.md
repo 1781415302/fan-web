@@ -28,6 +28,7 @@
   - 服务器端只在 Release 附带当前平台二进制时 `has_update=true`；
   - 移动端只在 Release 附带 APK 时认为有更新。
   - 因此：**只发服务器产物 → App 不弹更新；只发 APK → 服务器不弹更新**。发布时按实际改动决定附不带哪类产物。
+  - 移动端必须用 release 签名：keystore `mobile/android/app/fan-web-release.jks` + 配置 `mobile/android/key.properties`（已 gitignore，绝不提交；丢失则无法再签名）。无 key.properties 时 `flutter build` 会回退 debug 签名，勿将 debug 签名包当正式版发布。
 
 ### R3. 提交前验证
 - 后端改动：`cd backend && go build ./... && go test ./...`。
