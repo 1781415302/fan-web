@@ -55,8 +55,8 @@ func Init(dbPath string) error {
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
-	if err := createTables(db); err != nil {
-		return fmt.Errorf("创建表失败: %w", err)
+	if err := runMigrations(db); err != nil {
+		return fmt.Errorf("数据库迁移失败: %w", err)
 	}
 
 	DB = db
@@ -65,58 +65,6 @@ func Init(dbPath string) error {
 	return nil
 }
 
-func createTables(db *sql.DB) error {
-	tables := []string{
-		`CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT UNIQUE NOT NULL,
-			password TEXT NOT NULL,
-			is_admin INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`,
-		`CREATE TABLE IF NOT EXISTS animes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			title TEXT NOT NULL,
-			title_cn TEXT,
-			bangumi_id INTEGER,
-			cover TEXT,
-			summary TEXT,
-			ep_count INTEGER DEFAULT 0,
-			file_path TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`,
-		`CREATE TABLE IF NOT EXISTS episodes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			anime_id INTEGER NOT NULL,
-			ep_number INTEGER NOT NULL,
-			title TEXT,
-			file_path TEXT NOT NULL,
-			duration INTEGER,
-			FOREIGN KEY (anime_id) REFERENCES animes(id) ON DELETE CASCADE
-		);`,
-		`CREATE TABLE IF NOT EXISTS watch_progress (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id INTEGER NOT NULL,
-			episode_id INTEGER NOT NULL,
-			position INTEGER DEFAULT 0,
-			watched INTEGER DEFAULT 0,
-			updated_at DATETIME,
-			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-			FOREIGN KEY (episode_id) REFERENCES episodes(id) ON DELETE CASCADE
-		);`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_watch_progress_user_episode
-			ON watch_progress(user_id, episode_id);`,
-	}
-
-	for _, table := range tables {
-		if _, err := db.Exec(table); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// InitAdmin 首次启动时创建管理员账号。
 func InitAdmin(username, password string) error {
 	if DB == nil {
 		return fmt.Errorf("数据库尚未初始化")
