@@ -39,14 +39,25 @@
 ### R4. 不要误提交底下这些杂项文件
 `.agents/`、`.commandcode/`、`fan-web.code-workspace`、`mobile/icon.png:Zone.Identifier` 是本地工具残留，不入库。
 
+## WSL 工具链（开发环境事实）
+
+- Go：`/home/bishe/go/bin/go`（go1.26.5 linux/amd64）
+- Node/npm：nvm 管理，`/home/bishe/.nvm/versions/node/v26.7.0/bin/`（node v26.7.0）
+- Flutter/Dart：`/home/bishe/flutter/bin/`（3.44.8 stable）
+- 上述均在 PATH 中直接可用。`build.sh` / `dev.sh` 里 `/tmp/fan-web-node/bin`、`/tmp/fan-web-go/bin` 等旧路径**已失效**，改动时不要依赖它们；直接用系统 PATH 的 go/node/flutter。
+- `go env GOPATH` 与 GOROOT 相同（均为 `/home/bishe/go`），`go build` 会打印一条 warning，属正常，不影响功能。
+- `build.sh` 会在编译前自动 `npm run build` 并重新嵌入 `backend/web/dist`，用 WSL 原生工具链执行即可。
+
 ## 常用命令（速查）
 
 ```bash
 # 前端（需 node 在 PATH；nvm 管理）
 cd frontend && npm run build        # vue-tsc -b + vite build
+cd frontend && npm run test:run     # Vitest（router/auth/theme 基线）
 # 后端（需 go 在 PATH）
 cd backend && go build ./...
 cd backend && go test ./...
+cd backend && go test -race ./...
 # 移动端（需 Flutter/Dart 在 PATH）
 cd mobile && flutter analyze
 cd mobile && flutter test
