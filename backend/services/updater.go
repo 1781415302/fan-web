@@ -188,17 +188,31 @@ func PerformUpdate(currentVersion string) error {
 
 	tmpPath := execPath + ".new"
 	shaAsset := findSHA256Asset(release.Assets)
+	if shaAsset == nil {
+		return fmt.Errorf("发布缺少 SHA256SUMS.txt，已取消更新")
+	}
 
 	if err := downloadFile(asset.BrowserDownloadURL, tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("下载失败: %w", err)
 	}
 
-	if shaAsset != nil {
-		if err := verifySHA256(tmpPath, asset.Name, shaAsset.BrowserDownloadURL); err != nil {
+	// 校验二进制大小与 GitHub 资产声明一致。
+	if asset.Size > 0 {
+		info, err := os.Stat(tmpPath)
+		if err != nil {
 			os.Remove(tmpPath)
-			return err
+			return fmt.Errorf("读取下载文件大小失败: %w", err)
 		}
+		if info.Size() != asset.Size {
+			os.Remove(tmpPath)
+			return fmt.Errorf("下载文件大小不匹配（期望 %d 字节，实际 %d 字节），已取消更新", asset.Size, info.Size())
+		}
+	}
+
+	if err := verifySHA256(tmpPath, asset.Name, shaAsset.BrowserDownloadURL); err != nil {
+		os.Remove(tmpPath)
+		return err
 	}
 
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
@@ -287,23 +301,28 @@ func downloadFile(url, dest string) error {
 	return nil
 }
 
+// maxChecksumBytes 限制 checksum 响应大小，防止异常响应无界占用内存。
+const maxChecksumBytes = 1 << 20 // 1 MiB
+
 func verifySHA256(filePath, assetName, shaURL string) error {
 	req, err := http.NewRequest(http.MethodGet, shaURL, nil)
 	if err != nil {
-		return nil
+		return fmt.Errorf("创建校验请求失败: %w", err)
 	}
 	req.Header.Set("User-Agent", "fan-web-updater")
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil
+		return fmt.Errorf("下载校验文件失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil
+		return fmt.Errorf("下载校验文件失败，状态码 %d", resp.StatusCode)
 	}
+
+	limited := io.LimitReader(resp.Body, maxChecksumBytes)
 	expected := ""
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(limited)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -321,21 +340,37 @@ func verifySHA256(filePath, assetName, shaURL string) error {
 			break
 		}
 	}
-	if expected == "" {
-		return nil
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("解析校验文件失败: %w", err)
 	}
+	if expected == "" {
+		return fmt.Errorf("校验文件中未找到 %s 的摘要，已取消更新", assetName)
+	}
+	if len(expected) != 64 || !isHex(expected) {
+		return fmt.Errorf("校验摘要格式非法，已取消更新")
+	}
+
 	f, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("打开下载文件校验失败: %w", err)
 	}
 	defer f.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return fmt.Errorf("校验失败: %w", err)
+		return fmt.Errorf("计算校验值失败: %w", err)
 	}
 	actual := hex.EncodeToString(h.Sum(nil))
 	if actual != expected {
 		return fmt.Errorf("SHA256 校验失败，文件可能已损坏或被篡改")
 	}
 	return nil
+}
+
+func isHex(s string) bool {
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
