@@ -233,14 +233,10 @@ func PerformUpdate(currentVersion string) error {
 }
 
 func checkWritable(path string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
-	if err != nil {
-		if os.IsPermission(err) {
-			return fmt.Errorf("无写入权限，请检查可执行文件权限或以有权限的用户运行")
-		}
-		return fmt.Errorf("文件不可写: %w", err)
-	}
-	f.Close()
+	// 注意：不要用 os.OpenFile(path, O_WRONLY) 去测可写性。
+	// 目标是"正在运行的可执行文件"时，Linux 会返回 ETXTBSY（text file busy），
+	// 导致自更新永远误报失败。实际替换走 os.Rename，只依赖目录写权限，
+	// 因此这里只检查目录是否可写即可。
 	dir := path
 	if idx := strings.LastIndex(path, string(os.PathSeparator)); idx >= 0 {
 		dir = path[:idx]
@@ -248,10 +244,7 @@ func checkWritable(path string) error {
 			dir = "."
 		}
 	}
-	if err := checkDirWritable(dir); err != nil {
-		return err
-	}
-	return nil
+	return checkDirWritable(dir)
 }
 
 func checkDirWritable(dir string) error {
