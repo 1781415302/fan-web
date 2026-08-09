@@ -64,10 +64,10 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
   final tagName = (data['tag_name'] as String?) ?? '';
   final body = (data['body'] as String?) ?? '';
   if (tagName.isEmpty) throw const FormatException('更新信息异常');
-  final hasUpdate = isNewerVersion(currentVersion, tagName);
+  final hasNewerTag = isNewerVersion(currentVersion, tagName);
   String? downloadUrl;
   int? downloadSize;
-  if (hasUpdate) {
+  if (hasNewerTag) {
     final assets = (data['assets'] as List?) ?? [];
     for (final item in assets) {
       if (item is! Map) continue;
@@ -81,6 +81,10 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
       }
     }
   }
+  // 服务器端与移动端共用同一个 Release 版本号。
+  // 仅当本次发布附带 APK 时才视为移动端“有更新”，
+  // 纯服务器端发布不会在 App 内弹出更新提示。
+  final hasUpdate = hasNewerTag && downloadUrl != null;
   return UpdateCheckResult(
     hasUpdate: hasUpdate,
     currentVersion: currentVersion,

@@ -148,11 +148,15 @@ func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 		CurrentVersion: currentVersion,
 		LatestVersion:  release.TagName,
 		ReleaseNotes:   release.Body,
-		HasUpdate:      IsNewerVersion(currentVersion, release.TagName),
+		HasUpdate:      false,
 	}
-	if result.HasUpdate {
+	// 服务器端与移动端共用同一个 Release 版本号。
+	// 仅当本次发布包含当前平台对应的服务器二进制时才算作“有更新”，
+	// 这样纯移动端发布不会触发服务器更新提示。
+	if IsNewerVersion(currentVersion, release.TagName) {
 		asset := findServerAsset(release.Assets)
 		if asset != nil {
+			result.HasUpdate = true
 			result.DownloadURL = asset.BrowserDownloadURL
 			result.DownloadSize = asset.Size
 		}
