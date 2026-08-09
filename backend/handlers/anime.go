@@ -254,8 +254,19 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 		utils.Error(c, utils.CodeInternal, err.Error())
 		return
 	}
-	if err := database.ReplaceEpisodes(id, episodes); err != nil {
-		utils.Error(c, utils.CodeInternal, "保存集数失败")
+
+	existingEpisodes, err := database.ListEpisodesByAnimeID(id)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "读取已有集数失败")
+		return
+	}
+	if len(existingEpisodes) > 0 && len(episodes) == 0 {
+		utils.Error(c, utils.CodeInternal, "未扫描到有效视频，已保留原有剧集")
+		return
+	}
+
+	if err := database.SyncEpisodes(id, episodes); err != nil {
+		utils.Error(c, utils.CodeInternal, "保存集数失败: "+err.Error())
 		return
 	}
 	storedEpisodes, err := database.ListEpisodesByAnimeID(id)

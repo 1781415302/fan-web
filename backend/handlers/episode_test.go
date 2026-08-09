@@ -46,7 +46,7 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.ReplaceEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "episode.mp4"}}); err != nil {
+	if err := database.SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "episode.mp4"}}); err != nil {
 		t.Fatal(err)
 	}
 	episodes, err := database.ListEpisodesByAnimeID(anime.ID)
@@ -171,7 +171,7 @@ func TestReportProgressWatchedIrreversible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.ReplaceEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
+	if err := database.SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
 		t.Fatal(err)
 	}
 	episodes, err := database.ListEpisodesByAnimeID(anime.ID)

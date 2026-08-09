@@ -37,7 +37,7 @@ func TestProgressDefaultUpsertAndUserIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ReplaceEpisodes(anime.ID, []models.Episode{
+	if err := SyncEpisodes(anime.ID, []models.Episode{
 		{EpNumber: 1, FilePath: "episode-01.mp4"},
 		{EpNumber: 2, FilePath: "episode-02.mp4"},
 	}); err != nil {
@@ -134,7 +134,7 @@ func TestWatchedIsIrreversible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ReplaceEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
+	if err := SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
 		t.Fatal(err)
 	}
 	episodes, err := ListEpisodesByAnimeID(anime.ID)

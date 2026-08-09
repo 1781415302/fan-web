@@ -2,6 +2,9 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
+	"sort"
+	"strings"
 
 	"fan-web/models"
 )
@@ -149,25 +152,94 @@ func ListEpisodesByAnimeID(animeID int64) ([]models.Episode, error) {
 	return episodes, rows.Err()
 }
 
-func ReplaceEpisodes(animeID int64, episodes []models.Episode) error {
+// SyncEpisodes 以 (anime_id, ep_number) 为稳定业务键，将番剧剧集同步到给定列表。
+// 匹配到的剧集仅更新字段并保留数据库 ID；新增集插入；未出现在输入中的旧集删除。
+// 所有破坏性操作在单个事务内完成；任何一步失败都会整体回滚。
+func SyncEpisodes(animeID int64, episodes []models.Episode) error {
+	if animeID <= 0 {
+		return fmt.Errorf("无效的番剧 ID")
+	}
+	seen := make(map[int]bool, len(episodes))
+	for _, episode := range episodes {
+		if episode.EpNumber <= 0 {
+			return fmt.Errorf("无效的集数: %d", episode.EpNumber)
+		}
+		if strings.TrimSpace(episode.FilePath) == "" {
+			return fmt.Errorf("集数 %d 缺少文件路径", episode.EpNumber)
+		}
+		if seen[episode.EpNumber] {
+			return fmt.Errorf("输入中存在重复集数: %d", episode.EpNumber)
+		}
+		seen[episode.EpNumber] = true
+	}
+
 	tx, err := DB.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("开启事务失败: %w", err)
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec("DELETE FROM episodes WHERE anime_id = ?", animeID); err != nil {
-		return err
+	existingRows, err := tx.Query(
+		episodeSelect+" WHERE anime_id = ?", animeID,
+	)
+	if err != nil {
+		return fmt.Errorf("查询已有剧集失败: %w", err)
 	}
-	for _, episode := range episodes {
+	existing := make(map[int]models.Episode)
+	for existingRows.Next() {
+		episode, err := scanEpisode(existingRows)
+		if err != nil {
+			existingRows.Close()
+			return fmt.Errorf("读取已有剧集失败: %w", err)
+		}
+		if _, dup := existing[episode.EpNumber]; dup {
+			existingRows.Close()
+			return fmt.Errorf("数据库中存在重复集数 %d，请先清理后再重扫", episode.EpNumber)
+		}
+		existing[episode.EpNumber] = *episode
+	}
+	if err := existingRows.Err(); err != nil {
+		existingRows.Close()
+		return fmt.Errorf("遍历已有剧集失败: %w", err)
+	}
+	existingRows.Close()
+
+	// 按集数升序处理，保证结果稳定。
+	sortedInput := append([]models.Episode{}, episodes...)
+	sort.Slice(sortedInput, func(i, j int) bool { return sortedInput[i].EpNumber < sortedInput[j].EpNumber })
+
+	for _, episode := range sortedInput {
+		if stored, ok := existing[episode.EpNumber]; ok {
+			if _, err := tx.Exec(
+				`UPDATE episodes SET title = ?, file_path = ?, duration = ? WHERE id = ? AND anime_id = ?`,
+				episode.Title, episode.FilePath, episode.Duration, stored.ID, animeID,
+			); err != nil {
+				return fmt.Errorf("更新集数 %d 失败: %w", episode.EpNumber, err)
+			}
+			continue
+		}
 		if _, err := tx.Exec(
 			`INSERT INTO episodes (anime_id, ep_number, title, file_path, duration) VALUES (?, ?, ?, ?, ?)`,
 			animeID, episode.EpNumber, episode.Title, episode.FilePath, episode.Duration,
 		); err != nil {
-			return err
+			return fmt.Errorf("新增集数 %d 失败: %w", episode.EpNumber, err)
 		}
 	}
-	return tx.Commit()
+
+	// 删除未出现在输入中的旧剧集。
+	for epNumber, stored := range existing {
+		if seen[epNumber] {
+			continue
+		}
+		if _, err := tx.Exec("DELETE FROM episodes WHERE id = ?", stored.ID); err != nil {
+			return fmt.Errorf("删除已移除集数 %d 失败: %w", epNumber, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交同步事务失败: %w", err)
+	}
+	return nil
 }
 
 func scanAnimes(rows *sql.Rows) ([]AnimeListItem, error) {
