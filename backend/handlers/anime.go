@@ -3,6 +3,8 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -28,8 +30,33 @@ func NewAnimeHandler(bangumi *services.BangumiService, scanner *services.Scanner
 	return &AnimeHandler{
 		bangumi:     bangumi,
 		scanner:     scanner,
-		coverClient: &http.Client{Timeout: 15 * time.Second},
+		coverClient: newCoverClient(),
 	}
+}
+
+// newCoverClient 构造封面代理客户端：每次重定向都重新校验目标主机，最多 3 次。
+func newCoverClient() *http.Client {
+	client := &http.Client{Timeout: 15 * time.Second}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > maxCoverRedirects {
+			return fmt.Errorf("封面代理重定向次数超限")
+		}
+		if !isTrustedCoverURL(req.URL) {
+			return fmt.Errorf("封面代理指向非信任主机")
+		}
+		return nil
+	}
+	return client
+}
+
+// isAllowedImageType 只允许 JPEG/PNG/WebP/GIF。
+func isAllowedImageType(contentType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(contentType))
+	switch lower {
+	case "image/jpeg", "image/pjpeg", "image/png", "image/webp", "image/gif":
+		return true
+	}
+	return false
 }
 
 func (h *AnimeHandler) List(c *gin.Context) {
@@ -80,6 +107,11 @@ func (h *AnimeHandler) Get(c *gin.Context) {
 
 // Cover proxies trusted Bangumi cover URLs so mobile clients only need to
 // reach the configured server, not the external image host directly.
+const (
+	maxCoverBytes     = 10 << 20 // 10 MiB
+	maxCoverRedirects = 3
+)
+
 func (h *AnimeHandler) Cover(c *gin.Context) {
 	id, ok := animeID(c)
 	if !ok {
@@ -120,13 +152,43 @@ func (h *AnimeHandler) Cover(c *gin.Context) {
 		c.Status(http.StatusBadGateway)
 		return
 	}
+
 	contentType := response.Header.Get("Content-Type")
-	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+	if !isAllowedImageType(contentType) {
 		c.Status(http.StatusUnsupportedMediaType)
 		return
 	}
+
 	c.Header("Cache-Control", "private, max-age=86400")
-	c.DataFromReader(http.StatusOK, response.ContentLength, contentType, response.Body, nil)
+	c.Header("X-Content-Type-Options", "nosniff")
+
+	// 已知长度：直接限制转发。
+	if response.ContentLength > 0 {
+		if response.ContentLength > maxCoverBytes {
+			c.Status(http.StatusBadGateway)
+			return
+		}
+		c.DataFromReader(http.StatusOK, response.ContentLength, contentType, response.Body, nil)
+		return
+	}
+
+	// 未知或伪造长度：读取 10 MiB + 1 byte 判定，超限即拒绝。
+	limited := io.LimitReader(response.Body, maxCoverBytes+1)
+	body, readErr := io.ReadAll(limited)
+	if readErr != nil {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	if len(body) > maxCoverBytes {
+		c.Status(http.StatusBadGateway)
+		return
+	}
+	detected := http.DetectContentType(body)
+	if !isAllowedImageType(detected) {
+		c.Status(http.StatusUnsupportedMediaType)
+		return
+	}
+	c.Data(http.StatusOK, detected, body)
 }
 
 func isTrustedCoverURL(coverURL *url.URL) bool {
