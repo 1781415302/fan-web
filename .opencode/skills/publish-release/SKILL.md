@@ -71,6 +71,12 @@ cd ..
 rm -rf backend/web/dist && cp -r frontend/dist backend/web/dist
 ```
 
+> ⚠️ **顺序铁律（曾致发布事故）**：`backend/web/dist/` 现在必须是**真实构建产物**。从这一刻起到 5.2 交叉编译全部结束之前，**一律不要执行 `git checkout -- backend/web/dist/index.html`、不要 `git add` 该文件、不要执行任何会恢复占位文件的命令**。占位文件只在发布结束后、清理工作区时才能恢复。
+> 一旦在交叉编译前把 `index.html` 恢复为占位版，4 个平台二进制都会嵌入"前端资源未构建"的占位页，出现"更新后页面显示 前端资源未构建"。若发生此类事故：
+> 1. 重新执行 `rm -rf backend/web/dist && cp -r frontend/dist backend/web/dist`；
+> 2. **立即**重跑 5.2 交叉编译（趁 backend/web/dist 还是真实产物）；
+> 3. `gh release delete-asset` 清理坏资产后重新 upload，并重算 SHA256SUMS。
+
 ### 5.2 交叉编译 4 个服务器二进制
 在 `backend/` 下分别执行（`VERSION=vX.Y.Z`）：
 
@@ -82,6 +88,12 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X mai
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.AppVersion=$VERSION" -o /tmp/rel-vX.Y.Z/fan-web-server-windows-amd64.exe .
 ```
 校验版本注入：`chmod +x /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 && /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 -version` 输出应为 `vX.Y.Z`。
+
+再校验嵌入的是真实前端（防止嵌入占位页事故）：
+```bash
+strings /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 | grep -c "前端资源未构建"   # 必须为 0
+strings /tmp/rel-vX.Y.Z/fan-web-server-linux-amd64 | grep -c "index-"          # 应 > 0，确认含真实 assets
+```
 
 ### 5.3 构建 APK（仅本次需出 App 时）
 先确认 release 签名就绪：`mobile/android/key.properties` 存在（见第二节"移动端发布签名铁律"），否则 `flutter build` 会回退 debug 签名（证书 DN 为 `CN=Android Debug`），**不要**把 debug 签名 APK 当正式版发布。
