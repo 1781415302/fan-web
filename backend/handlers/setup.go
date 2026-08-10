@@ -70,8 +70,8 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 	request.AdminUsername = strings.TrimSpace(request.AdminUsername)
 	request.VideoRootPath = strings.TrimSpace(request.VideoRootPath)
 
-	if request.AdminUsername == "" || request.AdminPassword == "" {
-		utils.Error(c, utils.CodeInvalidParams, "用户名和密码不能为空")
+	if err := services.ValidateNewCredentials(request.AdminUsername, request.AdminPassword); err != nil {
+		utils.Error(c, utils.CodeInvalidParams, err.Error())
 		return
 	}
 	if request.VideoRootPath == "" {
@@ -107,16 +107,28 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 	}
 	createdUserID := user.ID
 
-	// 只修改配置副本。任何后续失败时回滚，不污染 h.cfg。
+	// 只修改配置副本：管理员密码绝不写入配置。
 	nextConfig := *h.cfg
 	nextConfig.Admin.Username = request.AdminUsername
-	nextConfig.Admin.Password = request.AdminPassword
+	nextConfig.Admin.LegacyPassword = ""
 	nextConfig.Video.RootPath = request.VideoRootPath
 	if request.Port != 0 {
 		nextConfig.Server.Port = request.Port
 	}
 
-	token, expiresAt, err := h.authService.IssueToken(*user)
+	// 若副本密钥为空或命中公开默认值，生成随机新密钥。
+	if config.IsInsecureJWTSecret(nextConfig.JWT.Secret) {
+		generated, generateErr := config.GenerateJWTSecret()
+		if generateErr != nil {
+			h.rollbackCreatedUser(c, createdUserID, generateErr, "生成 JWT 密钥失败")
+			return
+		}
+		nextConfig.JWT.Secret = generated
+	}
+
+	// 用配置副本中的新密钥签发 token，不提前修改共享 AuthService。
+	tempAuth := services.NewAuthService(nextConfig.JWT.Secret, nextConfig.JWT.Expire)
+	token, expiresAt, err := tempAuth.IssueToken(*user)
 	if err != nil {
 		h.rollbackCreatedUser(c, createdUserID, err, "生成登录凭证失败")
 		return
@@ -133,7 +145,9 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	// 所有成功后才整体提交到内存状态。
+	// 保存成功后，原子更新共享 AuthService 的密钥与过期时间，再提交内存状态。
+	h.authService.UpdateConfig(nextConfig.JWT.Secret, nextConfig.JWT.Expire)
+	h.cfg.JWT = nextConfig.JWT
 	h.cfg.Admin = nextConfig.Admin
 	h.cfg.Video = nextConfig.Video
 	h.cfg.Server.Port = nextConfig.Server.Port

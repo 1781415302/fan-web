@@ -1,12 +1,21 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
+)
+
+// 仓库公开默认密钥：含有这些值即视为不安全，v1.2.4 会生成随机密钥。
+const (
+	DefaultInsecureSecret  = "default-secret"
+	TemplateInsecureSecret = "fan-web-secret-key-change-in-production"
+	MediaAudience          = "fan-web-media"
 )
 
 type Config struct {
@@ -57,7 +66,23 @@ func (c *JWTConfig) UnmarshalYAML(value *yaml.Node) error {
 
 type AdminConfig struct {
 	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	// LegacyPassword 仅用于兼容读取旧 config.yaml 的 admin.password 键，
+	// 标记为不序列化；保存后的新格式只输出 admin.username。
+	LegacyPassword string `yaml:"-"`
+}
+
+// UnmarshalYAML 兼容读取旧 admin.password 键，新格式没有 password 时保持为空。
+func (c *AdminConfig) UnmarshalYAML(value *yaml.Node) error {
+	var raw struct {
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+	}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Username = raw.Username
+	c.LegacyPassword = raw.Password
+	return nil
 }
 
 type VideoConfig struct {
@@ -170,16 +195,28 @@ func (c *Config) applyDefaults() {
 	if c.Database.Path == "" {
 		c.Database.Path = "./data/fan-web.db"
 	}
-	if c.JWT.Secret == "" {
-		c.JWT.Secret = "default-secret"
-	}
 	if c.JWT.Expire == 0 {
 		c.JWT.Expire = 168 * time.Hour
 	}
 	if c.Admin.Username == "" {
 		c.Admin.Username = "admin"
 	}
-	if c.Admin.Password == "" {
-		c.Admin.Password = "admin123"
+	// 不填充默认 JWT 密钥，也不填充管理员默认密码：
+	// 密钥由首次初始化自动生成，密码只以数据库哈希形式存在。
+}
+
+// GenerateJWTSecret 生成 32 字节随机密钥，无填充 Base64 URL 编码。
+func GenerateJWTSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("生成随机密钥失败: %w", err)
 	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// IsInsecureJWTSecret 判断密钥是否为空或等于两个仓库公开默认值。
+func IsInsecureJWTSecret(secret string) bool {
+	return secret == "" ||
+		secret == DefaultInsecureSecret ||
+		secret == TemplateInsecureSecret
 }

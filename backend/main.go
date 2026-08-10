@@ -46,16 +46,15 @@ func main() {
 	if err := database.Init(cfg.Database.Path); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
-	if cfg.Configured {
-		if err := database.InitAdmin(cfg.Admin.Username, cfg.Admin.Password); err != nil {
-			log.Fatalf("管理员初始化失败: %v", err)
-		}
+	if err := prepareConfiguredInstance("config.yaml", cfg); err != nil {
+		log.Fatalf("配置安全迁移失败: %v", err)
 	}
 
 	authService := services.NewAuthService(cfg.JWT.Secret, cfg.JWT.Expire)
 	bangumiService := services.NewBangumiService()
 	scannerService := services.NewScannerService(cfg.Video.RootPath)
-	authHandler := handlers.NewAuthHandler(authService)
+	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
+	authHandler := handlers.NewAuthHandler(authService, loginRateLimiter)
 	adminUserHandler := handlers.NewAdminUserHandler()
 	animeHandler := handlers.NewAnimeHandler(bangumiService, scannerService)
 	bangumiHandler := handlers.NewBangumiHandler(bangumiService)
@@ -64,10 +63,12 @@ func main() {
 	libraryHandler := handlers.NewLibraryHandler(libraryService)
 	setupHandler := handlers.NewSetupHandler("config.yaml", cfg, authService, scannerService, libraryService)
 	updateHandler := handlers.NewUpdateHandler(AppVersion)
-	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(middleware.RequestLogger(log.Writer()))
+	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
+	r.Use(middleware.LimitJSONBody(64 << 10))
 	if err := r.SetTrustedProxies([]string{"127.0.0.1"}); err != nil {
 		log.Fatalf("配置可信代理失败: %v", err)
 	}
@@ -79,11 +80,13 @@ func main() {
 		api.GET("/version", updateHandler.Version)
 		api.GET("/setup/status", setupHandler.Status)
 		api.POST("/setup", setupHandler.Submit)
-		api.GET("/episodes/:id/stream", episodeHandler.Stream)
-		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
 
 		auth := api.Group("/auth")
 		auth.POST("/login", loginRateLimiter.Middleware(), authHandler.Login)
+		// 视频与字幕资源按 4.2 顺序自行选择登录 JWT / 媒体票据 / 旧 token 凭证，
+		// 因此不能放在 JWTAuth 组内。
+		api.GET("/episodes/:id/stream", episodeHandler.Stream)
+		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
 
 		protected := api.Group("")
 		protected.Use(middleware.JWTAuth(authService))
@@ -92,19 +95,24 @@ func main() {
 		protected.GET("/progress/anime/:anime_id", episodeHandler.AnimeProgress)
 		protected.GET("/progress/:episode_id", episodeHandler.GetProgress)
 		protected.POST("/progress/:episode_id", episodeHandler.ReportProgress)
+		protected.POST("/episodes/:id/media-token", episodeHandler.IssueMediaToken)
 
+		// 普通用户只读媒体库与自身进度。
 		protected.GET("/animes", animeHandler.List)
 		protected.GET("/animes/:id", animeHandler.Get)
 		protected.GET("/animes/:id/cover", animeHandler.Cover)
-		protected.POST("/animes", animeHandler.Create)
-		protected.PUT("/animes/:id", animeHandler.Update)
-		protected.DELETE("/animes/:id", animeHandler.Delete)
-		protected.POST("/animes/:id/scan", animeHandler.Scan)
 		protected.GET("/animes/:id/episodes", animeHandler.Episodes)
-		protected.POST("/library/scan", libraryHandler.Scan)
 
-		protected.GET("/bangumi/search", bangumiHandler.Search)
-		protected.GET("/bangumi/subject/:id", bangumiHandler.Subject)
+		// 管理写操作：媒体库管理与 Bangumi 入库存放于 RequireAdmin 组。
+		manager := protected.Group("")
+		manager.Use(middleware.RequireAdmin)
+		manager.POST("/animes", animeHandler.Create)
+		manager.PUT("/animes/:id", animeHandler.Update)
+		manager.DELETE("/animes/:id", animeHandler.Delete)
+		manager.POST("/animes/:id/scan", animeHandler.Scan)
+		manager.POST("/library/scan", libraryHandler.Scan)
+		manager.GET("/bangumi/search", bangumiHandler.Search)
+		manager.GET("/bangumi/subject/:id", bangumiHandler.Subject)
 
 		admin := protected.Group("/admin")
 		admin.Use(middleware.RequireAdmin)
@@ -126,7 +134,15 @@ func main() {
 		log.Fatalf("端口绑定失败: %v", err)
 	}
 	log.Printf("服务启动，监听 :%d → http://127.0.0.1:%d", actualPort, actualPort)
-	if err := http.Serve(listener, r); err != nil {
+	server := &http.Server{
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+		// 不设置 WriteTimeout：长视频播放与慢速 Range 响应不应被强制截断。
+	}
+	if err := server.Serve(listener); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
 }

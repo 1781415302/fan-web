@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,5 +141,86 @@ func TestSaveMinimalConfigRoundTrip(t *testing.T) {
 	}
 	if loaded.Server.Port != 9001 || loaded.JWT.Expire != 24*time.Hour {
 		t.Fatalf("unexpected round-trip values: %+v", loaded)
+	}
+}
+
+func TestGenerateJWTSecretIsRandom32ByteBase64URL(t *testing.T) {
+	first, err := GenerateJWTSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := GenerateJWTSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" || first == second {
+		t.Fatal("expected independent random secrets")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(first)
+	if err != nil {
+		t.Fatalf("secret must be base64 url: %v", err)
+	}
+	if len(decoded) != 32 {
+		t.Fatalf("expected 32 random bytes, got %d", len(decoded))
+	}
+}
+
+func TestIsInsecureJWTSecret(t *testing.T) {
+	if !IsInsecureJWTSecret("") {
+		t.Fatal("empty secret must be insecure")
+	}
+	if !IsInsecureJWTSecret(DefaultInsecureSecret) {
+		t.Fatal("default-secret must be insecure")
+	}
+	if !IsInsecureJWTSecret(TemplateInsecureSecret) {
+		t.Fatal("template secret must be insecure")
+	}
+	if IsInsecureJWTSecret("custom-secret-1234") {
+		t.Fatal("custom secret must not be flagged insecure")
+	}
+}
+
+func TestSaveNeverContainsPasswordField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := Default()
+	cfg.Configured = true
+	cfg.Admin.LegacyPassword = "old-password-in-memory"
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"password:", "LegacyPassword", "configured"} {
+		if strings.Contains(strings.ToLower(string(data)), strings.ToLower(forbidden)) {
+			t.Fatalf("saved YAML must not contain %q:\n%s", forbidden, data)
+		}
+	}
+}
+
+func TestLoadLegacyPasswordMovedToLegacyField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	legacy := []byte("admin:\n  username: admin\n  password: legacy-secret\n")
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Admin.LegacyPassword != "legacy-secret" || cfg.Admin.Username != "admin" {
+		t.Fatalf("expected legacy password loaded, got %+v", cfg.Admin)
+	}
+	// 重新保存后密码必须消失。
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Admin.LegacyPassword != "" {
+		t.Fatalf("password must be removed after re-save, got %q", reloaded.Admin.LegacyPassword)
 	}
 }
