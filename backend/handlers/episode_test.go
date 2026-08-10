@@ -282,6 +282,7 @@ func TestIssueMediaTokenAndStreamWithMediaToken(t *testing.T) {
 	protected.Use(middleware.JWTAuth(auth))
 	protected.POST("/episodes/:id/media-token", handler.IssueMediaToken)
 	router.GET("/api/episodes/:id/stream", handler.Stream)
+	router.GET("/api/episodes/:id/subtitles", handler.Subtitles)
 
 	loginToken, _, err := auth.IssueToken(*admin)
 	if err != nil {
@@ -317,6 +318,44 @@ func TestIssueMediaTokenAndStreamWithMediaToken(t *testing.T) {
 	}
 	if got := streamRecorder.Header().Get("Content-Range"); got != "bytes 2-5/10" {
 		t.Fatalf("unexpected Content-Range %q", got)
+	}
+
+	// 同一媒体票据也能访问当前 episode 的字幕列表。
+	subtitleRecorder := httptest.NewRecorder()
+	subtitleRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/subtitles?media_token="+url.QueryEscape(tokenResp.Data.Token), nil)
+	router.ServeHTTP(subtitleRecorder, subtitleRequest)
+	var subtitleResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(subtitleRecorder.Body.Bytes(), &subtitleResp); err != nil {
+		t.Fatal(err)
+	}
+	if subtitleResp.Code != 0 {
+		t.Fatalf("media token must access subtitle list, got %s", subtitleRecorder.Body.String())
+	}
+
+	// Bearer 优先：无效 Bearer 不能降级尝试同时提供的有效媒体票据。
+	invalidBearerRecorder := httptest.NewRecorder()
+	invalidBearerRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?media_token="+url.QueryEscape(tokenResp.Data.Token), nil)
+	invalidBearerRequest.Header.Set("Authorization", "Bearer invalid-login-token")
+	router.ServeHTTP(invalidBearerRecorder, invalidBearerRequest)
+	var invalidBearerResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(invalidBearerRecorder.Body.Bytes(), &invalidBearerResp); err != nil {
+		t.Fatal(err)
+	}
+	if invalidBearerResp.Code != 2001 {
+		t.Fatalf("invalid Bearer must not fall back to media token, got %d", invalidBearerResp.Code)
+	}
+
+	// 有效 Bearer 同样优先于无效 query 凭证。
+	validBearerRecorder := httptest.NewRecorder()
+	validBearerRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?media_token=invalid&token=invalid", nil)
+	validBearerRequest.Header.Set("Authorization", "Bearer "+loginToken)
+	router.ServeHTTP(validBearerRecorder, validBearerRequest)
+	if validBearerRecorder.Code != http.StatusOK {
+		t.Fatalf("valid Bearer must take priority, got %d body=%s", validBearerRecorder.Code, validBearerRecorder.Body.String())
 	}
 
 	// A 集票据不能访问 B 集（构造不同 episode 的票据）。

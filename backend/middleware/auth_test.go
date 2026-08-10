@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -193,12 +194,49 @@ func TestLoginRateLimiterWindowExpires(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimiterUsesRollingWindow(t *testing.T) {
+	current := time.Unix(7000, 0)
+	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return current }))
+
+	for i := 0; i < 4; i++ {
+		limiter.RecordFailure("4.4.4.4")
+		current = current.Add(20 * time.Second)
+	}
+	// t=80s: the first two failures are outside the preceding minute, so the
+	// source must still be allowed instead of being blocked by a lifetime count.
+	if !limiter.Allow("4.4.4.4") {
+		t.Fatal("failures outside the rolling window must not count")
+	}
+	limiter.mu.Lock()
+	remaining := len(limiter.attempts["4.4.4.4"].attempts)
+	limiter.mu.Unlock()
+	if remaining != 2 {
+		t.Fatalf("expected two fresh failures, got %d", remaining)
+	}
+}
+
+func TestLoginRateLimiterAllowDeletesExpiredSource(t *testing.T) {
+	current := time.Unix(8000, 0)
+	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return current }))
+	limiter.RecordFailure("5.5.5.5")
+	current = current.Add(time.Minute)
+	if !limiter.Allow("5.5.5.5") {
+		t.Fatal("expired source must be allowed")
+	}
+	limiter.mu.Lock()
+	_, exists := limiter.attempts["5.5.5.5"]
+	limiter.mu.Unlock()
+	if exists {
+		t.Fatal("Allow must delete the expired source entry")
+	}
+}
+
 func TestLoginRateLimiterCapacityBound(t *testing.T) {
 	now := time.Unix(9000, 0)
 	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return now }))
 	// 灌入远超上限的来源。
 	for i := 0; i < 5000; i++ {
-		limiter.RecordFailure(time.Now().Format("20060102150405.000000000"))
+		limiter.RecordFailure(fmt.Sprintf("source-%04d", i))
 		now = now.Add(time.Millisecond)
 	}
 	// 容量之后不应超过 maxKeys（4096），且不 panic。

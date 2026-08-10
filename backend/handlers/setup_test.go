@@ -14,6 +14,7 @@ import (
 
 	"fan-web/config"
 	"fan-web/database"
+	"fan-web/models"
 	"fan-web/services"
 )
 
@@ -78,7 +79,8 @@ func TestSetupSubmit(t *testing.T) {
 	cfg := config.Default()
 	cfg.Configured = false
 	scanner := services.NewScannerService("")
-	handler := NewSetupHandler(configPath, cfg, services.NewAuthService("setup-secret", 24*60*60*1e9), scanner, nil)
+	authService := services.NewAuthService("setup-secret", 24*60*60*1e9)
+	handler := NewSetupHandler(configPath, cfg, authService, scanner, nil)
 
 	router := gin.New()
 	router.POST("/api/setup", handler.Submit)
@@ -121,6 +123,9 @@ func TestSetupSubmit(t *testing.T) {
 	if response.Data.Token == "" {
 		t.Fatal("expected token to be returned")
 	}
+	if _, err := authService.ParseToken(response.Data.Token); err != nil {
+		t.Fatalf("shared AuthService must accept the setup token after commit: %v", err)
+	}
 	if response.Data.User.Username != "admin" || !response.Data.User.IsAdmin {
 		t.Fatalf("unexpected admin user: %+v", response.Data.User)
 	}
@@ -136,6 +141,23 @@ func TestSetupSubmit(t *testing.T) {
 	}
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("expected config file to be written: %v", err)
+	}
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(configData, []byte("password")) || bytes.Contains(configData, []byte("s3cret-password")) {
+		t.Fatalf("saved config must not contain an administrator password:\n%s", configData)
+	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected config permissions 0600, got %v", info.Mode().Perm())
+	}
+	if config.IsInsecureJWTSecret(cfg.JWT.Secret) {
+		t.Fatal("setup must commit a secure generated JWT secret")
 	}
 	if scanner.RootPath() != videoRoot {
 		t.Fatalf("expected scanner root path to be updated, got %q", scanner.RootPath())
@@ -247,14 +269,22 @@ func TestSetupSubmitSaveFailureRollsBackAdmin(t *testing.T) {
 		}
 	})
 
-	// 配置保存失败：父目录不存在。
-	configPath := filepath.Join(t.TempDir(), "missing", "config.yaml")
+	// 目标是现有目录：预检成功，但原子替换失败，覆盖创建管理员后的回滚路径。
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.Mkdir(configPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cfg := config.Default()
 	cfg.Configured = false
 	cfg.Server.Port = 7777
 	cfg.Video.RootPath = "/original"
 	cfg.Admin.Username = "keep-admin"
-	handler := NewSetupHandler(configPath, cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+	authService := services.NewAuthService("secret", 24*60*60*1e9)
+	oldToken, _, err := authService.IssueToken(models.User{ID: 99, Username: "existing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewSetupHandler(configPath, cfg, authService, services.NewScannerService(""), nil)
 
 	router := gin.New()
 	router.POST("/api/setup", handler.Submit)
@@ -296,6 +326,9 @@ func TestSetupSubmitSaveFailureRollsBackAdmin(t *testing.T) {
 	}
 	if cfg.Configured {
 		t.Fatal("expected Configured to stay false after failure")
+	}
+	if _, err := authService.ParseToken(oldToken); err != nil {
+		t.Fatalf("shared AuthService must remain unchanged after save failure: %v", err)
 	}
 }
 

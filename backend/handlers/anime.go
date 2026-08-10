@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -49,14 +50,22 @@ func newCoverClient() *http.Client {
 	return client
 }
 
-// isAllowedImageType 只允许 JPEG/PNG/WebP/GIF。
-func isAllowedImageType(contentType string) bool {
-	lower := strings.ToLower(strings.TrimSpace(contentType))
-	switch lower {
-	case "image/jpeg", "image/pjpeg", "image/png", "image/webp", "image/gif":
-		return true
+// normalizedImageType 解析并规范化允许的 JPEG/PNG/WebP/GIF 类型。
+func normalizedImageType(contentType string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", false
 	}
-	return false
+	mediaType = strings.ToLower(mediaType)
+	if mediaType == "image/pjpeg" {
+		mediaType = "image/jpeg"
+	}
+	switch mediaType {
+	case "image/jpeg", "image/png", "image/webp", "image/gif":
+		return mediaType, true
+	default:
+		return "", false
+	}
 }
 
 func (h *AnimeHandler) List(c *gin.Context) {
@@ -153,26 +162,18 @@ func (h *AnimeHandler) Cover(c *gin.Context) {
 		return
 	}
 
-	contentType := response.Header.Get("Content-Type")
-	if !isAllowedImageType(contentType) {
+	declaredType, ok := normalizedImageType(response.Header.Get("Content-Type"))
+	if !ok {
 		c.Status(http.StatusUnsupportedMediaType)
 		return
 	}
 
-	c.Header("Cache-Control", "private, max-age=86400")
-	c.Header("X-Content-Type-Options", "nosniff")
-
-	// 已知长度：直接限制转发。
-	if response.ContentLength > 0 {
-		if response.ContentLength > maxCoverBytes {
-			c.Status(http.StatusBadGateway)
-			return
-		}
-		c.DataFromReader(http.StatusOK, response.ContentLength, contentType, response.Body, nil)
+	if response.ContentLength > maxCoverBytes {
+		c.Status(http.StatusBadGateway)
 		return
 	}
 
-	// 未知或伪造长度：读取 10 MiB + 1 byte 判定，超限即拒绝。
+	// 必须先完整校验再返回，避免已发送 200 后才发现超限或类型伪造。
 	limited := io.LimitReader(response.Body, maxCoverBytes+1)
 	body, readErr := io.ReadAll(limited)
 	if readErr != nil {
@@ -183,12 +184,14 @@ func (h *AnimeHandler) Cover(c *gin.Context) {
 		c.Status(http.StatusBadGateway)
 		return
 	}
-	detected := http.DetectContentType(body)
-	if !isAllowedImageType(detected) {
+	detectedType, ok := normalizedImageType(http.DetectContentType(body))
+	if !ok || detectedType != declaredType {
 		c.Status(http.StatusUnsupportedMediaType)
 		return
 	}
-	c.Data(http.StatusOK, detected, body)
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, detectedType, body)
 }
 
 func isTrustedCoverURL(coverURL *url.URL) bool {

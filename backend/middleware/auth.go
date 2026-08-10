@@ -105,8 +105,8 @@ func CurrentClaims(c *gin.Context) (*services.Claims, bool) {
 }
 
 type failureEntry struct {
-	count int
-	last  time.Time
+	attempts []time.Time
+	last     time.Time
 }
 
 // LoginRateLimiter 基于来源 IP 的失败尝试限流器。
@@ -145,16 +145,20 @@ func NewLoginRateLimiter(limit int, window time.Duration, opts ...LoginLimiterOp
 	return l
 }
 
-// allowLocked 清理某来源窗口外记录后判断是否允许尝试。
+// allowLocked 清理当前来源窗口外记录后判断是否允许尝试。
 func (l *LoginRateLimiter) allowLocked(source string, now time.Time) bool {
 	entry, ok := l.attempts[source]
 	if !ok {
 		return true
 	}
-	if entry.count >= l.limit && now.Sub(entry.last) < l.window {
-		return false
+	entry.attempts = freshAttempts(entry.attempts, now.Add(-l.window))
+	if len(entry.attempts) == 0 {
+		delete(l.attempts, source)
+		return true
 	}
-	return true
+	entry.last = entry.attempts[len(entry.attempts)-1]
+	l.attempts[source] = entry
+	return len(entry.attempts) < l.limit
 }
 
 // Allow 只检查窗口内失败次数，不记录任何请求。
@@ -170,19 +174,15 @@ func (l *LoginRateLimiter) RecordFailure(source string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
-	entry, ok := l.attempts[source]
-	if !ok {
-		l.attempts[source] = failureEntry{count: 1, last: now}
-	} else {
-		if now.Sub(entry.last) >= l.window {
-			entry = failureEntry{count: 1, last: now}
-		} else {
-			entry.count++
-			entry.last = now
-		}
-		l.attempts[source] = entry
+	l.cleanupExpiredLocked(now)
+
+	entry, exists := l.attempts[source]
+	if !exists && len(l.attempts) >= l.maxKeys {
+		l.evictOldestLocked()
 	}
-	l.enforceCapacityLocked(now)
+	entry.attempts = append(entry.attempts, now)
+	entry.last = now
+	l.attempts[source] = entry
 }
 
 // Reset 成功登录后清空对应来源的全部记录。
@@ -192,22 +192,25 @@ func (l *LoginRateLimiter) Reset(source string) {
 	delete(l.attempts, source)
 }
 
-// enforceCapacityLocked 在写入后执行过期清理与容量上限淘汰。
-func (l *LoginRateLimiter) enforceCapacityLocked(now time.Time) {
-	// 至少每个窗口执行一次全表过期清理：简单起见每次写入时清理过期键。
+func (l *LoginRateLimiter) cleanupExpiredLocked(now time.Time) {
+	cutoff := now.Add(-l.window)
 	for source, entry := range l.attempts {
-		if now.Sub(entry.last) >= l.window {
+		entry.attempts = freshAttempts(entry.attempts, cutoff)
+		if len(entry.attempts) == 0 {
 			delete(l.attempts, source)
+			continue
 		}
+		entry.last = entry.attempts[len(entry.attempts)-1]
+		l.attempts[source] = entry
 	}
-	if len(l.attempts) <= l.maxKeys {
-		return
-	}
-	// 超过上限：淘汰"最后一次失败最早"的来源。允许越界，保留新来源。
+}
+
+func (l *LoginRateLimiter) evictOldestLocked() {
 	oldestSource := ""
 	var oldestLast time.Time
 	for source, entry := range l.attempts {
-		if oldestSource == "" || entry.last.Before(oldestLast) {
+		if oldestSource == "" || entry.last.Before(oldestLast) ||
+			(entry.last.Equal(oldestLast) && source < oldestSource) {
 			oldestSource = source
 			oldestLast = entry.last
 		}
@@ -215,6 +218,16 @@ func (l *LoginRateLimiter) enforceCapacityLocked(now time.Time) {
 	if oldestSource != "" {
 		delete(l.attempts, oldestSource)
 	}
+}
+
+func freshAttempts(attempts []time.Time, cutoff time.Time) []time.Time {
+	fresh := attempts[:0]
+	for _, attempt := range attempts {
+		if attempt.After(cutoff) {
+			fresh = append(fresh, attempt)
+		}
+	}
+	return fresh
 }
 
 // Middleware 返回记录失败与检查限流的 Gin 中间件。

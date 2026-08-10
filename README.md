@@ -146,11 +146,11 @@ APK 位于 `mobile/build/app/outputs/flutter-apk/app-release.apk`。详见 [mobi
 mkdir -p /opt/fan-web && cd /opt/fan-web
 cp <产物路径>/fan-web-server .
 cp backend/config.yaml .
-# 修改 config.yaml 中的视频目录等配置
+# 修改 config.yaml 中的视频目录等非敏感配置
 ./fan-web-server
 ```
 
-访问 `http://<vps-ip>:8080`，使用管理员账号登录。
+数据库中已有管理员的实例会直接进入登录页；新实例或数据库中没有管理员的实例会进入 Web 初始化页，由初始化流程创建管理员、生成随机 JWT 密钥并保存配置。
 
 ## 配置说明
 
@@ -165,18 +165,17 @@ database:
   path: ./data/fan-web.db
 
 jwt:
-  secret: "..."        # 生产环境务必修改为随机密钥
+  secret: ""           # 首次初始化自动生成并以 0600 权限写回
   expire: 168h
 
 admin:
   username: admin
-  password: admin123   # 首次启动创建管理员时生效，请及时修改
 
 video:
   root_path: ../anime  # 番剧视频根目录
 ```
 
-> **注意**：`admin` 账号仅在数据库中尚无管理员时创建（`database/db.go`）。已运行过的实例修改 `config.yaml` 不会更新已有账号密码，请通过 `backend/data/fan-web.db` 处理或直接调用管理接口。
+> **注意**：管理员密码不会写入 `config.yaml`，只以 bcrypt 哈希保存在数据库中。旧配置中的明文密码会在升级启动时迁移并从磁盘删除；使用仓库公开默认 JWT 密钥的旧实例会自动轮换密钥，因此需要重新登录一次。自定义 JWT 密钥不会被轮换。
 
 ## 主要 API
 
@@ -187,15 +186,17 @@ video:
 | POST | `/api/setup` | 首次初始化（创建管理员 + 生成配置） |
 | POST | `/api/auth/login` | 登录（带限流） |
 | GET | `/api/auth/me` | 当前用户信息 |
-| GET/POST/PUT/DELETE | `/api/animes` `/api/animes/:id` | 番剧增删改查 |
+| GET | `/api/animes` `/api/animes/:id` | 登录用户读取番剧 |
+| POST/PUT/DELETE | `/api/animes` `/api/animes/:id` | 管理员增删改番剧 |
 | GET | `/api/animes/:id/cover` | 番剧封面代理（解决移动端无法直连 Bangumi CDN） |
 | POST | `/api/animes/:id/scan` | 扫描番剧剧集 |
 | GET | `/api/animes/:id/episodes` | 番剧剧集列表 |
-| GET | `/api/episodes/:id/stream` | 视频流（query token 鉴权，支持 HTTP Range） |
-| GET | `/api/episodes/:id/subtitles` | MKV 内封字幕轨道列表 / 指定轨道 VTT 内容 |
+| POST | `/api/episodes/:id/media-token` | 签发当前集的 12 小时媒体票据 |
+| GET | `/api/episodes/:id/stream` | 视频流（媒体票据鉴权，兼容旧 App token，支持 HTTP Range） |
+| GET | `/api/episodes/:id/subtitles` | 媒体票据鉴权的字幕轨道列表 / VTT 内容 |
 | GET/POST | `/api/progress/:episode_id` | 获取/上报观看进度 |
-| POST | `/api/library/scan` | 扫描视频目录入库 |
-| GET | `/api/bangumi/search` `/api/bangumi/subject/:id` | Bangumi 搜索/详情 |
+| POST | `/api/library/scan` | 管理员扫描视频目录入库 |
+| GET | `/api/bangumi/search` `/api/bangumi/subject/:id` | 管理员使用的 Bangumi 搜索/详情 |
 | GET/POST/DELETE | `/api/admin/users` | 用户管理（仅管理员） |
 
 ## 下载

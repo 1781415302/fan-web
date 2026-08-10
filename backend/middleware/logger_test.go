@@ -36,6 +36,51 @@ func TestRequestLoggerOmitsQueryAndSecrets(t *testing.T) {
 	}
 }
 
+func TestRecoveryOmitsRequestAndPanicSecrets(t *testing.T) {
+	gin.SetMode(gin.DebugMode)
+	t.Cleanup(func() { gin.SetMode(gin.TestMode) })
+
+	var buf bytes.Buffer
+	router := gin.New()
+	router.Use(Recovery(&buf))
+	router.GET("/api/episodes/:id/stream", func(c *gin.Context) {
+		panic("PANIC_DO_NOT_LOG_THIS_TOKEN")
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/episodes/7/stream?token=QUERY_SECRET&media_token=MEDIA_SECRET",
+		strings.NewReader("BODY_SECRET"),
+	)
+	request.Header.Set("Authorization", "Bearer HEADER_SECRET")
+	request.Header.Set("Cookie", "session=COOKIE_SECRET")
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected HTTP 500, got %d", recorder.Code)
+	}
+	output := buf.String()
+	if !strings.Contains(output, "GET | /api/episodes/7/stream | panic recovered") {
+		t.Fatalf("recovery log must retain safe request context, got %q", output)
+	}
+	for _, forbidden := range []string{
+		"QUERY_SECRET",
+		"MEDIA_SECRET",
+		"HEADER_SECRET",
+		"COOKIE_SECRET",
+		"BODY_SECRET",
+		"PANIC_DO_NOT_LOG_THIS_TOKEN",
+		"token=",
+		"Authorization",
+		"Cookie",
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("recovery log must not contain %q:\n%s", forbidden, output)
+		}
+	}
+}
+
 func TestLimitJSONBodyRejectsOversize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

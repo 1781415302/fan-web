@@ -10,7 +10,7 @@ import '../theme/app_theme.dart';
 import 'update_dialog.dart';
 
 /// App 版本号，与 pubspec.yaml 的 version 保持同步。
-const appVersion = '1.2.4';
+const appVersion = '1.2.5';
 
 /// 显示用户底部菜单：用户名、管理员徽章、服务器地址、版本号、退出登录。
 Future<void> showUserSheet(BuildContext context, WidgetRef ref) async {

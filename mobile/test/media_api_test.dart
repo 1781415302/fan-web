@@ -10,21 +10,21 @@ import 'package:fan_web/api/media_api.dart';
 void main() {
   group('MediaApi', () {
     test('parses media token response', () async {
-      final client = _clientReturning(
-        <String, dynamic>{
-          'code': 0,
-          'data': {'token': 'media-tok', 'expires_at': '2026-01-01T00:00:00Z'},
-        },
-      );
+      final client = _clientReturning(<String, dynamic>{
+        'code': 0,
+        'data': {'token': 'media-tok', 'expires_at': '2026-01-01T00:00:00Z'},
+      });
       final result = await MediaApi(client).fetchMediaToken(7);
       expect(result.token, 'media-tok');
       expect(result.expiresAt, '2026-01-01T00:00:00Z');
     });
 
     test('throws MediaTokenUnsupported on business code 404', () async {
-      final client = _clientReturning(
-        <String, dynamic>{'code': 404, 'message': '接口不存在', 'data': null},
-      );
+      final client = _clientReturning(<String, dynamic>{
+        'code': 404,
+        'message': '接口不存在',
+        'data': null,
+      });
       expect(
         () => MediaApi(client).fetchMediaToken(7),
         throwsA(isA<MediaTokenUnsupported>()),
@@ -32,18 +32,52 @@ void main() {
     });
 
     test('does not fall back on 401', () async {
-      final client = _clientReturning(
-        <String, dynamic>{'code': 2001, 'message': '未登录', 'data': null},
-      );
+      final client = _clientReturning(<String, dynamic>{
+        'code': 2001,
+        'message': '未登录',
+        'data': null,
+      });
       expect(
         () => MediaApi(client).fetchMediaToken(7),
         throwsA(isA<ApiException>()),
       );
     });
 
+    test('throws MediaTokenUnsupported on HTTP 404', () async {
+      final client = _clientReturning(<String, dynamic>{
+        'message': 'not found',
+      }, statusCode: 404);
+      expect(
+        () => MediaApi(client).fetchMediaToken(7),
+        throwsA(isA<MediaTokenUnsupported>()),
+      );
+    });
+
+    test('does not classify HTTP 500 as unsupported', () async {
+      final client = _clientReturning(<String, dynamic>{
+        'message': 'server error',
+      }, statusCode: 500);
+      expect(
+        () => MediaApi(client).fetchMediaToken(7),
+        throwsA(isA<DioException>()),
+      );
+    });
+
+    test('rejects a malformed success response', () async {
+      final client = _clientReturning(<String, dynamic>{'code': 0, 'data': {}});
+      expect(
+        () => MediaApi(client).fetchMediaToken(7),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
     test('URL builders encode tokens', () {
       expect(
-        buildStreamUrlWithMediaToken(' http://127.0.0.1:8080/// ', 42, 'token+/='),
+        buildStreamUrlWithMediaToken(
+          ' http://127.0.0.1:8080/// ',
+          42,
+          'token+/=',
+        ),
         'http://127.0.0.1:8080/api/episodes/42/stream?media_token=token%2B%2F%3D',
       );
       expect(
@@ -54,16 +88,20 @@ void main() {
   });
 }
 
-ApiClient _clientReturning(Map<String, dynamic> envelope) {
+ApiClient _clientReturning(
+  Map<String, dynamic> envelope, {
+  int statusCode = 200,
+}) {
   final dio = Dio();
-  dio.httpClientAdapter = _StubAdapter(envelope);
+  dio.httpClientAdapter = _StubAdapter(envelope, statusCode);
   return ApiClient(dio: dio);
 }
 
 class _StubAdapter implements HttpClientAdapter {
-  _StubAdapter(this.envelope);
+  _StubAdapter(this.envelope, this.statusCode);
 
   final Map<String, dynamic> envelope;
+  final int statusCode;
 
   @override
   Future<ResponseBody> fetch(
@@ -73,7 +111,7 @@ class _StubAdapter implements HttpClientAdapter {
   ) async {
     return ResponseBody.fromString(
       jsonEncode(envelope),
-      200,
+      statusCode,
       headers: <String, List<String>>{
         Headers.contentTypeHeader: <String>['application/json'],
       },

@@ -98,6 +98,82 @@ func TestMediaTokenExpires(t *testing.T) {
 	}
 }
 
+func TestMediaTokenRequiresExpiration(t *testing.T) {
+	auth := newTestAuth()
+	now := time.Now()
+	claims := MediaClaims{
+		UserID:    1,
+		EpisodeID: 5,
+		TokenUse:  mediaTokenUse,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:   tokenIssuer,
+			Audience: jwt.ClaimStrings{mediaAudience},
+			IssuedAt: jwt.NewNumericDate(now),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secret, _ := auth.snapshot()
+	signed, err := token.SignedString(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ParseMediaToken(signed, 5); err == nil {
+		t.Fatal("media token without exp must be rejected")
+	}
+}
+
+func TestMediaTokenRejectsInvalidClaims(t *testing.T) {
+	auth := newTestAuth()
+	now := time.Now()
+	base := MediaClaims{
+		UserID:    1,
+		EpisodeID: 5,
+		TokenUse:  mediaTokenUse,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    tokenIssuer,
+			Audience:  jwt.ClaimStrings{mediaAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*MediaClaims)
+	}{
+		{name: "wrong issuer", mutate: func(c *MediaClaims) { c.Issuer = "other" }},
+		{name: "wrong audience", mutate: func(c *MediaClaims) { c.Audience = jwt.ClaimStrings{"other"} }},
+		{name: "wrong token use", mutate: func(c *MediaClaims) { c.TokenUse = "login" }},
+		{name: "non-positive user", mutate: func(c *MediaClaims) { c.UserID = 0 }},
+		{name: "non-positive episode", mutate: func(c *MediaClaims) { c.EpisodeID = 0 }},
+	}
+
+	secret, _ := auth.snapshot()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			claims := base
+			tc.mutate(&claims)
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			signed, err := token.SignedString(secret)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := auth.ParseMediaToken(signed, 5); err == nil {
+				t.Fatal("invalid media claims must be rejected")
+			}
+		})
+	}
+
+	wronglySigned := jwt.NewWithClaims(jwt.SigningMethodHS256, base)
+	signed, err := wronglySigned.SignedString([]byte("different-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ParseMediaToken(signed, 5); err == nil {
+		t.Fatal("media token with wrong signature must be rejected")
+	}
+}
+
 func TestUpdateConfigChangesSigningKey(t *testing.T) {
 	auth := newTestAuth()
 	token, _, err := auth.IssueToken(models.User{ID: 1})

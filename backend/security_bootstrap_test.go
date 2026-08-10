@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fan-web/config"
@@ -60,29 +62,33 @@ admin:
 }
 
 func TestBootstrapInsecureSecretRotated(t *testing.T) {
-	bootstrapTestDB(t)
-	path := writeConfig(t, `
+	for _, insecureSecret := range []string{config.DefaultInsecureSecret, config.TemplateInsecureSecret} {
+		t.Run(insecureSecret, func(t *testing.T) {
+			bootstrapTestDB(t)
+			path := writeConfig(t, `
 server:
   port: 8080
 jwt:
-  secret: default-secret
+  secret: `+insecureSecret+`
 admin:
   username: admin
 `)
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Configured = true
-	if _, err := database.CreateUser("admin", "password", true); err != nil {
-		t.Fatal(err)
-	}
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Configured = true
+			if _, err := database.CreateUser("admin", "password", true); err != nil {
+				t.Fatal(err)
+			}
 
-	if err := prepareConfiguredInstance(path, cfg); err != nil {
-		t.Fatal(err)
-	}
-	if config.IsInsecureJWTSecret(cfg.JWT.Secret) {
-		t.Fatal("expected secret to be rotated away from insecure value")
+			if err := prepareConfiguredInstance(path, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if config.IsInsecureJWTSecret(cfg.JWT.Secret) {
+				t.Fatal("expected secret to be rotated away from insecure value")
+			}
+		})
 	}
 }
 
@@ -166,8 +172,12 @@ admin:
 
 func TestBootstrapSaveFailureRefusesStartup(t *testing.T) {
 	bootstrapTestDB(t)
-	// 父目录不存在：保存必然失败。
-	path := filepath.Join(t.TempDir(), "missing", "config.yaml")
+	// 目标路径是现有目录：PreflightSave 可通过，但最终 Rename 必然失败，
+	// 从而真实覆盖“管理员已创建后保存失败”的回滚路径。
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cfg := config.Default()
 	cfg.Configured = true
 	cfg.JWT.Secret = "default-secret"
@@ -185,6 +195,35 @@ func TestBootstrapSaveFailureRefusesStartup(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected rolled-back admin, got %d admins", count)
+	}
+}
+
+func TestBootstrapReportsRollbackFailure(t *testing.T) {
+	bootstrapTestDB(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Configured = true
+	cfg.JWT.Secret = "default-secret"
+	cfg.Admin.Username = "admin"
+	cfg.Admin.LegacyPassword = "password"
+
+	err := prepareConfiguredInstanceWithDelete(path, cfg, func(userID int64) error {
+		if userID <= 0 {
+			t.Fatalf("rollback must receive the created user ID, got %d", userID)
+		}
+		return errors.New("forced rollback failure")
+	})
+	if err == nil {
+		t.Fatal("expected bootstrap to report save and rollback failures")
+	}
+	message := err.Error()
+	for _, expected := range []string{"迁移配置失败", "管理员回滚失败", "用户 ID", "人工检查数据库"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("expected error to contain %q, got %q", expected, message)
+		}
 	}
 }
 

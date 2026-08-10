@@ -37,19 +37,29 @@ func setupRBAC(t *testing.T) (*httptest.ResponseRecorder, *gin.Engine, *services
 		t.Fatal(err)
 	}
 	auth := services.NewAuthService("rbac-secret", 24*60*60*1e9)
-	scanner := services.NewScannerService(t.TempDir())
-	animeHandler := NewAnimeHandler(services.NewBangumiService(), scanner)
+	rootPath := t.TempDir()
+	scanner := services.NewScannerService(rootPath)
+	bangumiService := services.NewBangumiService()
+	animeHandler := NewAnimeHandler(bangumiService, scanner)
+	episodeHandler := NewEpisodeHandler(auth, scanner)
+	libraryHandler := NewLibraryHandler(services.NewLibraryService(bangumiService, rootPath))
+	bangumiHandler := NewBangumiHandler(bangumiService)
 
 	router := gin.New()
 	protected := router.Group("/api")
 	protected.Use(middleware.JWTAuth(auth))
 	protected.GET("/animes", animeHandler.List)
+	protected.GET("/progress/:episode_id", episodeHandler.GetProgress)
+	protected.POST("/progress/:episode_id", episodeHandler.ReportProgress)
 	manager := protected.Group("")
 	manager.Use(middleware.RequireAdmin)
 	manager.POST("/animes", animeHandler.Create)
 	manager.PUT("/animes/:id", animeHandler.Update)
 	manager.DELETE("/animes/:id", animeHandler.Delete)
 	manager.POST("/animes/:id/scan", animeHandler.Scan)
+	manager.POST("/library/scan", libraryHandler.Scan)
+	manager.GET("/bangumi/search", bangumiHandler.Search)
+	manager.GET("/bangumi/subject/:id", bangumiHandler.Subject)
 
 	return httptest.NewRecorder(), router, auth, admin
 }
@@ -108,6 +118,15 @@ func TestOrdinaryUserDeniedFromWriteEndpoints(t *testing.T) {
 	if code := doRBACRequest(t, router, ordinaryToken, http.MethodPost, "/api/animes/"+animeID+"/scan", nil); code != 2002 {
 		t.Fatalf("POST /animes/:id/scan expected 2002, got %d", code)
 	}
+	if code := doRBACRequest(t, router, ordinaryToken, http.MethodPost, "/api/library/scan", nil); code != 2002 {
+		t.Fatalf("POST /library/scan expected 2002, got %d", code)
+	}
+	if code := doRBACRequest(t, router, ordinaryToken, http.MethodGet, "/api/bangumi/search?keyword=test", nil); code != 2002 {
+		t.Fatalf("GET /bangumi/search expected 2002, got %d", code)
+	}
+	if code := doRBACRequest(t, router, ordinaryToken, http.MethodGet, "/api/bangumi/subject/1", nil); code != 2002 {
+		t.Fatalf("GET /bangumi/subject/:id expected 2002, got %d", code)
+	}
 
 	_, afterCount, err := database.ListAnimes(1, 100, "", ordinary.ID)
 	if err != nil {
@@ -128,6 +147,23 @@ func TestOrdinaryUserDeniedFromWriteEndpoints(t *testing.T) {
 	adminToken, _, err := auth.IssueToken(*admin)
 	if err != nil {
 		t.Fatal(err)
+	}
+	adminChecks := []struct {
+		method string
+		path   string
+		body   []byte
+	}{
+		{method: http.MethodPost, path: "/api/animes", body: []byte(`{}`)},
+		{method: http.MethodPut, path: "/api/animes/0", body: updateBody},
+		{method: http.MethodPost, path: "/api/animes/99999/scan"},
+		{method: http.MethodPost, path: "/api/library/scan"},
+		{method: http.MethodGet, path: "/api/bangumi/search"},
+		{method: http.MethodGet, path: "/api/bangumi/subject/0"},
+	}
+	for _, check := range adminChecks {
+		if code := doRBACRequest(t, router, adminToken, check.method, check.path, check.body); code == 2002 {
+			t.Fatalf("admin must enter %s %s", check.method, check.path)
+		}
 	}
 	if code := doRBACRequest(t, router, adminToken, http.MethodDelete, "/api/animes/"+animeID, nil); code != 0 {
 		t.Fatalf("admin DELETE /animes/:id expected success code 0, got %d", code)
@@ -172,5 +208,28 @@ func TestOrdinaryUserCanReadAndWriteOwnProgress(t *testing.T) {
 	}
 	if listResp.Code != 0 {
 		t.Fatalf("ordinary user should read anime list, got %d", listResp.Code)
+	}
+
+	episodeID := strconv.FormatInt(episodes[0].ID, 10)
+	progressBody := []byte(`{"position":123,"watched":false}`)
+	if code := doRBACRequest(t, router, token, http.MethodPost, "/api/progress/"+episodeID, progressBody); code != 0 {
+		t.Fatalf("ordinary user should report own progress, got %d", code)
+	}
+
+	progressRecorder := httptest.NewRecorder()
+	progressRequest := httptest.NewRequest(http.MethodGet, "/api/progress/"+episodeID, nil)
+	progressRequest.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(progressRecorder, progressRequest)
+	var progressResp struct {
+		Code int `json:"code"`
+		Data struct {
+			Position int `json:"position"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(progressRecorder.Body.Bytes(), &progressResp); err != nil {
+		t.Fatal(err)
+	}
+	if progressResp.Code != 0 || progressResp.Data.Position != 123 {
+		t.Fatalf("ordinary user should read own progress, got %s", progressRecorder.Body.String())
 	}
 }

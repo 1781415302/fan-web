@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 )
 
 var fakePNG = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52}
+var fakeGIF = []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
 
 func setupCoverHandler(t *testing.T) *AnimeHandler {
 	t.Helper()
@@ -41,6 +43,12 @@ func (rt *trustedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	parsed, _ := url.Parse(rt.origin + req.URL.Path)
 	rewritten.URL = parsed
 	return http.DefaultTransport.RoundTrip(rewritten)
+}
+
+func coverClientFor(origin string) *http.Client {
+	client := newCoverClient()
+	client.Transport = &trustedTransport{origin: origin}
+	return client
 }
 
 func serveCover(t *testing.T, handler *AnimeHandler, animeID int64) *httptest.ResponseRecorder {
@@ -87,7 +95,7 @@ func TestCoverAcceptsTrustedPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.coverClient = &http.Client{Transport: &trustedTransport{origin: origin.URL}}
+	handler.coverClient = coverClientFor(origin.URL)
 
 	recorder := serveCover(t, handler, anime.ID)
 	if recorder.Code != http.StatusOK {
@@ -126,7 +134,7 @@ func TestCoverRedirectToUntrustedBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.coverClient = &http.Client{Transport: &trustedTransport{origin: trusted.URL}}
+	handler.coverClient = coverClientFor(trusted.URL)
 
 	recorder := serveCover(t, handler, anime.ID)
 	if recorder.Code == http.StatusOK {
@@ -148,7 +156,7 @@ func TestCoverRejectsOversizeKnownLength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.coverClient = &http.Client{Transport: &trustedTransport{origin: origin.URL}}
+	handler.coverClient = coverClientFor(origin.URL)
 
 	recorder := serveCover(t, handler, anime.ID)
 	if recorder.Code == http.StatusOK {
@@ -168,10 +176,80 @@ func TestCoverRejectsSVGOrWrongContentType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.coverClient = &http.Client{Transport: &trustedTransport{origin: origin.URL}}
+	handler.coverClient = coverClientFor(origin.URL)
 
 	recorder := serveCover(t, handler, anime.ID)
 	if recorder.Code == http.StatusOK {
 		t.Fatalf("image/svg+xml must be rejected, got %d", recorder.Code)
+	}
+}
+
+func TestCoverRejectsTooManyRedirects(t *testing.T) {
+	handler := setupCoverHandler(t)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/r0":
+			http.Redirect(w, r, "https://lain.bgm.tv/r1", http.StatusFound)
+		case "/r1":
+			http.Redirect(w, r, "https://lain.bgm.tv/r2", http.StatusFound)
+		case "/r2":
+			http.Redirect(w, r, "https://lain.bgm.tv/r3", http.StatusFound)
+		case "/r3":
+			http.Redirect(w, r, "https://lain.bgm.tv/r4", http.StatusFound)
+		default:
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(fakePNG)
+		}
+	}))
+	defer origin.Close()
+
+	anime, err := database.CreateAnime(&models.Anime{Title: "Redirect Loop", Cover: "https://lain.bgm.tv/r0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.coverClient = coverClientFor(origin.URL)
+	if recorder := serveCover(t, handler, anime.ID); recorder.Code == http.StatusOK {
+		t.Fatal("more than three redirects must be rejected")
+	}
+}
+
+func TestCoverRejectsOversizeUnknownLength(t *testing.T) {
+	handler := setupCoverHandler(t)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		_, _ = w.Write(fakePNG)
+		_, _ = w.Write(bytes.Repeat([]byte{0}, maxCoverBytes+1-len(fakePNG)))
+	}))
+	defer origin.Close()
+
+	anime, err := database.CreateAnime(&models.Anime{Title: "Chunked Big", Cover: "https://lain.bgm.tv/chunked.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.coverClient = coverClientFor(origin.URL)
+	if recorder := serveCover(t, handler, anime.ID); recorder.Code == http.StatusOK {
+		t.Fatal("unknown-length oversized cover must be rejected")
+	}
+}
+
+func TestCoverRejectsDeclaredAndDetectedTypeMismatch(t *testing.T) {
+	handler := setupCoverHandler(t)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(fakeGIF)
+	}))
+	defer origin.Close()
+
+	anime, err := database.CreateAnime(&models.Anime{Title: "Mismatched", Cover: "https://lain.bgm.tv/mismatch.png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.coverClient = coverClientFor(origin.URL)
+	if recorder := serveCover(t, handler, anime.ID); recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("content-type mismatch must be 415, got %d", recorder.Code)
 	}
 }

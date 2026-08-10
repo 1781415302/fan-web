@@ -14,6 +14,10 @@ import (
 // 必须在 database.Init 之后、AuthService 创建之前调用。
 // 只使用配置副本工作，磁盘保存成功后才更新传入的内存配置。
 func prepareConfiguredInstance(configPath string, cfg *config.Config) error {
+	return prepareConfiguredInstanceWithDelete(configPath, cfg, database.DeleteUser)
+}
+
+func prepareConfiguredInstanceWithDelete(configPath string, cfg *config.Config, deleteUser func(int64) error) error {
 	if !cfg.Configured {
 		// 未初始化，交给 Web 初始化页面处理。
 		return nil
@@ -57,7 +61,14 @@ func prepareConfiguredInstance(configPath string, cfg *config.Config) error {
 			}
 			if mustRewrite {
 				if err := next.Save(configPath); err != nil {
-					_ = database.DeleteUser(user.ID)
+					if rollbackErr := deleteUser(user.ID); rollbackErr != nil {
+						return fmt.Errorf(
+							"迁移配置失败: %v；管理员回滚失败（用户 ID %d）: %v，请人工检查数据库",
+							err,
+							user.ID,
+							rollbackErr,
+						)
+					}
 					return fmt.Errorf("迁移配置失败: %w", err)
 				}
 			}

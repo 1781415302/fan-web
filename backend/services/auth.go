@@ -175,6 +175,7 @@ func (s *AuthService) ParseMediaToken(tokenString string, expectedEpisodeID int6
 	},
 		jwt.WithIssuer(tokenIssuer),
 		jwt.WithAudience(mediaAudience),
+		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
 		return nil, err

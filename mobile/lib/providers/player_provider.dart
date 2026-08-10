@@ -262,22 +262,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
     final loginToken = authState.token ?? config.token;
-
-    try {
-      final mediaApi = ref.read(mediaApiProvider);
-      final result = await mediaApi.fetchMediaToken(config.episodeId);
-      final url = buildStreamUrlWithMediaToken(serverUrl, config.episodeId, result.token);
-      return Media(
-        url,
-        start: _savedPosition > 0 ? Duration(seconds: _savedPosition) : null,
-      );
-    } on MediaTokenUnsupported {
-      final url = buildLegacyStreamUrl(serverUrl, config.episodeId, loginToken);
-      return Media(
-        url,
-        start: _savedPosition > 0 ? Duration(seconds: _savedPosition) : null,
-      );
-    }
+    final mediaApi = ref.read(mediaApiProvider);
+    return buildPlayerMedia(
+      requestMediaToken: mediaApi.fetchMediaToken,
+      serverUrl: serverUrl,
+      episodeId: config.episodeId,
+      loginToken: loginToken,
+      startPositionSeconds: _savedPosition,
+    );
   }
 
   void _handlePlaying(bool playing) {
@@ -751,6 +743,28 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
 bool _isPositionNear(Duration actual, Duration target) {
   return (actual.inSeconds - target.inSeconds).abs() <= 2;
+}
+
+Future<Media> buildPlayerMedia({
+  required Future<MediaTokenResult> Function(int episodeId) requestMediaToken,
+  required String serverUrl,
+  required int episodeId,
+  required String loginToken,
+  required int startPositionSeconds,
+}) async {
+  String url;
+  try {
+    final result = await requestMediaToken(episodeId);
+    url = buildStreamUrlWithMediaToken(serverUrl, episodeId, result.token);
+  } on MediaTokenUnsupported {
+    url = buildLegacyStreamUrl(serverUrl, episodeId, loginToken);
+  }
+  return Media(
+    url,
+    start: startPositionSeconds > 0
+        ? Duration(seconds: startPositionSeconds)
+        : null,
+  );
 }
 
 // Legacy 播放 URL：仅当服务器不支持媒体票据时回退使用（登录 JWT 走 query token）。

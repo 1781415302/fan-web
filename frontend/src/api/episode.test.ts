@@ -15,7 +15,7 @@ describe('episode media URLs', () => {
     expect(url).toContain('media_token=media-token-example')
     expect(url).toContain('/episodes/7/stream')
     expect(url).not.toContain('SHOULD-NOT-APPEAR')
-    expect(url).not.toMatch(/[?expect(url).not.toContain('token=')]token=/)
+    expect(url).not.toMatch(/[?&]token=/)
   })
 
   it('subtitle URL uses media_token with track', () => {
@@ -23,6 +23,6 @@ describe('episode media URLs', () => {
     expect(url).toContain('media_token=media-token-example')
     expect(url).toContain('track=3')
     expect(url).not.toContain('SHOULD-NOT-APPEAR')
-    expect(url).not.toMatch(/[?expect(url).not.toContain('token=')]token=/)
+    expect(url).not.toMatch(/[?&]token=/)
   })
 })

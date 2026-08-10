@@ -66,7 +66,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(middleware.RequestLogger(log.Writer()))
-	r.Use(gin.Recovery())
+	r.Use(middleware.Recovery(log.Writer()))
 	r.Use(middleware.CORS())
 	r.Use(middleware.LimitJSONBody(64 << 10))
 	if err := r.SetTrustedProxies([]string{"127.0.0.1"}); err != nil {
