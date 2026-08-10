@@ -7,6 +7,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 
+import '../api/media_api.dart';
 import '../api/progress_api.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
@@ -237,15 +238,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
 
     try {
-      await player.open(
-        buildStreamMedia(
-          config.serverUrl,
-          config.episodeId,
-          config.token,
-          _savedPosition,
-        ),
-        play: false,
-      );
+      final Media media = await _buildOpenMedia();
+      if (_disposed || _disposing) {
+        return;
+      }
+      await player.open(media, play: false);
       if (_disposed || _disposing) {
         return;
       }
@@ -257,6 +254,29 @@ class PlayerNotifier extends Notifier<PlayerState> {
     } catch (_) {
       _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       return;
+    }
+  }
+
+  // 优先使用媒体票据；仅当服务器不支持（业务码/HTTP 404）时回退旧 token URL。
+  Future<Media> _buildOpenMedia() async {
+    final authState = ref.read(authProvider);
+    final serverUrl = authState.serverUrl ?? config.serverUrl;
+    final loginToken = authState.token ?? config.token;
+
+    try {
+      final mediaApi = ref.read(mediaApiProvider);
+      final result = await mediaApi.fetchMediaToken(config.episodeId);
+      final url = buildStreamUrlWithMediaToken(serverUrl, config.episodeId, result.token);
+      return Media(
+        url,
+        start: _savedPosition > 0 ? Duration(seconds: _savedPosition) : null,
+      );
+    } on MediaTokenUnsupported {
+      final url = buildLegacyStreamUrl(serverUrl, config.episodeId, loginToken);
+      return Media(
+        url,
+        start: _savedPosition > 0 ? Duration(seconds: _savedPosition) : null,
+      );
     }
   }
 
@@ -733,19 +753,20 @@ bool _isPositionNear(Duration actual, Duration target) {
   return (actual.inSeconds - target.inSeconds).abs() <= 2;
 }
 
-String buildStreamUrl(String serverUrl, int episodeId, String token) {
+// Legacy 播放 URL：仅当服务器不支持媒体票据时回退使用（登录 JWT 走 query token）。
+String buildStreamUrl(String serverUrl, int episodeId, String loginToken) {
   final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-  return '$normalized/api/episodes/$episodeId/stream?token=${Uri.encodeComponent(token)}';
+  return '$normalized/api/episodes/$episodeId/stream?token=${Uri.encodeComponent(loginToken)}';
 }
 
 Media buildStreamMedia(
   String serverUrl,
   int episodeId,
-  String token,
+  String loginToken,
   int startPositionSeconds,
 ) {
   return Media(
-    buildStreamUrl(serverUrl, episodeId, token),
+    buildStreamUrl(serverUrl, episodeId, loginToken),
     start: startPositionSeconds > 0
         ? Duration(seconds: startPositionSeconds)
         : null,

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/anime_api.dart';
+import '../api/media_api.dart';
 import '../api/progress_api.dart';
 import '../models/anime.dart';
 import '../utils/api_error.dart';
@@ -11,6 +12,10 @@ import 'auth_provider.dart';
 
 final animeApiProvider = Provider<AnimeApi>((ref) {
   return AnimeApi(ref.watch(apiClientProvider));
+});
+
+final mediaApiProvider = Provider<MediaApi>((ref) {
+  return MediaApi(ref.watch(apiClientProvider));
 });
 
 final progressApiProvider = Provider<ProgressApi>((ref) {
