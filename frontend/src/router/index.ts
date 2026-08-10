@@ -38,7 +38,7 @@ const routes = [
   {
     path: '/animes/new',
     name: 'anime-add',
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresAdmin: true },
     component: () => import('../views/AnimeAddView.vue'),
   },
   {

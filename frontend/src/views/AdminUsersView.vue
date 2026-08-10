@@ -122,11 +122,14 @@ function formatDate(value: string) {
       <form class="create-form" @submit.prevent="handleCreate">
         <div class="form-field">
           <label for="new-username">用户名</label>
-          <input id="new-username" v-model="form.username" type="text" autocomplete="username" required />
+          <input id="new-username" v-model="form.username" type="text" autocomplete="username" maxlength="64" required />
         </div>
         <div class="form-field">
           <label for="new-password">密码</label>
           <input id="new-password" v-model="form.password" type="password" autocomplete="new-password" required />
+          <p class="field-hint" style="margin-top: 6px; color: var(--text-muted-color); font-size: 12px;">
+            至少 8 个字符，最多 72 字节。
+          </p>
         </div>
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="form-actions">

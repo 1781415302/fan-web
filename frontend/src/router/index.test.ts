@@ -50,6 +50,22 @@ describe('router guards', () => {
     expect(route.name).toBe('home')
   })
 
+  it('redirects non-admin away from anime-add route', async () => {
+    const store = useAuthStore()
+    store.setSession('token', { id: 2, username: 'normal', is_admin: false, created_at: '' })
+    const router = makeRouter(async () => true)
+    const route = await go(router, '/animes/new')
+    expect(route.name).toBe('home')
+  })
+
+  it('allows admin to reach anime-add route', async () => {
+    const store = useAuthStore()
+    store.setSession('token', { id: 1, username: 'root', is_admin: true, created_at: '' })
+    const router = makeRouter(async () => true)
+    const route = await go(router, '/animes/new')
+    expect(route.name).toBe('anime-add')
+  })
+
   it('allows admin to reach admin route', async () => {
     const store = useAuthStore()
     store.setSession('token', { id: 1, username: 'root', is_admin: true, created_at: '' })

@@ -25,6 +25,18 @@ async function handleSubmit() {
     errorMessage.value = '请填写管理员用户名和密码'
     return
   }
+  if (username.value.trim().length > 64) {
+    errorMessage.value = '用户名最多 64 个字符'
+    return
+  }
+  if (password.value.length < 8) {
+    errorMessage.value = '密码至少 8 个字符'
+    return
+  }
+  if (new TextEncoder().encode(password.value).length > 72) {
+    errorMessage.value = '密码最多 72 字节'
+    return
+  }
   if (password.value !== confirmPassword.value) {
     errorMessage.value = '两次输入的密码不一致'
     return
@@ -73,12 +85,13 @@ async function handleSubmit() {
       <form class="setup-form" @submit.prevent="handleSubmit">
         <div class="form-field">
           <label for="username">管理员用户名</label>
-          <input id="username" v-model="username" name="username" type="text" autocomplete="username" required autofocus />
+          <input id="username" v-model="username" name="username" type="text" autocomplete="username" maxlength="64" required autofocus />
         </div>
 
         <div class="form-field">
           <label for="password">密码</label>
           <input id="password" v-model="password" name="password" type="password" autocomplete="new-password" required />
+          <p class="field-hint">至少 8 个字符，最多 72 字节。</p>
         </div>
 
         <div class="form-field">

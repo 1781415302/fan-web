@@ -1,8 +1,8 @@
-import api, { TOKEN_STORAGE_KEY, type ApiResponse, unwrap } from './index'
+import api, { type ApiResponse, unwrap } from './index'
 
-export function getStreamUrl(episodeId: number): string {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY) || ''
-  return `/api/episodes/${episodeId}/stream?token=${encodeURIComponent(token)}`
+export interface MediaTokenData {
+  token: string
+  expires_at: string
 }
 
 export interface SubtitleTrack {
@@ -12,14 +12,24 @@ export interface SubtitleTrack {
   label: string
 }
 
-export async function getSubtitleTracks(episodeId: number): Promise<SubtitleTrack[]> {
-  const response = await api.get<ApiResponse<SubtitleTrack[]>>(
-    `/episodes/${episodeId}/subtitles`,
-  )
+// requestMediaToken 用登录 JWT（Axios 拦截器自动带）请求当前 episode 的短期媒体票据。
+export async function requestMediaToken(episodeId: number): Promise<MediaTokenData> {
+  const response = await api.post<ApiResponse<MediaTokenData>>(`/episodes/${episodeId}/media-token`)
   return unwrap(response)
 }
 
-export function getSubtitleUrl(episodeId: number, trackNumber: number): string {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY) || ''
-  return `/api/episodes/${episodeId}/subtitles?track=${trackNumber}&token=${encodeURIComponent(token)}`
+// getSubtitleTracks 走 Axios Bearer（登录鉴权）。
+export async function getSubtitleTracks(episodeId: number): Promise<SubtitleTrack[]> {
+  const response = await api.get<ApiResponse<SubtitleTrack[]>>(`/episodes/${episodeId}/subtitles`)
+  return unwrap(response)
+}
+
+// getStreamUrl 使用媒体票据；最终 URL 中不出现登录 JWT。
+export function getStreamUrl(episodeId: number, mediaToken: string): string {
+  return `/api/episodes/${episodeId}/stream?media_token=${encodeURIComponent(mediaToken)}`
+}
+
+// getSubtitleUrl 使用同一媒体票据访问 VTT。
+export function getSubtitleUrl(episodeId: number, trackNumber: number, mediaToken: string): string {
+  return `/api/episodes/${episodeId}/subtitles?track=${trackNumber}&media_token=${encodeURIComponent(mediaToken)}`
 }

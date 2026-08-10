@@ -5,11 +5,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api'
 import { deleteAnime, getAnime, listEpisodes, scanAnime, updateAnime } from '../api/anime'
 import { getAnimeProgress } from '../api/progress'
+import { useAuthStore } from '../stores/auth'
 import type { Anime, Episode } from '../types/anime'
 import type { AnimeProgress } from '../types/progress'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const animeId = computed(() => Number(route.params.id))
 const anime = ref<Anime | null>(null)
 const episodes = ref<Episode[]>([])
@@ -223,11 +225,13 @@ watch(animeId, () => void load(), { immediate: true })
             <button v-if="continueEpisode" type="button" class="primary-btn" @click="openEpisode(continueEpisode.id)">
               继续播放
             </button>
-            <button type="button" class="action-btn" @click="openEdit">编辑信息</button>
-            <button type="button" class="action-btn" :disabled="scanning" @click="handleScan">
-              {{ scanning ? '扫描中...' : '扫描文件' }}
-            </button>
-            <button type="button" class="action-btn danger" @click="handleDelete">删除番剧</button>
+            <template v-if="authStore.isAdmin">
+              <button type="button" class="action-btn" @click="openEdit">编辑信息</button>
+              <button type="button" class="action-btn" :disabled="scanning" @click="handleScan">
+                {{ scanning ? '扫描中...' : '扫描文件' }}
+              </button>
+              <button type="button" class="action-btn danger" @click="handleDelete">删除番剧</button>
+            </template>
           </div>
           <p v-if="scanMessage" class="scan-msg" role="status">{{ scanMessage }}</p>
           <p v-if="scanError" class="error-msg" role="alert">{{ scanError }}</p>
@@ -249,7 +253,7 @@ watch(animeId, () => void load(), { immediate: true })
         </p>
       </section>
 
-      <form v-if="showEdit" class="edit-form" @submit.prevent="saveEdit">
+      <form v-if="showEdit && authStore.isAdmin" class="edit-form" @submit.prevent="saveEdit">
         <div class="edit-heading">
           <div>
             <p class="section-kicker">Metadata</p>

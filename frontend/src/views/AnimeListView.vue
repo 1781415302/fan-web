@@ -5,10 +5,12 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '../api'
 import { listAnimes } from '../api/anime'
 import { scanLibrary } from '../api/library'
+import { useAuthStore } from '../stores/auth'
 import type { Anime } from '../types/anime'
 import type { LibraryScanResult } from '../types/library'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const animes = ref<Anime[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -99,7 +101,7 @@ onBeforeUnmount(() => {
         <h1 id="anime-list-title">番剧库</h1>
         <p class="page-description">浏览已收录内容，快速回到上次观看的位置。</p>
       </div>
-      <div class="page-actions">
+      <div v-if="authStore.isAdmin" class="page-actions">
         <button type="button" class="action-btn" :disabled="scanning" @click="handleLibraryScan">
           {{ scanning ? '扫描中...' : '库扫描' }}
         </button>
@@ -173,7 +175,8 @@ onBeforeUnmount(() => {
       </article>
     </div>
     <div v-else-if="animes.length === 0" class="empty-state">
-      暂无番剧，点击“添加番剧”开始建立库
+      <template v-if="authStore.isAdmin">暂无番剧，点击“添加番剧”开始建立库</template>
+      <template v-else>暂无番剧</template>
     </div>
     <div v-else class="anime-grid">
       <button
