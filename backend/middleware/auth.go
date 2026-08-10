@@ -104,51 +104,136 @@ func CurrentClaims(c *gin.Context) (*services.Claims, bool) {
 	return claims, ok
 }
 
-type LoginRateLimiter struct {
-	mu       sync.Mutex
-	attempts map[string][]time.Time
-	limit    int
-	window   time.Duration
+type failureEntry struct {
+	count int
+	last  time.Time
 }
 
-func NewLoginRateLimiter(limit int, window time.Duration) *LoginRateLimiter {
-	return &LoginRateLimiter{
-		attempts: make(map[string][]time.Time),
-		limit:    limit,
-		window:   window,
+// LoginRateLimiter 基于来源 IP 的失败尝试限流器。
+// 只统计失败尝试，成功登录会清空对应来源；带容量上限与过期清理。
+type LoginRateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string]failureEntry
+	limit    int
+	window   time.Duration
+	maxKeys  int
+	now      func() time.Time
+}
+
+// LoginLimiterOption 允许测试注入时钟。
+type LoginLimiterOption func(*LoginRateLimiter)
+
+// WithLoginLimiterClock 注入时钟函数。
+func WithLoginLimiterClock(clock func() time.Time) LoginLimiterOption {
+	return func(l *LoginRateLimiter) {
+		l.now = clock
 	}
 }
 
+// NewLoginRateLimiter 创建限流器。窗口内最多 limit 次失败尝试，来源上限 maxKeys。
+func NewLoginRateLimiter(limit int, window time.Duration, opts ...LoginLimiterOption) *LoginRateLimiter {
+	l := &LoginRateLimiter{
+		attempts: make(map[string]failureEntry),
+		limit:    limit,
+		window:   window,
+		maxKeys:  4096,
+		now:      time.Now,
+	}
+	for _, opt := range opts {
+		opt(l)
+	}
+	return l
+}
+
+// allowLocked 清理某来源窗口外记录后判断是否允许尝试。
+func (l *LoginRateLimiter) allowLocked(source string, now time.Time) bool {
+	entry, ok := l.attempts[source]
+	if !ok {
+		return true
+	}
+	if entry.count >= l.limit && now.Sub(entry.last) < l.window {
+		return false
+	}
+	return true
+}
+
+// Allow 只检查窗口内失败次数，不记录任何请求。
+func (l *LoginRateLimiter) Allow(source string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	return l.allowLocked(source, now)
+}
+
+// RecordFailure 仅在认证失败时记录一次失败。
+func (l *LoginRateLimiter) RecordFailure(source string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	entry, ok := l.attempts[source]
+	if !ok {
+		l.attempts[source] = failureEntry{count: 1, last: now}
+	} else {
+		if now.Sub(entry.last) >= l.window {
+			entry = failureEntry{count: 1, last: now}
+		} else {
+			entry.count++
+			entry.last = now
+		}
+		l.attempts[source] = entry
+	}
+	l.enforceCapacityLocked(now)
+}
+
+// Reset 成功登录后清空对应来源的全部记录。
+func (l *LoginRateLimiter) Reset(source string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, source)
+}
+
+// enforceCapacityLocked 在写入后执行过期清理与容量上限淘汰。
+func (l *LoginRateLimiter) enforceCapacityLocked(now time.Time) {
+	// 至少每个窗口执行一次全表过期清理：简单起见每次写入时清理过期键。
+	for source, entry := range l.attempts {
+		if now.Sub(entry.last) >= l.window {
+			delete(l.attempts, source)
+		}
+	}
+	if len(l.attempts) <= l.maxKeys {
+		return
+	}
+	// 超过上限：淘汰"最后一次失败最早"的来源。允许越界，保留新来源。
+	oldestSource := ""
+	var oldestLast time.Time
+	for source, entry := range l.attempts {
+		if oldestSource == "" || entry.last.Before(oldestLast) {
+			oldestSource = source
+			oldestLast = entry.last
+		}
+	}
+	if oldestSource != "" {
+		delete(l.attempts, oldestSource)
+	}
+}
+
+// Middleware 返回记录失败与检查限流的 Gin 中间件。
+// 注意：中间件只负责"检查是否被限流"，失败计数由 AuthHandler 显式调用。
 func (l *LoginRateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		key := clientIP(c)
-		now := time.Now()
-		cutoff := now.Add(-l.window)
-
-		l.mu.Lock()
-		attempts := l.attempts[key]
-		fresh := attempts[:0]
-		for _, attempt := range attempts {
-			if attempt.After(cutoff) {
-				fresh = append(fresh, attempt)
-			}
-		}
-		if len(fresh) >= l.limit {
-			l.attempts[key] = fresh
-			l.mu.Unlock()
+		if !l.Allow(ClientIP(c)) {
 			utils.Error(c, utils.CodeTooManyRequests, "登录请求过于频繁，请稍后再试")
 			c.Abort()
 			return
 		}
-		l.attempts[key] = append(fresh, now)
-		l.mu.Unlock()
-
 		c.Next()
 	}
 }
 
-func clientIP(c *gin.Context) string {
-	if ip := c.ClientIP(); ip != "" {
+// ClientIP 返回经 Gin 可信代理处理的客户端 IP。
+func ClientIP(c *gin.Context) string {
+	ip := c.ClientIP()
+	if ip != "" {
 		return ip
 	}
 	host, _, err := net.SplitHostPort(strings.TrimSpace(c.Request.RemoteAddr))

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -152,4 +153,60 @@ func TestJWTAuthAdminRoleFromDatabase(t *testing.T) {
 func promoteToAdmin(userID int64) error {
 	_, err := database.DB.Exec("UPDATE users SET is_admin = 1 WHERE id = ?", userID)
 	return err
+}
+
+func TestLoginRateLimiterOnlyCountsFailures(t *testing.T) {
+	now := time.Unix(1000, 0)
+	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return now }))
+
+	for i := 0; i < 5; i++ {
+		limiter.RecordFailure("1.1.1.1")
+	}
+	if limiter.Allow("1.1.1.1") {
+		t.Fatal("5 failures should block within window")
+	}
+	// 成功登录清空。
+	limiter.Reset("1.1.1.1")
+	if !limiter.Allow("1.1.1.1") {
+		t.Fatal("reset should allow again")
+	}
+	// 未失败的来源始终允许。
+	if !limiter.Allow("2.2.2.2") {
+		t.Fatal("no-failure source should always be allowed")
+	}
+}
+
+func TestLoginRateLimiterWindowExpires(t *testing.T) {
+	base := time.Unix(5000, 0)
+	current := base
+	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return current }))
+	for i := 0; i < 5; i++ {
+		limiter.RecordFailure("3.3.3.3")
+	}
+	if limiter.Allow("3.3.3.3") {
+		t.Fatal("should be blocked")
+	}
+	// 越过窗口。
+	current = base.Add(61 * time.Second)
+	if !limiter.Allow("3.3.3.3") {
+		t.Fatal("window expiry should restore access")
+	}
+}
+
+func TestLoginRateLimiterCapacityBound(t *testing.T) {
+	now := time.Unix(9000, 0)
+	limiter := NewLoginRateLimiter(5, time.Minute, WithLoginLimiterClock(func() time.Time { return now }))
+	// 灌入远超上限的来源。
+	for i := 0; i < 5000; i++ {
+		limiter.RecordFailure(time.Now().Format("20060102150405.000000000"))
+		now = now.Add(time.Millisecond)
+	}
+	// 容量之后不应超过 maxKeys（4096），且不 panic。
+	total := 0
+	limiter.mu.Lock()
+	total = len(limiter.attempts)
+	limiter.mu.Unlock()
+	if total > 4096 {
+		t.Fatalf("attempts map exceeded capacity: %d", total)
+	}
 }

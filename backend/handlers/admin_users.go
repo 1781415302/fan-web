@@ -10,6 +10,7 @@ import (
 
 	"fan-web/database"
 	"fan-web/middleware"
+	"fan-web/services"
 	"fan-web/utils"
 )
 
@@ -40,8 +41,8 @@ func (h *AdminUserHandler) Create(c *gin.Context) {
 		return
 	}
 	request.Username = strings.TrimSpace(request.Username)
-	if request.Username == "" || len(request.Username) > 64 || request.Password == "" {
-		utils.Error(c, utils.CodeInvalidParams, "用户名和密码不能为空，用户名不能超过 64 个字符")
+	if err := services.ValidateNewCredentials(request.Username, request.Password); err != nil {
+		utils.Error(c, utils.CodeInvalidParams, err.Error())
 		return
 	}
 
