@@ -15,10 +15,11 @@ import (
 
 type AuthHandler struct {
 	authService *services.AuthService
+	rateLimiter *middleware.LoginRateLimiter
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *services.AuthService, rateLimiter *middleware.LoginRateLimiter) *AuthHandler {
+	return &AuthHandler{authService: authService, rateLimiter: rateLimiter}
 }
 
 type loginRequest struct {
@@ -29,20 +30,25 @@ type loginRequest struct {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var request loginRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
+		h.rateLimiter.RecordFailure(middleware.ClientIP(c))
 		utils.Error(c, utils.CodeInvalidParams, "请求参数错误")
 		return
 	}
 	request.Username = strings.TrimSpace(request.Username)
 	if request.Username == "" || request.Password == "" {
+		h.rateLimiter.RecordFailure(middleware.ClientIP(c))
 		utils.Error(c, utils.CodeInvalidParams, "用户名和密码不能为空")
 		return
 	}
 
 	user, err := database.GetUserByUsername(request.Username)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)) != nil {
+		h.rateLimiter.RecordFailure(middleware.ClientIP(c))
 		utils.Error(c, utils.CodeLoginFailed, "用户名或密码错误")
 		return
 	}
+
+	h.rateLimiter.Reset(middleware.ClientIP(c))
 
 	token, expiresAt, err := h.authService.IssueToken(*user)
 	if err != nil {
