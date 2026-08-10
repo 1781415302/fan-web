@@ -234,7 +234,75 @@ func TestMigrationsRejectsDuplicateAndOutOfOrder(t *testing.T) {
 		{version: 2, name: "a", fn: func(tx *sql.Tx) error { return nil }},
 		{version: 1, name: "b", fn: func(tx *sql.Tx) error { return nil }},
 	}
-	if err := runMigrationsWith(db, outOfOrder); err == nil || !strings.Contains(err.Error(), "升序") {
+	if err := runMigrationsWith(db, outOfOrder); err == nil || !strings.Contains(err.Error(), "连续") {
 		t.Fatalf("期望乱序版本报错，got %v", err)
+	}
+}
+
+func TestMigrationsRejectsDatabaseNewerThanBinary(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "newer.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(schemaMigrationsDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO schema_migrations (version, name) VALUES (1, 'initial_schema'), (2, 'future_schema')",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrationsWith(db, migrations); err == nil || !strings.Contains(err.Error(), "拒绝降级启动") {
+		t.Fatalf("期望未知高版本阻止启动，got %v", err)
+	}
+}
+
+func TestMigrationsRejectsAppliedGap(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "gap.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(schemaMigrationsDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO schema_migrations (version, name) VALUES (1, 'one'), (3, 'three')",
+	); err != nil {
+		t.Fatal(err)
+	}
+	known := []migration{
+		{version: 1, name: "one", fn: func(tx *sql.Tx) error { return nil }},
+		{version: 2, name: "two", fn: func(tx *sql.Tx) error { return nil }},
+		{version: 3, name: "three", fn: func(tx *sql.Tx) error { return nil }},
+	}
+
+	if err := runMigrationsWith(db, known); err == nil || !strings.Contains(err.Error(), "不连续") {
+		t.Fatalf("期望迁移缺口阻止启动，got %v", err)
+	}
+}
+
+func TestMigrationsRejectsAppliedNameMismatch(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "name-mismatch.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(schemaMigrationsDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO schema_migrations (version, name) VALUES (1, 'unexpected_name')",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrationsWith(db, migrations); err == nil || !strings.Contains(err.Error(), "名称不匹配") {
+		t.Fatalf("期望迁移名称不匹配阻止启动，got %v", err)
 	}
 }

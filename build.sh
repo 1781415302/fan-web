@@ -3,10 +3,7 @@
 # 用法: ./build.sh [输出路径，默认 ./dist/fan-web-server]
 set -e
 
-# WSL 运行时路径（原生 Linux node/go）
-NODE_HOME=/tmp/fan-web-node/bin
-GO_HOME=/tmp/fan-web-go/bin
-export PATH="$NODE_HOME:$GO_HOME:$PATH"
+# 使用当前 WSL 的系统 PATH。工具链位置见 AGENTS.md。
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 OUT="${1:-$ROOT/dist/fan-web-server}"

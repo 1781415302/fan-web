@@ -25,7 +25,8 @@ vi.mock('../api', () => ({
 
 import api from '../api'
 
-const mockedApi = vi.mocked(api)
+const mockedGet = vi.mocked(api.get)
+const mockedPost = vi.mocked(api.post)
 
 function newStore() {
   setActivePinia(createPinia())
@@ -35,33 +36,33 @@ function newStore() {
 describe('auth store', () => {
   beforeEach(() => {
     window.localStorage.clear()
-    mockedApi.get.mockReset()
-    mockedApi.post.mockReset()
+    mockedGet.mockReset()
+    mockedPost.mockReset()
   })
 
   it('does not call /auth/me when no token stored', async () => {
     const store = newStore()
     await store.initialize()
-    expect(mockedApi.get).not.toHaveBeenCalled()
+    expect(mockedGet).not.toHaveBeenCalled()
     expect(store.initialized).toBe(true)
     expect(store.isAuthenticated).toBe(false)
   })
 
   it('recovers user when token exists and /auth/me succeeds', async () => {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
-    mockedApi.get.mockResolvedValue({
+    mockedGet.mockResolvedValue({
       data: { code: 0, message: 'ok', data: { id: 1, username: 'alice', is_admin: true, created_at: '' } },
     })
     const store = newStore()
     await store.initialize()
-    expect(mockedApi.get).toHaveBeenCalledWith('/auth/me')
+    expect(mockedGet).toHaveBeenCalledWith('/auth/me')
     expect(store.user?.username).toBe('alice')
     expect(store.isAdmin).toBe(true)
   })
 
   it('clears session when /auth/me fails', async () => {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'bad')
-    mockedApi.get.mockRejectedValue(new Error('unauthorized'))
+    mockedGet.mockRejectedValue(new Error('unauthorized'))
     const store = newStore()
     await store.initialize()
     expect(store.token).toBeNull()
@@ -70,7 +71,7 @@ describe('auth store', () => {
   })
 
   it('login stores token user and localStorage', async () => {
-    mockedApi.post.mockResolvedValue({
+    mockedPost.mockResolvedValue({
       data: {
         code: 0,
         message: 'ok',
@@ -85,7 +86,7 @@ describe('auth store', () => {
   })
 
   it('logout clears local state even when api fails', async () => {
-    mockedApi.post.mockRejectedValue(new Error('offline'))
+    mockedPost.mockRejectedValue(new Error('offline'))
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
     const store = newStore()
     await store.logout()

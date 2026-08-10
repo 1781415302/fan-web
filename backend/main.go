@@ -73,7 +73,7 @@ func main() {
 	}
 
 	api := r.Group("/api")
-	api.Use(middleware.RequireSetup(func() bool { return cfg.Configured }))
+	api.Use(middleware.RequireSetup(setupHandler.IsConfigured))
 	{
 		api.GET("/health", handlers.Health)
 		api.GET("/version", updateHandler.Version)

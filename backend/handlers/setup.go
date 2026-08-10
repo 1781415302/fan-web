@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +16,7 @@ import (
 )
 
 type SetupHandler struct {
+	mu          sync.RWMutex
 	configPath  string
 	cfg         *config.Config
 	authService *services.AuthService
@@ -32,9 +34,15 @@ func NewSetupHandler(configPath string, cfg *config.Config, authService *service
 	}
 }
 
+func (h *SetupHandler) IsConfigured() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.cfg.Configured
+}
+
 // Status 返回系统是否已完成初始化。
 func (h *SetupHandler) Status(c *gin.Context) {
-	utils.Success(c, gin.H{"configured": h.cfg.Configured})
+	utils.Success(c, gin.H{"configured": h.IsConfigured()})
 }
 
 type setupRequest struct {
@@ -46,6 +54,9 @@ type setupRequest struct {
 
 // Submit 完成首次初始化：创建管理员、写入配置。
 func (h *SetupHandler) Submit(c *gin.Context) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if h.cfg.Configured {
 		utils.Error(c, utils.CodeForbidden, "系统已初始化")
 		return

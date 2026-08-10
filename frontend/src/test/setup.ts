@@ -33,7 +33,7 @@ if (!Object.prototype.hasOwnProperty.call(window, 'localStorage') || !window.loc
   })
 }
 
-// 每个测试后清理 localStorage，恢复 mock 与 fake timers。
+// 每个测试后清理 localStorage；mock 恢复由 Vitest 配置统一处理。
 afterEach(() => {
   window.localStorage.clear()
 })

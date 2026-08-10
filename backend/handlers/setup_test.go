@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -358,5 +359,114 @@ func TestSetupSubmitRetryAfterFixingConfigPath(t *testing.T) {
 	}
 	if _, err := database.GetUserByUsername("samedev"); err != nil {
 		t.Fatalf("admin user should exist after successful retry: %v", err)
+	}
+}
+
+func TestSetupSubmitConcurrentRequestsOnlyOneSucceeds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dbPath := filepath.Join(t.TempDir(), "setup-concurrent.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	videoRoot := t.TempDir()
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(configPath, cfg, services.NewAuthService("secret", 24*60*60*1e9), services.NewScannerService(""), nil)
+
+	router := gin.New()
+	router.POST("/api/setup", handler.Submit)
+
+	type result struct {
+		code     int
+		username string
+		token    string
+	}
+	results := make(chan result, 2)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, username := range []string{"first-admin", "second-admin"} {
+		username := username
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			body, err := json.Marshal(map[string]interface{}{
+				"admin_username":  username,
+				"admin_password":  "password",
+				"video_root_path": videoRoot,
+			})
+			if err != nil {
+				t.Errorf("marshal setup request: %v", err)
+				return
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(recorder, request)
+
+			var response struct {
+				Code int `json:"code"`
+				Data struct {
+					Token string `json:"token"`
+					User  struct {
+						Username string `json:"username"`
+					} `json:"user"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Errorf("unmarshal setup response: %v", err)
+				return
+			}
+			results <- result{code: response.Code, username: response.Data.User.Username, token: response.Data.Token}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	successes := make([]result, 0, 1)
+	responseCount := 0
+	forbiddenCount := 0
+	for response := range results {
+		responseCount++
+		switch response.code {
+		case 0:
+			successes = append(successes, response)
+		case 2002:
+			// 第二个请求必须在锁内重新检查到系统已初始化。
+			forbiddenCount++
+		default:
+			t.Fatalf("unexpected concurrent setup response: %+v", response)
+		}
+	}
+	if responseCount != 2 || len(successes) != 1 || forbiddenCount != 1 || successes[0].token == "" {
+		t.Fatalf(
+			"expected one success and one forbidden response, got responses=%d successes=%+v forbidden=%d",
+			responseCount, successes, forbiddenCount,
+		)
+	}
+
+	var userCount int
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount); err != nil {
+		t.Fatal(err)
+	}
+	if userCount != 1 {
+		t.Fatalf("expected exactly one administrator, got %d users", userCount)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Admin.Username != successes[0].username || cfg.Admin.Username != successes[0].username {
+		t.Fatalf("config, memory and successful response must agree: disk=%q memory=%q response=%q", loaded.Admin.Username, cfg.Admin.Username, successes[0].username)
 	}
 }

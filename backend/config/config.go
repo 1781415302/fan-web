@@ -98,13 +98,18 @@ func Load(path string) (*Config, error) {
 // 用于初始化流程提前暴露配置目录问题，避免先写入数据库后再因配置失败无法回滚。
 func (c *Config) PreflightSave(path string) error {
 	dir := filepath.Dir(path)
-	tmpPath := filepath.Join(dir, "."+filepath.Base(path)+".preflight")
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".preflight-*")
 	if err != nil {
 		return fmt.Errorf("配置目录不可写: %w", err)
 	}
-	_ = f.Close()
-	_ = os.Remove(tmpPath)
+	tmpPath := f.Name()
+	defer os.Remove(tmpPath)
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("关闭配置预检文件失败: %w", err)
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		return fmt.Errorf("清理配置预检文件失败: %w", err)
+	}
 	return nil
 }
 
@@ -118,28 +123,35 @@ func (c *Config) Save(path string) error {
 	}
 
 	dir := filepath.Dir(path)
-	tmpPath := filepath.Join(dir, "."+filepath.Base(path)+".tmp")
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("创建临时配置文件失败: %w", err)
 	}
+	tmpPath := f.Name()
 	cleanup := true
+	closed := false
 	defer func() {
+		if !closed {
+			_ = f.Close()
+		}
 		if cleanup {
 			_ = os.Remove(tmpPath)
 		}
 	}()
 
+	if err := f.Chmod(0o600); err != nil {
+		return fmt.Errorf("设置临时配置文件权限失败: %w", err)
+	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
 		return fmt.Errorf("写入临时配置文件失败: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
 		return fmt.Errorf("同步临时配置文件失败: %w", err)
 	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("关闭临时配置文件失败: %w", err)
+	closeErr := f.Close()
+	closed = true
+	if closeErr != nil {
+		return fmt.Errorf("关闭临时配置文件失败: %w", closeErr)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("替换配置文件失败: %w", err)

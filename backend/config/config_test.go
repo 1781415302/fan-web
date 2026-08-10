@@ -94,6 +94,38 @@ func TestPreflightSaveMissingDirFails(t *testing.T) {
 	}
 }
 
+func TestSaveUsesUniqueTemporaryFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	legacyTempFiles := []string{
+		filepath.Join(dir, ".config.yaml.preflight"),
+		filepath.Join(dir, ".config.yaml.tmp"),
+	}
+	for _, legacyPath := range legacyTempFiles {
+		if err := os.WriteFile(legacyPath, []byte("sentinel"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := Default()
+	if err := cfg.PreflightSave(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, legacyPath := range legacyTempFiles {
+		data, err := os.ReadFile(legacyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "sentinel" {
+			t.Fatalf("temporary save must not overwrite %s", legacyPath)
+		}
+	}
+}
+
 func TestSaveMinimalConfigRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := Default()
