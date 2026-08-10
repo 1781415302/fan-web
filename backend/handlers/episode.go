@@ -77,29 +77,56 @@ func (h *EpisodeHandler) Subtitles(c *gin.Context) {
 	c.Data(http.StatusOK, "text/vtt; charset=utf-8", vtt)
 }
 
-func (h *EpisodeHandler) resolveEpisodePath(c *gin.Context) (string, bool) {
-	token := strings.TrimSpace(c.Query("token"))
-	if token == "" {
-		parts := strings.Fields(strings.TrimSpace(c.GetHeader("Authorization")))
-		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
-			token = parts[1]
-		}
-	}
-	claims, err := h.auth.ParseToken(token)
-	if err != nil {
+// IssueMediaToken 为当前登录用户签发指定 episode 的短期媒体票据。
+func (h *EpisodeHandler) IssueMediaToken(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
 		utils.Error(c, utils.CodeUnauthenticated, "未登录")
-		return "", false
+		return
 	}
-	if _, err := database.GetUserByID(claims.UserID); err != nil {
-		utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
-		return "", false
+	episodeID, ok := parsePositiveID(c.Param("id"))
+	if !ok {
+		utils.Error(c, utils.CodeInvalidParams, "无效的集数 ID")
+		return
 	}
+	if _, err := database.GetEpisodeByID(episodeID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.Error(c, utils.CodeNotFound, "集数不存在")
+			return
+		}
+		utils.Error(c, utils.CodeInternal, "查询集数失败")
+		return
+	}
+	token, expiresAt, err := h.auth.IssueMediaToken(userID, episodeID)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "签发媒体票据失败")
+		return
+	}
+	utils.Success(c, gin.H{
+		"token":      token,
+		"expires_at": expiresAt,
+	})
+}
 
+func (h *EpisodeHandler) resolveEpisodePath(c *gin.Context) (string, bool) {
 	episodeID, ok := parsePositiveID(c.Param("id"))
 	if !ok {
 		utils.Error(c, utils.CodeInvalidParams, "无效的集数 ID")
 		return "", false
 	}
+
+	// 按 4.2 顺序选择凭证；一旦提供某一种凭证，只按该凭证校验，不降级尝试其他凭证。
+	authorization := strings.TrimSpace(c.GetHeader("Authorization"))
+	parts := strings.Fields(authorization)
+	hasBearer := len(parts) == 2 && strings.EqualFold(parts[0], "Bearer")
+	mediaToken := strings.TrimSpace(c.Query("media_token"))
+	legacyToken := strings.TrimSpace(c.Query("token"))
+
+	userID, ok := h.authenticateMedia(c, episodeID, hasBearer, parts, mediaToken, legacyToken)
+	if !ok {
+		return "", false
+	}
+
 	episode, err := database.GetEpisodeByID(episodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -123,7 +150,61 @@ func (h *EpisodeHandler) resolveEpisodePath(c *gin.Context) (string, bool) {
 		utils.Error(c, utils.CodeNotFound, "视频文件不存在或不可访问")
 		return "", false
 	}
+	_ = userID
 	return fullPath, true
+}
+
+// authenticateMedia 校验资源访问者并按需确认用户仍存在。
+func (h *EpisodeHandler) authenticateMedia(
+	c *gin.Context,
+	episodeID int64,
+	hasBearer bool,
+	parts []string,
+	mediaToken string,
+	legacyToken string,
+) (int64, bool) {
+	switch {
+	case hasBearer:
+		claims, err := h.auth.ParseToken(parts[1])
+		if err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			return 0, false
+		}
+		if _, err := database.GetUserByID(claims.UserID); err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			return 0, false
+		}
+		return claims.UserID, true
+
+	case mediaToken != "":
+		claims, err := h.auth.ParseMediaToken(mediaToken, episodeID)
+		if err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "媒体票据无效或已过期")
+			return 0, false
+		}
+		if _, err := database.GetUserByID(claims.UserID); err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			return 0, false
+		}
+		return claims.UserID, true
+
+	case legacyToken != "":
+		// 兼容入口：旧 App（v1.2.2 等）把登录 JWT 放在 ?token=。计划最早在 v1.4.0 移除。
+		claims, err := h.auth.ParseToken(legacyToken)
+		if err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			return 0, false
+		}
+		if _, err := database.GetUserByID(claims.UserID); err != nil {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+			return 0, false
+		}
+		return claims.UserID, true
+
+	default:
+		utils.Error(c, utils.CodeUnauthenticated, "未登录")
+		return 0, false
+	}
 }
 
 func toProgressResponse(progress models.WatchProgress, includeEpisodeID bool) gin.H {

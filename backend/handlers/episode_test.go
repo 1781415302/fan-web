@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -235,5 +236,178 @@ func TestReportProgressWatchedIrreversible(t *testing.T) {
 	}
 	if resp.Data.Position != 10 {
 		t.Fatalf("position should update to 10, got %d", resp.Data.Position)
+	}
+}
+
+func TestIssueMediaTokenAndStreamWithMediaToken(t *testing.T) {
+	rootPath := t.TempDir()
+	videoData := []byte("0123456789")
+	if err := os.WriteFile(filepath.Join(rootPath, "ep01.mp4"), videoData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(t.TempDir(), "media-token.db")
+	if err := database.Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if err := database.InitAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := database.CreateAnime(&models.Anime{Title: "Media Anime", FilePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "ep01.mp4"}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epID := episodes[0].ID
+
+	auth := services.NewAuthService("media-token-test-secret", 24*60*60*1e9)
+	handler := NewEpisodeHandler(auth, services.NewScannerService(rootPath))
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	protected := router.Group("/api")
+	protected.Use(middleware.JWTAuth(auth))
+	protected.POST("/episodes/:id/media-token", handler.IssueMediaToken)
+	router.GET("/api/episodes/:id/stream", handler.Stream)
+
+	loginToken, _, err := auth.IssueToken(*admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 用登录 JWT 请求媒体票据。
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/media-token", nil)
+	request.Header.Set("Authorization", "Bearer "+loginToken)
+	router.ServeHTTP(recorder, request)
+	var tokenResp struct {
+		Code int `json:"code"`
+		Data struct {
+			Token     string `json:"token"`
+			ExpiresAt string `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &tokenResp); err != nil {
+		t.Fatal(err)
+	}
+	if tokenResp.Code != 0 || tokenResp.Data.Token == "" || tokenResp.Data.ExpiresAt == "" {
+		t.Fatalf("unexpected media-token response: %s", recorder.Body.String())
+	}
+
+	// 用媒体票据请求视频流（Range 206）。
+	streamRecorder := httptest.NewRecorder()
+	streamRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?media_token="+url.QueryEscape(tokenResp.Data.Token), nil)
+	streamRequest.Header.Set("Range", "bytes=2-5")
+	router.ServeHTTP(streamRecorder, streamRequest)
+	if streamRecorder.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206 with media token, got %d body=%s", streamRecorder.Code, streamRecorder.Body.String())
+	}
+	if got := streamRecorder.Header().Get("Content-Range"); got != "bytes 2-5/10" {
+		t.Fatalf("unexpected Content-Range %q", got)
+	}
+
+	// A 集票据不能访问 B 集（构造不同 episode 的票据）。
+	otherToken, _, err := auth.IssueMediaToken(admin.ID, 99999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongRecorder := httptest.NewRecorder()
+	wrongRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?media_token="+url.QueryEscape(otherToken), nil)
+	router.ServeHTTP(wrongRecorder, wrongRequest)
+	var wrongResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(wrongRecorder.Body.Bytes(), &wrongResp); err != nil {
+		t.Fatal(err)
+	}
+	if wrongResp.Code != 2001 {
+		t.Fatalf("wrong-episode media token must return 2001, got %d", wrongResp.Code)
+	}
+
+	// 删除用户后媒体票据失效。
+	user2, _ := database.CreateUser("media-user", "password", false)
+	userToken, _, err := auth.IssueMediaToken(user2.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteUser(user2.ID); err != nil {
+		t.Fatal(err)
+	}
+	deletedRecorder := httptest.NewRecorder()
+	deletedRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?media_token="+url.QueryEscape(userToken), nil)
+	router.ServeHTTP(deletedRecorder, deletedRequest)
+	var deletedResp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(deletedRecorder.Body.Bytes(), &deletedResp); err != nil {
+		t.Fatal(err)
+	}
+	if deletedResp.Code != 2001 {
+		t.Fatalf("deleted-user media token must return 2001, got %d", deletedResp.Code)
+	}
+}
+
+func TestLegacyTokenQueryStillWorks(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, "ep01.mp4"), []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(t.TempDir(), "legacy-token.db")
+	if err := database.Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if err := database.InitAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := database.CreateAnime(&models.Anime{Title: "Legacy Anime", FilePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "ep01.mp4"}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epID := episodes[0].ID
+
+	auth := services.NewAuthService("legacy-token-secret", 24*60*60*1e9)
+	handler := NewEpisodeHandler(auth, services.NewScannerService(rootPath))
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/episodes/:id/stream", handler.Stream)
+
+	loginToken, _, err := auth.IssueToken(*admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?token="+url.QueryEscape(loginToken), nil)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 with legacy token, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
