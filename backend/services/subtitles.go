@@ -283,18 +283,26 @@ type subtitleCacheKey struct {
 	modTime int64
 }
 
+// subtitleInflight 代表一次进行中的解析：leader 解析结束后把结果（含失败错误）写入
+// doc/err 并关闭 done，所有 waiter 共享同一结果，避免损坏/异常 MKV 触发并发重复解析。
+type subtitleInflight struct {
+	done chan struct{}
+	doc  subtitleDocument
+	err  error
+}
+
 // subtitleDocumentCache 缓存 MKV 字幕解析结果，避免每次请求全量扫描整个文件；
 // 同一文件并发解析时合并为一次（singleflight）。
 type subtitleDocumentCache struct {
 	mu       sync.Mutex
 	entries  map[subtitleCacheKey]*subtitleDocument
 	order    []subtitleCacheKey
-	inflight map[subtitleCacheKey]chan struct{}
+	inflight map[subtitleCacheKey]*subtitleInflight
 }
 
 var subtitleParseCache = &subtitleDocumentCache{
 	entries:  make(map[subtitleCacheKey]*subtitleDocument),
-	inflight: make(map[subtitleCacheKey]chan struct{}),
+	inflight: make(map[subtitleCacheKey]*subtitleInflight),
 }
 
 func (c *subtitleDocumentCache) get(key subtitleCacheKey) (*subtitleDocument, bool) {
@@ -319,21 +327,26 @@ func (c *subtitleDocumentCache) put(key subtitleCacheKey, document *subtitleDocu
 	c.order = append(c.order, key)
 }
 
-// begin 标记一次解析开始：若同键解析正在进行则返回其完成信号（done 为 nil），
-// 否则返回 done 回调，调用方解析结束后必须执行。
-func (c *subtitleDocumentCache) begin(key subtitleCacheKey) (<-chan struct{}, func()) {
+// begin 标记一次解析开始。若同键解析正在进行，返回该 in-flight 条目且 leader=false，
+// 调用方等待 entry.done 后直接读取 entry.doc/entry.err，从而共享首次解析结果（含失败），
+// 不会重复解析。否则创建新条目并返回 leader=true 与 finish 回调，调用方解析结束后必须
+// 调用 finish(doc, err)：先写入结果再关闭 done 唤醒所有 waiter。
+func (c *subtitleDocumentCache) begin(key subtitleCacheKey) (*subtitleInflight, bool, func(subtitleDocument, error)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if wait, ok := c.inflight[key]; ok {
-		return wait, nil
+	if existing, ok := c.inflight[key]; ok {
+		return existing, false, nil
 	}
-	wait := make(chan struct{})
-	c.inflight[key] = wait
-	return nil, func() {
+	entry := &subtitleInflight{done: make(chan struct{})}
+	c.inflight[key] = entry
+	return entry, true, func(doc subtitleDocument, err error) {
 		c.mu.Lock()
+		entry.doc = doc
+		entry.err = err
 		delete(c.inflight, key)
 		c.mu.Unlock()
-		close(wait)
+		// 关闭 done 建立 happens-before：waiter 收到后能安全读取 entry.doc/err。
+		close(entry.done)
 	}
 }
 
@@ -348,21 +361,32 @@ func parseMatroskaSubtitles(path string) (subtitleDocument, error) {
 		return subtitleDocument{}, err
 	}
 	key := subtitleCacheKey{path: path, size: info.Size(), modTime: info.ModTime().UnixNano()}
-	if document, ok := subtitleParseCache.get(key); ok {
-		return *document, nil
-	}
-	if wait, done := subtitleParseCache.begin(key); done == nil {
-		<-wait
-		if document, ok := subtitleParseCache.get(key); ok {
-			return *document, nil
-		}
-	} else {
-		defer done()
-	}
+
+	// 命中成功缓存直接返回。
 	if document, ok := subtitleParseCache.get(key); ok {
 		return *document, nil
 	}
 
+	// singleflight：同键并发解析只由首个请求（leader）执行，其余共享首次结果（含失败），
+	// 避免损坏/异常/恶意构造的 MKV 触发并发全量解析的资源放大。
+	entry, leader, finish := subtitleParseCache.begin(key)
+	if !leader {
+		<-entry.done
+		return entry.doc, entry.err
+	}
+
+	document, err := parseMatroskaFile(path)
+	if err == nil {
+		// 仅缓存成功结果；失败不缓存，后续请求可重试（避免瞬时错误被永久固化）。
+		subtitleParseCache.put(key, &document)
+	}
+	finish(document, err)
+	return document, err
+}
+
+// parseMatroskaFile 打开并解析 MKV 文件，组装字幕文档。由 parseMatroskaSubtitles
+// 在 singleflight leader 路径下调用。
+func parseMatroskaFile(path string) (subtitleDocument, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return subtitleDocument{}, err
@@ -389,7 +413,6 @@ func parseMatroskaSubtitles(path string) (subtitleDocument, error) {
 			return document.cues[trackNum][i].start < document.cues[trackNum][j].start
 		})
 	}
-	subtitleParseCache.put(key, &document)
 	return document, nil
 }
 

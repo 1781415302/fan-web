@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
@@ -49,6 +51,9 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 // 并发触发会互相截断下载文件、覆盖 .old 回滚备份，最坏情况下把替换后已上线的
 // 二进制写坏。CheckUpdate 只读远端信息，不需要此锁。
 var performUpdateMu sync.Mutex
+
+// errUpdateBackupExists 表示替换前检测到残留的 .old 回滚副本，拒绝覆盖以免丢失回滚。
+var errUpdateBackupExists = errors.New("update backup already exists")
 
 func IsNewerVersion(current, latest string) bool {
 	normalize := func(v string) []int {
@@ -241,26 +246,15 @@ func PerformUpdate(currentVersion string) error {
 		return fmt.Errorf("设置权限失败: %w", err)
 	}
 
-	backupPath := execPath + ".old"
-	// 替换序列前检查备份路径是否已被占用：残留的 .old（上次更新中断，或并发请求
-	// 留下的备份）不应被盲目覆盖——覆盖会丢掉唯一的回滚副本。互斥锁已拦截并发，
-	// 这里兜底检查残留；正常成功后 .old 会被清理，因此存在即视为异常，直接失败
-	// 并提示用户手动清理后重试。
-	if _, err := os.Lstat(backupPath); err == nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("检测到更新残留备份 %s，请确认没有其他更新在运行后手动删除该文件，再重试更新", backupPath)
+	backupPath, err := replaceExecutable(execPath, tmpPath)
+	if err != nil {
+		if errors.Is(err, errUpdateBackupExists) {
+			return fmt.Errorf("检测到更新残留备份 %s，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试", backupPath)
+		}
+		return err
 	}
-	if err := os.Rename(execPath, backupPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("备份旧版本失败: %w", err)
-	}
-	if err := os.Rename(tmpPath, execPath); err != nil {
-		_ = os.Rename(backupPath, execPath)
-		os.Remove(tmpPath)
-		return fmt.Errorf("替换二进制失败: %w", err)
-	}
-	// 替换成功后清理 .old，避免残留导致下次更新误判为“备份被占用”。
-	os.Remove(backupPath)
+	// .old 回滚副本在此刻意保留：新版尚未启动，删除它会丧失回滚能力。
+	// 由新版本成功启动（绑定端口）后通过 CleanupUpdateBackup 清理。
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
@@ -274,6 +268,57 @@ func PerformUpdate(currentVersion string) error {
 	}()
 
 	return nil
+}
+
+// replaceExecutable 用 tmpPath（已下载校验的新二进制）替换 execPath：先把当前二进制
+// 改名为 .old 作为回滚备份，再把新二进制改名为 execPath。
+//
+// 关键：替换成功后保留 .old，不在此处删除——由新版本成功启动后通过 CleanupUpdateBackup
+// 清理。这样若新版因数据库迁移失败、配置错误等起不来，旧版二进制仍在，可手动回滚。
+// 替换前若已存在 .old（上一次更新的新版本未成功启动、未自动清理），拒绝覆盖以免丢失
+// 唯一回滚副本。任一步失败均清理 tmpPath 并尝试回滚到旧版本，保证现场不被写坏。
+func replaceExecutable(execPath, tmpPath string) (string, error) {
+	backupPath := execPath + ".old"
+	if _, err := os.Lstat(backupPath); err == nil {
+		os.Remove(tmpPath)
+		return backupPath, errUpdateBackupExists
+	}
+	if err := os.Rename(execPath, backupPath); err != nil {
+		os.Remove(tmpPath)
+		return backupPath, fmt.Errorf("备份旧版本失败: %w", err)
+	}
+	if err := os.Rename(tmpPath, execPath); err != nil {
+		_ = os.Rename(backupPath, execPath) // 回滚到旧版本
+		os.Remove(tmpPath)
+		return backupPath, fmt.Errorf("替换二进制失败: %w", err)
+	}
+	return backupPath, nil
+}
+
+// CleanupUpdateBackup 删除自更新留下的上一版本回滚副本（<可执行文件>.old）。
+// 由新版本在成功启动（绑定端口）后调用：只有新版本确认能正常运行时才清理回滚副本，
+// 避免旧版 PerformUpdate 在替换后立刻删除 .old 导致新版起不来时无回滚。
+// 删除失败仅记录日志，不影响启动。
+func CleanupUpdateBackup() {
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cleanupUpdateBackupAt(execPath)
+}
+
+// cleanupUpdateBackupAt 删除 execPath 同目录下的 .old 回滚副本；不存在则无操作。
+// 拆出便于测试（不依赖 os.Executable）。
+func cleanupUpdateBackupAt(execPath string) {
+	backupPath := execPath + ".old"
+	if _, err := os.Lstat(backupPath); err != nil {
+		return
+	}
+	if err := os.Remove(backupPath); err != nil {
+		log.Printf("清理上一版本备份 %s 失败: %v（可手动删除）", backupPath, err)
+		return
+	}
+	log.Printf("已清理上一版本备份 %s", backupPath)
 }
 
 func checkWritable(path string) error {

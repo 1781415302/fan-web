@@ -134,6 +134,7 @@ func main() {
 		log.Fatalf("端口绑定失败: %v", err)
 	}
 	log.Printf("服务启动，监听 :%d → http://127.0.0.1:%d", actualPort, actualPort)
+	services.CleanupUpdateBackup()
 	server := &http.Server{
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,

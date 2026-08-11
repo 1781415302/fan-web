@@ -3,6 +3,7 @@ package services
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -181,5 +182,127 @@ func TestVerifySHA256ConnectionFailureFailsClosed(t *testing.T) {
 	err := verifySHA256(filePath, "fan-web-server-linux-amd64", url+"/SHA256SUMS.txt")
 	if err == nil {
 		t.Fatal("连接失败时 verifySHA256 必须返回错误（失败关闭）")
+	}
+}
+
+// TestReplaceExecutablePreservesOldBackup 是自更新回滚安全的核心回归：
+// 替换成功后必须保留 .old 回滚副本，不能在此时删除（旧实现替换后立即 os.Remove
+// 会导致新版起不来时无回滚）。.old 改由新版本启动后 CleanupUpdateBackup 清理。
+func TestReplaceExecutablePreservesOldBackup(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	tmpPath := execPath + ".new"
+	if err := os.WriteFile(execPath, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := replaceExecutable(execPath, tmpPath); err != nil {
+		t.Fatalf("replaceExecutable 失败: %v", err)
+	}
+
+	// 新版本已就位。
+	if data, err := os.ReadFile(execPath); err != nil || string(data) != "new" {
+		t.Fatalf("期望 execPath 为新二进制，got data=%q err=%v", data, err)
+	}
+	// .old 回滚副本必须保留（本次修复的核心）。
+	if _, err := os.Lstat(execPath + ".old"); err != nil {
+		t.Fatalf("期望 .old 回滚副本保留，got err=%v", err)
+	}
+	// tmpPath 已被 rename 消费。
+	if _, err := os.Lstat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("期望 tmpPath 已移走，got err=%v", err)
+	}
+	// .old 内容应为旧版本。
+	if data, err := os.ReadFile(execPath + ".old"); err != nil || string(data) != "current" {
+		t.Fatalf("期望 .old 为旧二进制，got data=%q err=%v", data, err)
+	}
+}
+
+// TestReplaceExecutableFailsWhenBackupExists 验证残留 .old 时拒绝覆盖，保护唯一回滚副本。
+func TestReplaceExecutableFailsWhenBackupExists(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	tmpPath := execPath + ".new"
+	if err := os.WriteFile(execPath, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".old", []byte("older"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := replaceExecutable(execPath, tmpPath)
+	if !errors.Is(err, errUpdateBackupExists) {
+		t.Fatalf("期望 errUpdateBackupExists，got %v", err)
+	}
+	// 现场不被破坏：当前二进制与残留 .old 都还在，tmpPath 被清理。
+	if data, _ := os.ReadFile(execPath); string(data) != "current" {
+		t.Fatal("当前二进制不应被改动")
+	}
+	if data, _ := os.ReadFile(execPath + ".old"); string(data) != "older" {
+		t.Fatal("残留 .old 不应被改动")
+	}
+	if _, err := os.Lstat(tmpPath); !os.IsNotExist(err) {
+		t.Fatal("tmpPath 应被清理")
+	}
+}
+
+// TestReplaceExecutableRollsBackOnFailure 验证第二步 rename 失败时回滚到旧版本。
+// 用一个不存在的 tmpPath 触发 os.Rename(tmpPath, execPath) 失败。
+func TestReplaceExecutableRollsBackOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	// tmpPath 不存在 -> 第一步 backup 成功，第二步 rename tmpPath->execPath 失败。
+	tmpPath := execPath + ".new"
+	if err := os.WriteFile(execPath, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := replaceExecutable(execPath, tmpPath)
+	if err == nil {
+		t.Fatal("期望替换失败")
+	}
+	// 旧版本应被回滚恢复。
+	if data, _ := os.ReadFile(execPath); string(data) != "current" {
+		t.Fatalf("期望回滚后 execPath 仍为旧二进制，got %q", data)
+	}
+}
+
+func TestCleanupUpdateBackupRemovesStaleOld(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	if err := os.WriteFile(execPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".old", []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupUpdateBackupAt(execPath)
+
+	if _, err := os.Lstat(execPath + ".old"); !os.IsNotExist(err) {
+		t.Fatalf("期望 .old 已删除，got err=%v", err)
+	}
+	// 当前可执行文件不受影响。
+	if _, err := os.Lstat(execPath); err != nil {
+		t.Fatalf("可执行文件不应被误删: %v", err)
+	}
+}
+
+func TestCleanupUpdateBackupNoOpWithoutOld(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	if err := os.WriteFile(execPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 无 .old，应无副作用。
+	cleanupUpdateBackupAt(execPath)
+	if _, err := os.Lstat(execPath); err != nil {
+		t.Fatalf("可执行文件不应被误删: %v", err)
 	}
 }
