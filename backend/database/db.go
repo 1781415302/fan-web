@@ -23,7 +23,7 @@ var (
 // Init 初始化数据库连接并创建表。
 func Init(dbPath string) error {
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("创建数据库目录失败: %w", err)
 	}
 
@@ -55,8 +55,18 @@ func Init(dbPath string) error {
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
+	// 数据库文件含 bcrypt 密码哈希与用户名，权限收紧为 0600，与 config.yaml 的
+	// 保护标准一致。主文件此刻已存在；WAL/SHM 伴随文件按主文件权限为模板创建，
+	// 已存在的（如 PRAGMA journal_mode=WAL 时创建）在此一并收紧。
+	if err := tightenDBFilePermissions(dbPath); err != nil {
+		return err
+	}
 	if err := runMigrations(db); err != nil {
 		return fmt.Errorf("数据库迁移失败: %w", err)
+	}
+	// 迁移期间可能新创建 -wal/-shm 伴随文件，迁移结束后再次收紧覆盖全部文件。
+	if err := tightenDBFilePermissions(dbPath); err != nil {
+		return err
 	}
 
 	DB = db
@@ -94,5 +104,17 @@ func InitAdmin(username, password string) error {
 	}
 
 	log.Printf("管理员账号创建成功: %s\n", username)
+	return nil
+}
+
+// tightenDBFilePermissions 将数据库主文件及 WAL/SHM 伴随文件权限收紧为 0600。
+// 不存在的文件（如新库尚未创建的伴随文件）跳过，后续 SQLite 创建时
+// 以主文件权限为模板，自动继承 0600。
+func tightenDBFilePermissions(dbPath string) error {
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("设置数据库文件权限失败 (%s): %w", p, err)
+		}
+	}
 	return nil
 }

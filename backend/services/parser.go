@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
 )
 
 type ParsedFilename struct {
@@ -28,7 +27,7 @@ var metadataKeywords = []string{
 	"webrip", "webdl", "web-dl", "bdrip", "bluray",
 	"srt", "ass", "ssa",
 	"jpsc", "gbsc", "cr", "bilibili", "crunchyroll",
-	"简繁", "简体", "繁体", "内封", "内嵌", "外挂",
+	"简繁", "简体", "繁体", "内封", "内嵌", "外挂", "中字",
 	"big5", "chs", "cht",
 }
 
@@ -79,24 +78,14 @@ func isMetadataBracket(content string) bool {
 		return true
 	}
 
-	// 包含元数据关键词
+	// 包含元数据关键词（含语言/封装标签，如 简繁、中字、内封 等）
 	for _, kw := range metadataKeywords {
 		if strings.Contains(lower, kw) {
 			return true
 		}
 	}
 
-	// 全是 CJK 字符（语言标签如 简繁内封）
-	allCJK := true
-	for _, r := range lower {
-		if !unicode.Is(unicode.Han, r) {
-			allCJK = false
-			break
-		}
-	}
-	if allCJK {
-		return true
-	}
-
+	// 不再按"全 CJK"一刀切删除：中文字幕组命名常把中文标题放进方括号
+	//（如 [千夏字幕组][葬送的芙莉莲][第01话][1080p]），全 CJK 判断会把标题误当元数据删除。
 	return false
 }

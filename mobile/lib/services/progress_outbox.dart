@@ -140,8 +140,8 @@ class ProgressOutbox {
             );
             await removeIfMatched(record);
           } catch (_) {
-            // 发送失败保留记录，下次重试
-            break;
+            // 单条记录发送失败保留并继续下一条，避免头阻塞导致
+            // 其余待同步记录永远无法上报（如该集已被服务端删除）。
           }
         }
       });

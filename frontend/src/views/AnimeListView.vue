@@ -24,21 +24,27 @@ const scanResult = ref<LibraryScanResult | null>(null)
 const scanError = ref('')
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+// loadSerial 序列化 load()：搜索防抖、翻页、扫描完成刷新等入口可能并发触发，
+// 过期响应到达时不得覆盖新数据（对齐 WatchView.vue 的机制）。
+let loadSerial = 0
 
 const totalPages = () => Math.max(1, Math.ceil(total.value / pageSize))
 
 async function load() {
+  const serial = ++loadSerial
   loading.value = true
   error.value = ''
   try {
     const data = await listAnimes(page.value, pageSize, keyword.value.trim())
+    if (serial !== loadSerial) return
     animes.value = data.items
     total.value = data.total
     failedCovers.value = new Set()
   } catch (e: unknown) {
+    if (serial !== loadSerial) return
     error.value = e instanceof ApiError ? e.message : '加载番剧失败'
   } finally {
-    loading.value = false
+    if (serial === loadSerial) loading.value = false
   }
 }
 
@@ -89,6 +95,7 @@ async function handleLibraryScan() {
 
 onMounted(() => void load())
 onBeforeUnmount(() => {
+  ++loadSerial
   if (searchTimer) clearTimeout(searchTimer)
 })
 </script>

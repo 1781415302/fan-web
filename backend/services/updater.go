@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,6 +44,11 @@ type UpdateCheckResult struct {
 }
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// performUpdateMu 串行化自更新全过程（下载+校验+替换+重启）。
+// 并发触发会互相截断下载文件、覆盖 .old 回滚备份，最坏情况下把替换后已上线的
+// 二进制写坏。CheckUpdate 只读远端信息，不需要此锁。
+var performUpdateMu sync.Mutex
 
 func IsNewerVersion(current, latest string) bool {
 	normalize := func(v string) []int {
@@ -165,6 +171,13 @@ func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 }
 
 func PerformUpdate(currentVersion string) error {
+	// 用 TryLock 而非 Lock：已在更新时第二个请求直接失败返回，
+	// 而不是阻塞到进程被重启（阻塞中的 HTTP 请求会随进程退出而连接断开）。
+	if !performUpdateMu.TryLock() {
+		return fmt.Errorf("更新已在进行中，请勿重复触发")
+	}
+	defer performUpdateMu.Unlock()
+
 	release, err := fetchLatestRelease()
 	if err != nil {
 		return err
@@ -175,6 +188,12 @@ func PerformUpdate(currentVersion string) error {
 	asset := findServerAsset(release.Assets)
 	if asset == nil {
 		return fmt.Errorf("未找到适用于当前平台(%s/%s)的更新包", runtime.GOOS, runtime.GOARCH)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows 下正在运行的可执行文件被加载器独占锁定（未以 FILE_SHARE_DELETE
+		// 方式打开），os.Rename 无法将其改名备份，替换必然失败。直接返回明确提示
+		// 让用户手动替换，避免无谓的完整下载与校验耗时。
+		return fmt.Errorf("Windows 平台暂不支持自动更新，请到 GitHub Releases 手动下载 %s 并替换可执行文件", asset.Name)
 	}
 
 	execPath, err := os.Executable()
@@ -192,6 +211,8 @@ func PerformUpdate(currentVersion string) error {
 		return fmt.Errorf("发布缺少 SHA256SUMS.txt，已取消更新")
 	}
 
+	// 清理上次中断可能残留的下载文件（downloadFile 用 O_EXCL 创建，目标已存在会失败）。
+	os.Remove(tmpPath)
 	if err := downloadFile(asset.BrowserDownloadURL, tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("下载失败: %w", err)
@@ -221,7 +242,14 @@ func PerformUpdate(currentVersion string) error {
 	}
 
 	backupPath := execPath + ".old"
-	os.Remove(backupPath)
+	// 替换序列前检查备份路径是否已被占用：残留的 .old（上次更新中断，或并发请求
+	// 留下的备份）不应被盲目覆盖——覆盖会丢掉唯一的回滚副本。互斥锁已拦截并发，
+	// 这里兜底检查残留；正常成功后 .old 会被清理，因此存在即视为异常，直接失败
+	// 并提示用户手动清理后重试。
+	if _, err := os.Lstat(backupPath); err == nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("检测到更新残留备份 %s，请确认没有其他更新在运行后手动删除该文件，再重试更新", backupPath)
+	}
 	if err := os.Rename(execPath, backupPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("备份旧版本失败: %w", err)
@@ -231,6 +259,8 @@ func PerformUpdate(currentVersion string) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("替换二进制失败: %w", err)
 	}
+	// 替换成功后清理 .old，避免残留导致下次更新误判为“备份被占用”。
+	os.Remove(backupPath)
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
@@ -290,7 +320,9 @@ func downloadFile(url, dest string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("下载失败，状态码 %d", resp.StatusCode)
 	}
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	// O_EXCL：目标文件已存在（并发请求或残留文件）时直接失败，
+	// 防止两个请求用 O_TRUNC 互相截断同一个下载文件。
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
 	}

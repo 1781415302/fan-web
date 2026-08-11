@@ -145,23 +145,32 @@ func NewLoginRateLimiter(limit int, window time.Duration, opts ...LoginLimiterOp
 	return l
 }
 
-// allowLocked 清理当前来源窗口外记录后判断是否允许尝试。
+// allowLocked 清理当前来源窗口外记录后，若额度未用满则原子计入本次尝试并返回 true；
+// 额度已用满则返回 false，且不额外占用额度。
 func (l *LoginRateLimiter) allowLocked(source string, now time.Time) bool {
 	entry, ok := l.attempts[source]
 	if !ok {
+		l.recordLocked(source, now)
 		return true
 	}
 	entry.attempts = freshAttempts(entry.attempts, now.Add(-l.window))
 	if len(entry.attempts) == 0 {
 		delete(l.attempts, source)
+		l.recordLocked(source, now)
 		return true
 	}
 	entry.last = entry.attempts[len(entry.attempts)-1]
 	l.attempts[source] = entry
-	return len(entry.attempts) < l.limit
+	if len(entry.attempts) >= l.limit {
+		return false
+	}
+	l.recordLocked(source, now)
+	return true
 }
 
-// Allow 只检查窗口内失败次数，不记录任何请求。
+// Allow 原子地占用一次尝试额度：窗口内未达上限时计入本次尝试并返回 true，
+// 已用满则返回 false。检查与计数处于同一临界区，认证失败时无需再调用 RecordFailure；
+// 成功登录应调用 Reset 清空对应来源。
 func (l *LoginRateLimiter) Allow(source string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -169,20 +178,24 @@ func (l *LoginRateLimiter) Allow(source string) bool {
 	return l.allowLocked(source, now)
 }
 
-// RecordFailure 仅在认证失败时记录一次失败。
+// recordLocked 在调用方持有锁的前提下记录一次失败尝试。
+func (l *LoginRateLimiter) recordLocked(source string, now time.Time) {
+	if _, exists := l.attempts[source]; !exists && len(l.attempts) >= l.maxKeys {
+		l.evictOldestLocked()
+	}
+	entry := l.attempts[source]
+	entry.attempts = append(entry.attempts, now)
+	entry.last = now
+	l.attempts[source] = entry
+}
+
+// RecordFailure 直接记录一次失败尝试，不检查额度，供事后计数的调用方使用。
 func (l *LoginRateLimiter) RecordFailure(source string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
 	l.cleanupExpiredLocked(now)
-
-	entry, exists := l.attempts[source]
-	if !exists && len(l.attempts) >= l.maxKeys {
-		l.evictOldestLocked()
-	}
-	entry.attempts = append(entry.attempts, now)
-	entry.last = now
-	l.attempts[source] = entry
+	l.recordLocked(source, now)
 }
 
 // Reset 成功登录后清空对应来源的全部记录。
@@ -230,8 +243,9 @@ func freshAttempts(attempts []time.Time, cutoff time.Time) []time.Time {
 	return fresh
 }
 
-// Middleware 返回记录失败与检查限流的 Gin 中间件。
-// 注意：中间件只负责"检查是否被限流"，失败计数由 AuthHandler 显式调用。
+// Middleware 返回检查登录限流的 Gin 中间件。
+// Allow 在检查的同时原子计入本次尝试，认证失败后无需再重复计数；
+// 成功登录由 AuthHandler 调用 Reset 清空对应来源。
 func (l *LoginRateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !l.Allow(ClientIP(c)) {

@@ -128,6 +128,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         currentPage: cached.page,
         pageSize: cached.pageSize == 0 ? state.pageSize : cached.pageSize,
         isLoading: false,
+        isRefreshing: true,
         clearError: true,
         clearRefreshError: true,
       );
@@ -155,6 +156,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         currentPage: result.page,
         pageSize: result.pageSize == 0 ? state.pageSize : result.pageSize,
         isLoading: false,
+        isRefreshing: false,
         clearError: true,
         clearRefreshError: true,
       );
@@ -162,9 +164,13 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
     } catch (error) {
       final msg = describeApiError(error);
       if (state.items.isEmpty) {
-        state = state.copyWith(isLoading: false, error: msg);
+        state = state.copyWith(
+          isLoading: false,
+          isRefreshing: false,
+          error: msg,
+        );
       } else {
-        state = state.copyWith(refreshError: msg);
+        state = state.copyWith(isRefreshing: false, refreshError: msg);
       }
     }
   }

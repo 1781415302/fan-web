@@ -56,6 +56,16 @@ let progressTimer: ReturnType<typeof setInterval> | undefined
 let loadSerial = 0
 let reportChain: Promise<void> = Promise.resolve()
 
+// 媒体票据有效期 12h（backend mediaTokenTTL），过期后 stream/subtitle 会返回
+// 200+JSON 错误体导致播放中断。以下状态用于在过期前预取新票据并重载播放器。
+const mediaTokenRefreshMarginMs = 5 * 60_000
+let mediaTokenExpiresAt = 0
+let mediaTokenRefreshTimer: ReturnType<typeof setTimeout> | undefined
+let mediaTokenRefreshInFlight = false
+let pendingResumeAfterReload = -1
+let pendingResumeShouldPlay = false
+let activeSubtitleTrack: number | null = null
+
 const displayTitle = computed(() => anime.value?.title_cn || anime.value?.title || '')
 const currentEpisode = computed(() => episodes.value.find((episode) => episode.id === episodeId.value) || null)
 const currentIndex = computed(() => episodes.value.findIndex((episode) => episode.id === episodeId.value))
@@ -133,7 +143,10 @@ function queueProgressReport(instance: Artplayer, episode: Episode, forceWatched
     .then(async () => {
       try {
         await reportProgress(episode.id, position, watched)
-        updateProgressState(episode.id, position, watched)
+        // 服务端 UpsertProgress 的 watched 只会 0→1 不回退；本地覆写时也要取并集，
+        // 否则回看（拖回 90% 之前）会错误地把已看状态覆写为未看。
+        const existing = progressByEpisode.value.get(episode.id)
+        updateProgressState(episode.id, position, existing?.watched || watched)
         progressError.value = ''
       } catch (e: unknown) {
         progressError.value = e instanceof ApiError ? e.message : '播放进度保存失败'
@@ -142,8 +155,74 @@ function queueProgressReport(instance: Artplayer, episode: Episode, forceWatched
   return reportChain
 }
 
+function stopMediaTokenRefresh() {
+  if (mediaTokenRefreshTimer) {
+    clearTimeout(mediaTokenRefreshTimer)
+    mediaTokenRefreshTimer = undefined
+  }
+}
+
+// 在票据过期前（剩余 5 分钟，最少 1 分钟）安排一次预刷新。
+function scheduleMediaTokenRefresh(expiresAtMs: number) {
+  stopMediaTokenRefresh()
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) return
+  const delay = Math.max(60_000, expiresAtMs - Date.now() - mediaTokenRefreshMarginMs)
+  mediaTokenRefreshTimer = setTimeout(() => {
+    mediaTokenRefreshTimer = undefined
+    void refreshMediaToken()
+  }, delay)
+}
+
+// 重取媒体票据，并用新票据重载播放器（保留播放位置与字幕），
+// 避免 12h 后票据过期导致播放中断。定时器与 video:error 两条路径共用。
+async function refreshMediaToken() {
+  if (mediaTokenRefreshInFlight || !player || !activeEpisode) return
+  const serial = loadSerial
+  const targetEpisodeId = episodeId.value
+  mediaTokenRefreshInFlight = true
+  try {
+    const media = await requestMediaToken(targetEpisodeId)
+    if (serial !== loadSerial || episodeId.value !== targetEpisodeId || !player || !activeEpisode) return
+    const expiresAtMs = new Date(media.expires_at).getTime()
+    scheduleMediaTokenRefresh(expiresAtMs)
+    mediaTokenExpiresAt = expiresAtMs
+    if (media.token === mediaToken.value) return
+
+    const instance = player
+    const episode = activeEpisode
+    const resumeAt = Math.max(0, Math.floor(currentPosition.value) - 3)
+    pendingResumeAfterReload = resumeAt
+    pendingResumeShouldPlay = instance.playing
+    const subtitleTrack = activeSubtitleTrack
+    mediaToken.value = media.token
+    // 必须用 switchQuality（内部等价 switchUrl(url, art.currentTime)）而非 switchUrl(url, 0)：
+    // artplayer 内部在 switchUrl 时注册的 loadedmetadata 处理器晚于视图的处理器，
+    // 按注册顺序后执行，会把 currentTime 覆写为 0 导致续期重载后跳回片头；
+    // switchQuality 由 artplayer 自己在最后恢复为刷新前的播放位置。
+    await instance.switchQuality(getStreamUrl(episode.id, media.token))
+    if (subtitleTrack !== null) {
+      const label = subtitleTracks.value.find((track) => track.track_number === subtitleTrack)?.label ?? ''
+      void instance.subtitle.switch(getSubtitleUrl(episode.id, subtitleTrack, media.token), {
+        name: label,
+        type: 'vtt',
+      })
+    }
+    statusMessage.value = '播放票据已续期'
+  } catch (e: unknown) {
+    if (serial === loadSerial) {
+      playerError.value = e instanceof ApiError ? `${e.message}，请刷新页面后重试` : '媒体票据续期失败，请刷新页面后重试'
+    }
+  } finally {
+    mediaTokenRefreshInFlight = false
+  }
+}
+
 function destroyPlayer() {
   stopProgressTimer()
+  stopMediaTokenRefresh()
+  pendingResumeAfterReload = -1
+  pendingResumeShouldPlay = false
+  activeSubtitleTrack = null
   if (!player) return
 
   const oldPlayer = player
@@ -226,11 +305,13 @@ function createSubtitleControl(episode: Episode) {
     ],
     onSelect(this: Artplayer, selector: { value?: string | number }) {
       if (selector.value === 'off') {
+        activeSubtitleTrack = null
         void this.subtitle.switch(emptySubtitleUrl, { name: '关闭字幕', type: 'vtt' })
         return '字幕'
       }
       const track = tracks.find((item) => item.track_number === Number(selector.value))
       if (!track) return '字幕'
+      activeSubtitleTrack = track.track_number
       void this.subtitle.switch(getSubtitleUrl(episode.id, track.track_number, mediaToken.value), {
         name: track.label,
         type: 'vtt',
@@ -272,6 +353,7 @@ function createPlayer(episode: Episode) {
 
   player = instance
   activeEpisode = episode
+  activeSubtitleTrack = defaultSubtitle?.track_number ?? null
   instance.playbackRate = playbackRate.value
   applySubtitleFontSize(instance)
   instance.on('resize', () => scheduleSubtitleFontSize(instance))
@@ -282,6 +364,18 @@ function createPlayer(episode: Episode) {
   instance.on('video:loadedmetadata', () => {
     if (player !== instance) return
     currentDuration.value = Number.isFinite(instance.duration) ? instance.duration : 0
+    if (pendingResumeAfterReload >= 0) {
+      // 媒体票据续期后的重载：恢复到刷新前的播放位置，而不是服务器保存的旧位置
+      const resumePosition = Math.min(pendingResumeAfterReload, Math.max(0, currentDuration.value - 1))
+      const shouldPlay = pendingResumeShouldPlay
+      pendingResumeAfterReload = -1
+      pendingResumeShouldPlay = false
+      instance.currentTime = resumePosition
+      currentPosition.value = resumePosition
+      statusMessage.value = '播放票据已续期，继续播放'
+      if (shouldPlay) void instance.play()
+      return
+    }
     const savedPosition = currentProgress.value?.position || 0
     if (savedPosition > 0 && currentDuration.value > 0) {
       const resumePosition = Math.min(savedPosition, Math.max(0, currentDuration.value - 1))
@@ -319,7 +413,18 @@ function createPlayer(episode: Episode) {
   })
 
   instance.on('video:error', () => {
-    if (player === instance) playerError.value = '视频加载失败，请检查视频文件或网络连接'
+    if (player !== instance) return
+    // 媒体票据过期（12h）后 stream 返回 200+JSON 错误体，视频解码失败触发 error。
+    // 此时尝试重取票据并重载；票据仍在有效期内则按普通加载失败提示。
+    if (
+      mediaTokenExpiresAt > 0 &&
+      Date.now() >= mediaTokenExpiresAt - 60_000 &&
+      !mediaTokenRefreshInFlight
+    ) {
+      void refreshMediaToken()
+      return
+    }
+    playerError.value = '视频加载失败，请检查视频文件或网络连接'
   })
 }
 
@@ -350,6 +455,8 @@ async function load() {
     episodes.value = currentEpisodes
     subtitleTracks.value = availableSubtitleTracks
     mediaToken.value = media.token
+    mediaTokenExpiresAt = new Date(media.expires_at).getTime()
+    scheduleMediaTokenRefresh(mediaTokenExpiresAt)
     progressByEpisode.value = new Map(progressList.map((progress) => [progress.episode_id, progress]))
     const selectedEpisode = currentEpisodes.find((episode) => episode.id === episodeId.value)
     if (!selectedEpisode) {

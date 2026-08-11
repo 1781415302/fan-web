@@ -128,7 +128,9 @@ Future<void> _checkUpdate(BuildContext context) async {
   BuildContext? dialogContext;
   showDialog<void>(
     context: context,
-    barrierDismissible: false,
+    // 允许点击外部/按返回键关闭加载弹窗：网络异常卡死时用户仍有退出路径。
+    // 弹窗关闭后 dialogContext 不再 mounted，后续 pop 会被下方的 mounted 判断跳过。
+    barrierDismissible: true,
     builder: (c) {
       dialogContext = c;
       return const AlertDialog(content: LinearProgressIndicator());

@@ -83,6 +83,28 @@ describe('router guards', () => {
     expect(route.name).toBe('login')
   })
 
+  it('fetches setup status only once after configured', async () => {
+    const setup = vi.fn(async () => true)
+    const router = makeRouter(setup)
+    await go(router, '/animes')
+    await go(router, '/animes/new')
+    expect(setup).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not cache the not-configured result and caches once configured', async () => {
+    const setup = vi
+      .fn()
+      .mockResolvedValueOnce(false) // 首次导航：未配置
+      .mockResolvedValueOnce(false) // 被重定向到 /setup 的导航再次请求
+      .mockResolvedValue(true) // 后续导航：已配置
+    const router = makeRouter(setup)
+    const first = await go(router, '/animes')
+    expect(first.name).toBe('setup')
+    const second = await go(router, '/animes')
+    expect(second.name).toBe('login')
+    expect(setup).toHaveBeenCalledTimes(3)
+  })
+
   it('keeps token in localStorage during router navigation', async () => {
     const store = useAuthStore()
     store.setSession('tok', { id: 1, username: 'root', is_admin: true, created_at: '' })

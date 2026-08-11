@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/at-wat/ebml-go"
@@ -265,13 +266,101 @@ type subtitleDocument struct {
 	cues   map[uint64][]subtitleCue
 }
 
+func emptySubtitleDocument() subtitleDocument {
+	return subtitleDocument{
+		tracks: make(map[uint64]*subtitleTrack),
+		cues:   make(map[uint64][]subtitleCue),
+	}
+}
+
+// subtitleCacheMaxEntries 缓存条目上限，防止缓存自身成为新的内存放大器。
+const subtitleCacheMaxEntries = 16
+
+// subtitleCacheKey 以 (路径, 大小, mtime) 标识一次解析结果，文件变更后自然失效。
+type subtitleCacheKey struct {
+	path    string
+	size    int64
+	modTime int64
+}
+
+// subtitleDocumentCache 缓存 MKV 字幕解析结果，避免每次请求全量扫描整个文件；
+// 同一文件并发解析时合并为一次（singleflight）。
+type subtitleDocumentCache struct {
+	mu       sync.Mutex
+	entries  map[subtitleCacheKey]*subtitleDocument
+	order    []subtitleCacheKey
+	inflight map[subtitleCacheKey]chan struct{}
+}
+
+var subtitleParseCache = &subtitleDocumentCache{
+	entries:  make(map[subtitleCacheKey]*subtitleDocument),
+	inflight: make(map[subtitleCacheKey]chan struct{}),
+}
+
+func (c *subtitleDocumentCache) get(key subtitleCacheKey) (*subtitleDocument, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	document, ok := c.entries[key]
+	return document, ok
+}
+
+func (c *subtitleDocumentCache) put(key subtitleCacheKey, document *subtitleDocument) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.entries[key]; ok {
+		return
+	}
+	if len(c.entries) >= subtitleCacheMaxEntries {
+		oldest := c.order[0]
+		c.order = c.order[1:]
+		delete(c.entries, oldest)
+	}
+	c.entries[key] = document
+	c.order = append(c.order, key)
+}
+
+// begin 标记一次解析开始：若同键解析正在进行则返回其完成信号（done 为 nil），
+// 否则返回 done 回调，调用方解析结束后必须执行。
+func (c *subtitleDocumentCache) begin(key subtitleCacheKey) (<-chan struct{}, func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if wait, ok := c.inflight[key]; ok {
+		return wait, nil
+	}
+	wait := make(chan struct{})
+	c.inflight[key] = wait
+	return nil, func() {
+		c.mu.Lock()
+		delete(c.inflight, key)
+		c.mu.Unlock()
+		close(wait)
+	}
+}
+
 func parseMatroskaSubtitles(path string) (subtitleDocument, error) {
 	extension := strings.ToLower(filepath.Ext(path))
 	if extension != ".mkv" && extension != ".webm" {
-		return subtitleDocument{
-			tracks: make(map[uint64]*subtitleTrack),
-			cues:   make(map[uint64][]subtitleCue),
-		}, nil
+		return emptySubtitleDocument(), nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return subtitleDocument{}, err
+	}
+	key := subtitleCacheKey{path: path, size: info.Size(), modTime: info.ModTime().UnixNano()}
+	if document, ok := subtitleParseCache.get(key); ok {
+		return *document, nil
+	}
+	if wait, done := subtitleParseCache.begin(key); done == nil {
+		<-wait
+		if document, ok := subtitleParseCache.get(key); ok {
+			return *document, nil
+		}
+	} else {
+		defer done()
+	}
+	if document, ok := subtitleParseCache.get(key); ok {
+		return *document, nil
 	}
 
 	file, err := os.Open(path)
@@ -300,6 +389,7 @@ func parseMatroskaSubtitles(path string) (subtitleDocument, error) {
 			return document.cues[trackNum][i].start < document.cues[trackNum][j].start
 		})
 	}
+	subtitleParseCache.put(key, &document)
 	return document, nil
 }
 

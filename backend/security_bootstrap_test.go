@@ -139,7 +139,7 @@ admin:
 	}
 }
 
-func TestBootstrapNoAdminWithoutPasswordFallsBackToSetup(t *testing.T) {
+func TestBootstrapNoAdminWithoutPasswordRefusesStartup(t *testing.T) {
 	bootstrapTestDB(t)
 	path := writeConfig(t, `
 server:
@@ -155,18 +155,19 @@ admin:
 	}
 	cfg.Configured = true
 
-	if err := prepareConfiguredInstance(path, cfg); err != nil {
-		t.Fatal(err)
+	err = prepareConfiguredInstance(path, cfg)
+	if err == nil {
+		t.Fatal("expected startup to be refused when database has no admin and config has no legacy password")
 	}
-	if cfg.Configured {
-		t.Fatal("expected Configured to become false when no legacy password exists")
+	if !cfg.Configured {
+		t.Fatal("Configured must not be silently downgraded when database has no admin")
 	}
 	count, err := database.CountAdmins()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
-		t.Fatalf("expected no default admin created, got %d", count)
+		t.Fatalf("expected no admin created, got %d", count)
 	}
 }
 

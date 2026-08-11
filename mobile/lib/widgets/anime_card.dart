@@ -16,7 +16,9 @@ class AnimeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final anime = item.anime;
     final title = _displayTitle(anime);
-    final watchedCount = item.watchedCount.clamp(0, anime.epCount);
+    // 展示用真实已看数（epCount 可能为 0，clamp 会把已看数错钳到 0）；
+    // 仅对进度条比值做 clamp，避免已看数超过 epCount 时被截断显示
+    final watchedCount = item.watchedCount;
     final progress = anime.epCount <= 0
         ? 0.0
         : (watchedCount / anime.epCount).clamp(0.0, 1.0).toDouble();

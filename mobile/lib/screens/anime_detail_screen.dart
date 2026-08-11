@@ -73,9 +73,16 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
       if (!mounted) {
         return;
       }
+      final msg = apiErrorMessage(error);
       setState(() {
         _isLoading = false;
-        _error = apiErrorMessage(error);
+        // 首次加载失败显示全屏错误；主体已加载时下拉刷新失败
+        // 通过 _refreshError 横幅提示，避免静默吞掉
+        if (_anime == null) {
+          _error = msg;
+        } else {
+          _refreshError = msg;
+        }
       });
     }
   }
@@ -163,7 +170,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           if (_refreshError != null) ...[
             const SizedBox(height: 12),
             Text(
-              '进度刷新失败：$_refreshError',
+              '刷新失败：$_refreshError',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppTheme.warning, fontSize: 13),
             ),

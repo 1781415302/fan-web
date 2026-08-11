@@ -25,7 +25,15 @@ const saving = ref(false)
 const showEdit = ref(false)
 const coverFailed = ref(false)
 const showFullSummary = ref(false)
-const editForm = reactive({ title: '', title_cn: '', summary: '', ep_count: 0, file_path: '' })
+// ep_count 允许为 ''：v-model.number 对清空后的输入返回空字符串（并非 0），
+// 提交前归一化为 0（后端 ep_count 为 int，无法绑定空字符串）。
+const editForm = reactive<{
+  title: string
+  title_cn: string
+  summary: string
+  ep_count: number | ''
+  file_path: string
+}>({ title: '', title_cn: '', summary: '', ep_count: 0, file_path: '' })
 
 async function load() {
   if (!Number.isInteger(animeId.value) || animeId.value <= 0) {
@@ -72,7 +80,10 @@ async function saveEdit() {
   saving.value = true
   error.value = ''
   try {
-    await updateAnime(animeId.value, { ...editForm })
+    await updateAnime(animeId.value, {
+      ...editForm,
+      ep_count: editForm.ep_count === '' ? 0 : editForm.ep_count,
+    })
     showEdit.value = false
     await load()
   } catch (e: unknown) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,8 @@ var ErrBangumiNotFound = errors.New("未找到该条目")
 const (
 	bangumiBaseURL = "https://api.bgm.tv"
 	bangumiUA      = "fan-web/1.0 (private anime library)"
+	// maxBangumiResponseBytes 限制 Bangumi API 响应大小，防止异常响应无界占用内存。
+	maxBangumiResponseBytes = 4 << 20 // 4 MiB
 )
 
 type BangumiSearchItem struct {
@@ -146,7 +149,17 @@ func (s *BangumiService) doRequest(apiURL string, target interface{}) error {
 		return fmt.Errorf("Bangumi API 返回状态码 %d", response.StatusCode)
 	}
 
-	if err := json.NewDecoder(response.Body).Decode(target); err != nil {
+	// 限制响应大小（与 updater 中 maxChecksumBytes 同思路），
+	// 防止上游异常超大响应无界占用内存。
+	limited := io.LimitReader(response.Body, maxBangumiResponseBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return fmt.Errorf("读取 Bangumi API 响应失败: %w", err)
+	}
+	if len(body) > maxBangumiResponseBytes {
+		return fmt.Errorf("Bangumi API 响应过大，超过 %d 字节上限", maxBangumiResponseBytes)
+	}
+	if err := json.Unmarshal(body, target); err != nil {
 		return fmt.Errorf("解析 Bangumi 响应失败: %w", err)
 	}
 	return nil

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"fan-web/database"
 	"fan-web/models"
@@ -16,6 +17,9 @@ import (
 type LibraryService struct {
 	bangumi  *BangumiService
 	rootPath string
+	// scanMu 串行化库扫描，防止两个并发 Scan 对同一分组"先查后插"交错写入，
+	// 与数据库唯一索引共同保证不产生重复番剧/剧集。
+	scanMu sync.Mutex
 }
 
 type LibraryScanResult struct {
@@ -52,6 +56,9 @@ func (s *LibraryService) SetRootPath(rootPath string) {
 }
 
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+
 	result := &LibraryScanResult{Unidentified: make([]UnidentifiedFile, 0)}
 	allFiles, err := s.collectFiles()
 	if err != nil {
@@ -216,26 +223,56 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		addGroupUnidentified(result, files, "查询已有集数失败")
 		return
 	}
-	existingNumbers := make(map[int]bool, len(existingEpisodes))
+	existingByNumber := make(map[int]models.Episode, len(existingEpisodes))
 	for _, episode := range existingEpisodes {
-		existingNumbers[episode.EpNumber] = true
+		existingByNumber[episode.EpNumber] = episode
 	}
 	for _, file := range files {
-		if existingNumbers[file.parsed.EpisodeNum] {
+		existing, exists := existingByNumber[file.parsed.EpisodeNum]
+		if !exists {
+			err := database.CreateEpisode(&models.Episode{
+				AnimeID:  anime.ID,
+				EpNumber: file.parsed.EpisodeNum,
+				FilePath: file.fileName,
+			})
+			if err != nil {
+				log.Printf("[Library] 创建集数失败 %q: %v", file.fileName, err)
+				addUnidentified(result, file.fileName, "创建集数失败")
+				continue
+			}
+			existingByNumber[file.parsed.EpisodeNum] = models.Episode{
+				EpNumber: file.parsed.EpisodeNum,
+				FilePath: file.fileName,
+			}
+			result.NewEpisodes++
 			continue
 		}
-		err := database.CreateEpisode(&models.Episode{
-			AnimeID:  anime.ID,
+		// 集号已存在且文件名一致：正常跳过。
+		if existing.FilePath == file.fileName {
+			continue
+		}
+		// 集号已存在但文件名不一致：若旧文件仍在磁盘上，说明是同一集号的另一个文件，
+		// 无法自动判定，报告给用户；若旧文件已不存在，则视为文件改名，更新 file_path。
+		oldPath := filepath.Join(s.rootPath, anime.FilePath, existing.FilePath)
+		if _, statErr := os.Stat(oldPath); statErr == nil {
+			addUnidentified(result, file.fileName, "集数已存在（旧文件仍在磁盘上），无法自动关联")
+			continue
+		} else if !os.IsNotExist(statErr) {
+			log.Printf("[Library] 检查旧文件 %q 失败: %v", oldPath, statErr)
+			addUnidentified(result, file.fileName, "检查旧文件失败")
+			continue
+		}
+		if err := database.UpdateEpisodeFilePath(existing.ID, file.fileName); err != nil {
+			log.Printf("[Library] 更新改名文件路径失败 %q: %v", file.fileName, err)
+			addUnidentified(result, file.fileName, "更新改名文件路径失败")
+			continue
+		}
+		existingByNumber[file.parsed.EpisodeNum] = models.Episode{
+			ID:       existing.ID,
 			EpNumber: file.parsed.EpisodeNum,
 			FilePath: file.fileName,
-		})
-		if err != nil {
-			log.Printf("[Library] 创建集数失败 %q: %v", file.fileName, err)
-			addUnidentified(result, file.fileName, "创建集数失败")
-			continue
 		}
-		existingNumbers[file.parsed.EpisodeNum] = true
-		result.NewEpisodes++
+		result.Skipped++
 	}
 }
 

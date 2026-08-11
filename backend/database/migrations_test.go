@@ -47,8 +47,8 @@ func TestMigrationsInitializeSchema(t *testing.T) {
 	if err := DB.QueryRow("SELECT version FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("期望版本 1 已记录，got %d", version)
+	if version != 2 {
+		t.Fatalf("期望版本 2 已记录，got %d", version)
 	}
 }
 
@@ -143,8 +143,8 @@ func TestMigrationsAdoptLegacyDatabase(t *testing.T) {
 	if err := DB.QueryRow("SELECT version FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("期望接管后记录版本 1，got %d", version)
+	if version != 2 {
+		t.Fatalf("期望接管后记录版本 2，got %d", version)
 	}
 }
 
@@ -169,8 +169,8 @@ func TestMigrationsIdempotentOnReinit(t *testing.T) {
 	if err := DB.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("期望迁移记录仍为 1 条，got %d", count)
+	if count != 2 {
+		t.Fatalf("期望迁移记录仍为 2 条，got %d", count)
 	}
 }
 
@@ -250,7 +250,7 @@ func TestMigrationsRejectsDatabaseNewerThanBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(
-		"INSERT INTO schema_migrations (version, name) VALUES (1, 'initial_schema'), (2, 'future_schema')",
+		"INSERT INTO schema_migrations (version, name) VALUES (1, 'initial_schema'), (2, 'unique_anime_episode_keys'), (3, 'future_schema')",
 	); err != nil {
 		t.Fatal(err)
 	}

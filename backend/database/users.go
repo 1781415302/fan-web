@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -102,6 +103,44 @@ func CountAdmins() (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// ErrLastAdmin 表示删除该用户后系统将不再有任何管理员。
+var ErrLastAdmin = errors.New("cannot delete the last admin")
+
+// DeleteUserWithLastAdminGuard 在单个事务内重新校验"删除后仍至少保留一名管理员"再执行删除，
+// 保证"检查-删除"的原子性。CountAdmins + DeleteUser 是两条独立 SQL 语句，MaxOpenConns=1
+// 只序列化单条语句：两个管理员并发互相删除时，两个请求都能先读到 count>=2 通过检查，
+// 随后各自删除对方，导致管理员被删光。这里把检查与删除放入同一事务（以 serializable
+// 隔离级别开启，SQLite 驱动会立即获取写锁），且事务持有唯一的数据库连接直到提交，
+// 并发删除请求只能排队等本事务提交后执行，从而只能看到删除后的状态。
+func DeleteUserWithLastAdminGuard(id int64) error {
+	tx, err := DB.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
+	var adminCount int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM users WHERE is_admin = 1").Scan(&adminCount); err != nil {
+		return err
+	}
+	if adminCount <= 1 {
+		return ErrLastAdmin
+	}
+
+	result, err := tx.Exec("DELETE FROM users WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
 }
 
 type scanner interface {
