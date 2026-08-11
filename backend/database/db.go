@@ -61,6 +61,19 @@ func Init(dbPath string) error {
 	if err := tightenDBFilePermissions(dbPath); err != nil {
 		return err
 	}
+	// 迁移前先判断是否存在待应用迁移：若存在，先对当前数据库做一致性快照备份。
+	// 迁移一旦提交，旧版会因 validateAppliedMigrations 拒绝降级启动，仅回滚 .old
+	// 可执行文件不足以恢复；该快照与 .old 同属一套回滚资产，备份失败则中止启动，
+	// 绝不带着无备份的状态冒险执行迁移。
+	pending, err := HasPendingMigrations(db)
+	if err != nil {
+		return fmt.Errorf("检查待应用迁移失败: %w", err)
+	}
+	if pending {
+		if err := BackupDatabase(db, dbPath+preMigrationBackupSuffix); err != nil {
+			return fmt.Errorf("迁移前数据库备份失败: %w", err)
+		}
+	}
 	if err := runMigrations(db); err != nil {
 		return fmt.Errorf("数据库迁移失败: %w", err)
 	}
