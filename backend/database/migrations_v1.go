@@ -2,6 +2,9 @@ package database
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
 )
 
 // migrations 是全部的版本化迁移定义，按 version 升序排列。
@@ -105,11 +108,87 @@ func migrateUniqueAnimeEpisodeKeys(tx *sql.Tx) error {
 	return nil
 }
 
+// checkDuplicateBangumiAnimePaths 在合并重复 bangumi 番剧前检查目录一致性：
+// 对每个 bangumi_id>0 且含 >1 个番剧的分组，若其下番剧的 file_path（目录）不止一种取值
+// （NULL/空视为独立的"无目录"取值，因此不能用 COUNT(DISTINCT file_path)——它忽略 NULL，
+// 这里用 COALESCE(file_path,'') 归一后按 bangumi_id 分组在 Go 内统计），合并会把剧集
+// reparent 到 MIN(id) 番剧、而文件仍留在原目录，导致播放路径失效，必须拒绝。
+// 返回的错误会列出受影响的 bangumi_id 与每个番剧的 id、目录（NULL/空显示为"无目录"），
+// 并提示需要人工介入；该错误使整个 v2 迁移在事务内回滚，schema_migrations 不会记录 v2。
+func checkDuplicateBangumiAnimePaths(tx *sql.Tx) error {
+	rows, err := tx.Query(`
+		SELECT id, bangumi_id, COALESCE(file_path, '')
+		FROM animes
+		WHERE bangumi_id > 0
+		ORDER BY bangumi_id, id
+	`)
+	if err != nil {
+		return err
+	}
+	type animeInfo struct {
+		id   int64
+		path string
+	}
+	groups := make(map[int][]animeInfo) // bangumi_id -> 其下番剧（id 与目录）
+	for rows.Next() {
+		var id int64
+		var bangumiID int
+		var path string
+		if err := rows.Scan(&id, &bangumiID, &path); err != nil {
+			rows.Close()
+			return err
+		}
+		groups[bangumiID] = append(groups[bangumiID], animeInfo{id: id, path: path})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for bangumiID, animes := range groups {
+		if len(animes) <= 1 {
+			continue // 无重复，无需合并，也不在检查范围
+		}
+		// 统计该 bangumi 下不同的目录；NULL/空已由 COALESCE 归一为 ""。
+		distinct := make(map[string]bool)
+		for _, a := range animes {
+			distinct[a.path] = true
+		}
+		if len(distinct) <= 1 {
+			continue // 目录一致（含全为 NULL/空），合并安全
+		}
+		// 跨目录重复：列出每个番剧的 id 与目录，要求手工处理后重试。
+		var b strings.Builder
+		fmt.Fprintf(&b, "bangumi_id=%d 下存在 %d 个目录不同的重复番剧，无法安全合并，已拒绝迁移（schema_migrations 未记录 v2）。受影响番剧：", bangumiID, len(distinct))
+		for _, a := range animes {
+			dir := a.path
+			if dir == "" {
+				dir = "无目录"
+			}
+			fmt.Fprintf(&b, " [id=%d 目录=%s]", a.id, dir)
+		}
+		b.WriteString(" 请人工整理目录后重试。")
+		return errors.New(b.String())
+	}
+	return nil
+}
+
 // collapseDuplicateBangumiAnimes 把 bangumi_id>0 的重复番剧合并为 MIN(id)：
 // 把被废弃番剧下的全部剧集 reparent 到保留番剧（UPDATE 仅改 anime_id，不触发级联删除，
 // watch_progress 仍绑定原 episode id 不丢失），之后再删除已无剧集的重复番剧。
 // reparent 可能引入的 (anime_id, ep_number) 重复交由 deduplicateEpisodes 统一合并。
+//
+// 路径一致性规则：只有同一 bangumi_id 下所有番剧的 file_path（目录）完全一致（含全部为
+// NULL/空）时才允许合并——此时 reparent 后剧集仍在同一目录，文件路径可解析。若出现跨目录
+// 的重复番剧（如番剧 A 在 dir1、番剧 B 在 dir2），合并会把 B 的剧集改挂到 A 下、文件却仍
+// 在 dir2，导致无法播放，此时直接返回错误拒绝合并（整个 v2 迁移随之回滚、不记录），
+// 要求手工整理后再升级。
 func collapseDuplicateBangumiAnimes(tx *sql.Tx) error {
+	// 预检：同一 bangumi 的重复番剧目录必须一致，否则拒绝合并（见函数上方注释）。
+	if err := checkDuplicateBangumiAnimePaths(tx); err != nil {
+		return err
+	}
 	rows, err := tx.Query(`
 		SELECT bangumi_id, MIN(id) FROM animes
 		WHERE bangumi_id > 0
