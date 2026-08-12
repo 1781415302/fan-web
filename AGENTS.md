@@ -39,6 +39,11 @@
 ### R4. 不要误提交底下这些杂项文件
 `.agents/`、`.commandcode/`、`fan-web.code-workspace`、`mobile/icon.png:Zone.Identifier` 是本地工具残留，不入库。
 
+### R5. 阶段交接与长期文档必须同步
+- `docs/` 可以创建阶段计划、执行交接和验收记录，用于明确范围、实现方案与完成状态。
+- 阶段工作改变了当前系统行为、接口、配置、构建或发布契约时，完成前必须同步更新对应长期文档，不能只把新事实留在交接文档里。
+- 阶段文档完成使命后可按实际需要保留或清理；长期有效的事实以 `docs/开发指南.md`、`docs/移动端开发指南.md` 和 `docs/更新与发布指南.md` 为准。
+
 ## WSL 工具链（开发环境事实）
 
 - Go：`/home/bishe/go/bin/go`（go1.26.5 linux/amd64）
@@ -69,7 +74,8 @@ cd mobile && flutter build apk --release
 ```
 
 ## 详阅参考
+- `docs/README.md`（文档索引与维护约定）
 - `docs/开发指南.md`（服务器端 + Web 前端）
 - `docs/移动端开发指南.md`（Flutter App）
-- `docs/阶段六-快捷更新交接文档.md`（更新机制设计）
+- `docs/更新与发布指南.md`（双端更新协议与 Release 规范）
 - 发布完整流程：用 opencode 的发布 skill（`.opencode/skills/publish-release`）

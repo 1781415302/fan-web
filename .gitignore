@@ -7,8 +7,6 @@ backend/web/dist/
 
 dist/
 
-docs/
-
 .playwright-cli/
 output/playwright/
 
