@@ -207,11 +207,13 @@ func TestLoginRateLimiterUsesRollingWindow(t *testing.T) {
 	if !limiter.Allow("4.4.4.4") {
 		t.Fatal("failures outside the rolling window must not count")
 	}
+	// Allow 会在放行的同时原子计入本次尝试：窗口内 t=40、t=60 两次旧失败，
+	// 加上本次占用的额度，共 3 次。
 	limiter.mu.Lock()
 	remaining := len(limiter.attempts["4.4.4.4"].attempts)
 	limiter.mu.Unlock()
-	if remaining != 2 {
-		t.Fatalf("expected two fresh failures, got %d", remaining)
+	if remaining != 3 {
+		t.Fatalf("expected three fresh attempts (two failures plus the consumed one), got %d", remaining)
 	}
 }
 
@@ -223,11 +225,12 @@ func TestLoginRateLimiterAllowDeletesExpiredSource(t *testing.T) {
 	if !limiter.Allow("5.5.5.5") {
 		t.Fatal("expired source must be allowed")
 	}
+	// Allow 会清掉窗口外记录并原子计入本次尝试，过期记录不应残留。
 	limiter.mu.Lock()
-	_, exists := limiter.attempts["5.5.5.5"]
+	entry, exists := limiter.attempts["5.5.5.5"]
 	limiter.mu.Unlock()
-	if exists {
-		t.Fatal("Allow must delete the expired source entry")
+	if !exists || len(entry.attempts) != 1 {
+		t.Fatalf("Allow must drop the expired attempt and record only the new one, got %v", entry.attempts)
 	}
 }
 

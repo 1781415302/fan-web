@@ -27,6 +27,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   int _total = 0;
   String? _error;
   CancelToken? _cancelToken;
+  // 下载成功但安装器启动失败时记录已下载 APK 路径，用于“直接打开安装包”。
+  String? _apkPath;
 
   @override
   void dispose() {
@@ -51,6 +53,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       await downloadAndInstallApk(
         url,
         cancelToken: _cancelToken,
+        expectedSize: widget.result.downloadSize,
+        sha256sumsUrl: widget.result.sha256sumsUrl,
         onProgress: (received, total) {
           if (!mounted) return;
           setState(() {
@@ -63,6 +67,16 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+      if (e is ApkInstallException) {
+        // APK 已完整下载，只是安装器启动失败：归因到安装环节，
+        // 提示手动安装，并提供不再重新下载的直接打开路径。
+        setState(() {
+          _downloading = false;
+          _apkPath = e.filePath;
+          _error = '安装包已下载，请手动安装';
+        });
+        return;
+      }
       final msg = e is DioException && e.type == DioExceptionType.cancel
           ? '已取消下载'
           : '下载失败: $e';
@@ -70,6 +84,20 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         _downloading = false;
         _error = msg;
       });
+    }
+  }
+
+  /// 直接打开已下载的 APK（不再重新下载），安装器启动失败后的重试路径。
+  Future<void> _openApk() async {
+    final path = _apkPath;
+    if (path == null || path.isEmpty) return;
+    try {
+      await openDownloadedApk(path);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '打开安装包失败: $e');
     }
   }
 
@@ -109,10 +137,16 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           onPressed: _downloading ? null : () => Navigator.of(context).pop(),
           child: const Text('稍后'),
         ),
-        FilledButton(
-          onPressed: _downloading ? null : _startDownload,
-          child: Text(_downloading ? '下载中...' : '立即更新'),
-        ),
+        if (_apkPath != null)
+          FilledButton(
+            onPressed: _downloading ? null : _openApk,
+            child: const Text('打开安装包'),
+          )
+        else
+          FilledButton(
+            onPressed: _downloading ? null : _startDownload,
+            child: Text(_downloading ? '下载中...' : '立即更新'),
+          ),
       ],
     );
   }

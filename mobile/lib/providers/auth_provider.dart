@@ -197,6 +197,10 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // 在发起请求前捕获用户身份，避免登出请求触发 2001/401 级联
+    // onUnauthorized 清空 state.user 后，finally 中无法再取到 userId。
+    final userId = state.user?.id;
+    final serverUrl = state.serverUrl;
     try {
       if (state.token != null && state.token!.isNotEmpty) {
         await _authApi.logout();
@@ -204,8 +208,6 @@ class AuthNotifier extends Notifier<AuthState> {
     } catch (_) {
       // 网络异常不应阻塞本地登出。
     } finally {
-      final serverUrl = state.serverUrl;
-      final userId = state.user?.id;
       await _clearStoredToken();
       await _clearUserSnapshot();
       _apiClient.setToken(null);

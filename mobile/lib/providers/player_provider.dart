@@ -402,13 +402,24 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     if (!restored) {
+      // 断点恢复失败时不进入终态 error（媒体已加载、从头播放完全可行），
+      // 回退为从头播放，保留正常播放与进度上报能力。
+      _savedPosition = 0;
+      _restoreHandled = true;
       _setState(
         state.copyWith(
           isLoading: false,
           isRestoring: false,
-          error: '断点恢复失败，请返回后重试',
+          savedPosition: 0,
+          position: Duration.zero,
         ),
       );
+      try {
+        await player.seek(Duration.zero);
+      } catch (_) {
+        // seek 失败也允许继续播放（不支持 seek 的流从当前位置开始）。
+      }
+      await _startPlaybackIfReady();
       return;
     }
 
@@ -643,6 +654,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     if (!_hasOpened && !_disposing) {
+      return;
+    }
+    // 断点恢复确认完成前（媒体尚未定位到断点，position 为 0 或瞬态值）
+    // 不上报也不写 outbox，避免覆盖服务端已保存的断点；与 _handlePlaying/定时器路径一致。
+    if (state.isRestoring) {
       return;
     }
     final safePosition = position.inSeconds < 0 ? 0 : position.inSeconds;

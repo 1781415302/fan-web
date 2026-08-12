@@ -5,13 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,6 +46,14 @@ type UpdateCheckResult struct {
 }
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// performUpdateMu 串行化自更新全过程（下载+校验+替换+重启）。
+// 并发触发会互相截断下载文件、覆盖 .old 回滚备份，最坏情况下把替换后已上线的
+// 二进制写坏。CheckUpdate 只读远端信息，不需要此锁。
+var performUpdateMu sync.Mutex
+
+// errUpdateBackupExists 表示替换前检测到残留的 .old 回滚副本，拒绝覆盖以免丢失回滚。
+var errUpdateBackupExists = errors.New("update backup already exists")
 
 func IsNewerVersion(current, latest string) bool {
 	normalize := func(v string) []int {
@@ -165,6 +176,13 @@ func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 }
 
 func PerformUpdate(currentVersion string) error {
+	// 用 TryLock 而非 Lock：已在更新时第二个请求直接失败返回，
+	// 而不是阻塞到进程被重启（阻塞中的 HTTP 请求会随进程退出而连接断开）。
+	if !performUpdateMu.TryLock() {
+		return fmt.Errorf("更新已在进行中，请勿重复触发")
+	}
+	defer performUpdateMu.Unlock()
+
 	release, err := fetchLatestRelease()
 	if err != nil {
 		return err
@@ -175,6 +193,12 @@ func PerformUpdate(currentVersion string) error {
 	asset := findServerAsset(release.Assets)
 	if asset == nil {
 		return fmt.Errorf("未找到适用于当前平台(%s/%s)的更新包", runtime.GOOS, runtime.GOARCH)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows 下正在运行的可执行文件被加载器独占锁定（未以 FILE_SHARE_DELETE
+		// 方式打开），os.Rename 无法将其改名备份，替换必然失败。直接返回明确提示
+		// 让用户手动替换，避免无谓的完整下载与校验耗时。
+		return fmt.Errorf("Windows 平台暂不支持自动更新，请到 GitHub Releases 手动下载 %s 并替换可执行文件", asset.Name)
 	}
 
 	execPath, err := os.Executable()
@@ -192,6 +216,8 @@ func PerformUpdate(currentVersion string) error {
 		return fmt.Errorf("发布缺少 SHA256SUMS.txt，已取消更新")
 	}
 
+	// 清理上次中断可能残留的下载文件（downloadFile 用 O_EXCL 创建，目标已存在会失败）。
+	os.Remove(tmpPath)
 	if err := downloadFile(asset.BrowserDownloadURL, tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("下载失败: %w", err)
@@ -220,17 +246,15 @@ func PerformUpdate(currentVersion string) error {
 		return fmt.Errorf("设置权限失败: %w", err)
 	}
 
-	backupPath := execPath + ".old"
-	os.Remove(backupPath)
-	if err := os.Rename(execPath, backupPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("备份旧版本失败: %w", err)
+	backupPath, err := replaceExecutable(execPath, tmpPath)
+	if err != nil {
+		if errors.Is(err, errUpdateBackupExists) {
+			return fmt.Errorf("检测到更新残留备份 %s，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试", backupPath)
+		}
+		return err
 	}
-	if err := os.Rename(tmpPath, execPath); err != nil {
-		_ = os.Rename(backupPath, execPath)
-		os.Remove(tmpPath)
-		return fmt.Errorf("替换二进制失败: %w", err)
-	}
+	// .old 回滚副本在此刻意保留：新版尚未启动，删除它会丧失回滚能力。
+	// 由新版本成功启动（绑定端口）后通过 CleanupUpdateBackup 清理。
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
@@ -244,6 +268,57 @@ func PerformUpdate(currentVersion string) error {
 	}()
 
 	return nil
+}
+
+// replaceExecutable 用 tmpPath（已下载校验的新二进制）替换 execPath：先把当前二进制
+// 改名为 .old 作为回滚备份，再把新二进制改名为 execPath。
+//
+// 关键：替换成功后保留 .old，不在此处删除——由新版本成功启动后通过 CleanupUpdateBackup
+// 清理。这样若新版因数据库迁移失败、配置错误等起不来，旧版二进制仍在，可手动回滚。
+// 替换前若已存在 .old（上一次更新的新版本未成功启动、未自动清理），拒绝覆盖以免丢失
+// 唯一回滚副本。任一步失败均清理 tmpPath 并尝试回滚到旧版本，保证现场不被写坏。
+func replaceExecutable(execPath, tmpPath string) (string, error) {
+	backupPath := execPath + ".old"
+	if _, err := os.Lstat(backupPath); err == nil {
+		os.Remove(tmpPath)
+		return backupPath, errUpdateBackupExists
+	}
+	if err := os.Rename(execPath, backupPath); err != nil {
+		os.Remove(tmpPath)
+		return backupPath, fmt.Errorf("备份旧版本失败: %w", err)
+	}
+	if err := os.Rename(tmpPath, execPath); err != nil {
+		_ = os.Rename(backupPath, execPath) // 回滚到旧版本
+		os.Remove(tmpPath)
+		return backupPath, fmt.Errorf("替换二进制失败: %w", err)
+	}
+	return backupPath, nil
+}
+
+// CleanupUpdateBackup 删除自更新留下的上一版本回滚副本（<可执行文件>.old）。
+// 由新版本在成功启动（绑定端口）后调用：只有新版本确认能正常运行时才清理回滚副本，
+// 避免旧版 PerformUpdate 在替换后立刻删除 .old 导致新版起不来时无回滚。
+// 删除失败仅记录日志，不影响启动。
+func CleanupUpdateBackup() {
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cleanupUpdateBackupAt(execPath)
+}
+
+// cleanupUpdateBackupAt 删除 execPath 同目录下的 .old 回滚副本；不存在则无操作。
+// 拆出便于测试（不依赖 os.Executable）。
+func cleanupUpdateBackupAt(execPath string) {
+	backupPath := execPath + ".old"
+	if _, err := os.Lstat(backupPath); err != nil {
+		return
+	}
+	if err := os.Remove(backupPath); err != nil {
+		log.Printf("清理上一版本备份 %s 失败: %v（可手动删除）", backupPath, err)
+		return
+	}
+	log.Printf("已清理上一版本备份 %s", backupPath)
 }
 
 func checkWritable(path string) error {
@@ -290,7 +365,9 @@ func downloadFile(url, dest string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("下载失败，状态码 %d", resp.StatusCode)
 	}
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	// O_EXCL：目标文件已存在（并发请求或残留文件）时直接失败，
+	// 防止两个请求用 O_TRUNC 互相截断同一个下载文件。
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
 	}

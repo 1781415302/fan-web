@@ -96,10 +96,21 @@ func (h *AdminUserHandler) Delete(c *gin.Context) {
 		}
 	}
 
-	if err := database.DeleteUser(userID); err != nil {
-		if err == sql.ErrNoRows {
+	// 删除管理员时走带"最后一名管理员"保护的事务接口：检查与删除在同一事务内完成，
+	// 避免并发互相删除时把管理员删光（上面的预检查仅用于快速失败，事务内会再次校验）。
+	var deleteErr error
+	if target.IsAdmin {
+		deleteErr = database.DeleteUserWithLastAdminGuard(userID)
+	} else {
+		deleteErr = database.DeleteUser(userID)
+	}
+	if deleteErr != nil {
+		switch {
+		case errors.Is(deleteErr, database.ErrLastAdmin):
+			utils.Error(c, utils.CodeForbidden, "至少需要保留一名管理员")
+		case errors.Is(deleteErr, sql.ErrNoRows):
 			utils.Error(c, utils.CodeNotFound, "用户不存在")
-		} else {
+		default:
 			utils.Error(c, utils.CodeInternal, "删除用户失败")
 		}
 		return

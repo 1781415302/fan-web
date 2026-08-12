@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import axios from 'axios'
 
 import api, {
   ApiError,
@@ -35,10 +36,16 @@ export const useAuthStore = defineStore('auth', () => {
       try {
         const response = await api.get<ApiResponse<User>>('/auth/me')
         user.value = unwrap(response)
-      } catch {
-        clearSession()
-      } finally {
         initialized.value = true
+      } catch (error: unknown) {
+        // 只有认证失败（后端明确返回未认证）才清除本地会话；后端对失效
+        // token 的响应是 HTTP 200 + code 2001，由成功拦截器统一处理。
+        // 网络错误 / 超时（error.response 为 undefined）时 token 仍然有效，
+        // 保留会话并保持未初始化，后续导航会再次尝试恢复。
+        if (isAuthFailure(error)) {
+          clearSession()
+          initialized.value = true
+        }
       }
     })()
 
@@ -99,5 +106,12 @@ export const useAuthStore = defineStore('auth', () => {
     setSession,
   }
 })
+
+function isAuthFailure(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.code === 2001
+  }
+  return axios.isAxiosError(error) && error.response?.status === 401
+}
 
 export { ApiError }

@@ -25,7 +25,7 @@ func Recovery(out io.Writer) gin.HandlerFunc {
 			_, _ = io.WriteString(out,
 				"[Recovery] "+time.Now().Format("2006/01/02 - 15:04:05")+
 					" | "+c.Request.Method+
-					" | "+c.Request.URL.Path+
+					" | "+sanitizeLogField(c.Request.URL.Path)+
 					" | panic recovered\n"+
 					string(debug.Stack()),
 			)

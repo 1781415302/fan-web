@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -28,6 +29,17 @@ func ListAnimes(page, pageSize int, keyword string, userID int64) ([]AnimeListIt
 	var total int
 	var rows *sql.Rows
 	var err error
+	if page < 1 || pageSize < 1 {
+		return []AnimeListItem{}, 0, nil
+	}
+	// 防御 page 无上限时的整数溢出：handlers 只限制 pageSize<=100，page 无上限，
+	// (page-1)*pageSize 溢出回绕既可能为负，也可能为 0 或正数（如 (2^60)*16=2^64≡0），
+	// 仅判断 offset<0 无法覆盖全部情形；SQLite 将负 OFFSET 与 OFFSET 0 都按第一页
+	// 处理，导致越界页错误返回第一页数据。故在乘法前用除法形式检查上限，
+	// 越界页统一按空页返回。
+	if page-1 > math.MaxInt/pageSize {
+		return []AnimeListItem{}, 0, nil
+	}
 	offset := (page - 1) * pageSize
 	selectSQL := `
 		SELECT a.id, a.title, a.title_cn, a.bangumi_id, a.cover, a.summary, a.ep_count, a.file_path, a.created_at,
@@ -90,6 +102,17 @@ func CreateAnime(anime *models.Anime) (*models.Anime, error) {
 		anime.Title, anime.TitleCn, anime.BangumiID, anime.Cover, anime.Summary, anime.EpCount, anime.FilePath,
 	)
 	if err != nil {
+		// 命中 animes(bangumi_id) 唯一索引（部分索引，bangumi_id > 0）时，
+		// 回退到按 bangumi_id 返回已有记录，使写入幂等。
+		if anime.BangumiID > 0 && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			existing, queryErr := GetAnimeByBangumiID(anime.BangumiID)
+			if queryErr != nil {
+				return nil, queryErr
+			}
+			if existing != nil {
+				return existing, nil
+			}
+		}
 		return nil, err
 	}
 	id, err := result.LastInsertId()
@@ -106,6 +129,26 @@ func CreateEpisode(episode *models.Episode) error {
 		episode.AnimeID, episode.EpNumber, episode.Title, episode.FilePath, episode.Duration,
 	)
 	return err
+}
+
+// UpdateEpisodeFilePath 将剧集行指向的文件名更新为 filePath，
+// 供库扫描检测到剧集文件改名时修正关联。
+func UpdateEpisodeFilePath(episodeID int64, filePath string) error {
+	result, err := DB.Exec(
+		`UPDATE episodes SET file_path = ? WHERE id = ?`,
+		filePath, episodeID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func UpdateAnime(anime *models.Anime) error {

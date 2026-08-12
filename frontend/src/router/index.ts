@@ -74,14 +74,27 @@ const routes = [
 export function createAppRouter(history: RouterHistory, setupStatus: SetupStatusLoader) {
   const router = createRouter({ history, routes })
 
+  // setup 状态只在初始化流程中才会变化：首次确认已配置后缓存结果，
+  // 后续导航直接用缓存，避免每次导航都串行等待网络往返。
+  let cachedConfigured: boolean | undefined
+
   router.beforeEach(async (to) => {
     const authStore = useAuthStore()
 
     let configured = true
-    try {
-      configured = await setupStatus()
-    } catch {
-      // 请求失败（例如网络不可用）时按已初始化处理，避免误跳转。
+    if (cachedConfigured !== undefined) {
+      configured = cachedConfigured
+    } else {
+      try {
+        configured = await setupStatus()
+        // 只缓存“已配置”状态；未配置时状态仍可能变化（初始化进行中），
+        // 请求失败（例如网络不可用）也不缓存，下次导航会重试。
+        if (configured) {
+          cachedConfigured = true
+        }
+      } catch {
+        // 请求失败（例如网络不可用）时按已初始化处理，避免误跳转。
+      }
     }
 
     if (!configured && to.name !== 'setup') {

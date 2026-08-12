@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,8 @@ type AnimeHandler struct {
 	bangumi     *services.BangumiService
 	scanner     *services.ScannerService
 	coverClient *http.Client
+	coverSem    chan struct{}
+	coverLimit  *coverProxyLimiter
 }
 
 func NewAnimeHandler(bangumi *services.BangumiService, scanner *services.ScannerService) *AnimeHandler {
@@ -32,6 +35,8 @@ func NewAnimeHandler(bangumi *services.BangumiService, scanner *services.Scanner
 		bangumi:     bangumi,
 		scanner:     scanner,
 		coverClient: newCoverClient(),
+		coverSem:    make(chan struct{}, maxCoverConcurrency),
+		coverLimit:  &coverProxyLimiter{},
 	}
 }
 
@@ -117,9 +122,34 @@ func (h *AnimeHandler) Get(c *gin.Context) {
 // Cover proxies trusted Bangumi cover URLs so mobile clients only need to
 // reach the configured server, not the external image host directly.
 const (
-	maxCoverBytes     = 10 << 20 // 10 MiB
-	maxCoverRedirects = 3
+	maxCoverBytes        = 10 << 20 // 10 MiB
+	maxCoverRedirects    = 3
+	maxCoverConcurrency  = 4
+	coverRateLimitWindow = time.Minute
+	coverRateLimitMax    = 120
 )
+
+// coverProxyLimiter 封面代理的固定窗口速率限制（按处理器实例），
+// 防止任意登录用户对第三方 CDN 产生出站流量放大。
+type coverProxyLimiter struct {
+	mu     sync.Mutex
+	window time.Time
+	count  int
+}
+
+func (l *coverProxyLimiter) allow(now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now.Sub(l.window) >= coverRateLimitWindow {
+		l.window = now
+		l.count = 0
+	}
+	if l.count >= coverRateLimitMax {
+		return false
+	}
+	l.count++
+	return true
+}
 
 func (h *AnimeHandler) Cover(c *gin.Context) {
 	id, ok := animeID(c)
@@ -139,6 +169,21 @@ func (h *AnimeHandler) Cover(c *gin.Context) {
 	if err != nil || !isTrustedCoverURL(coverURL) {
 		c.Status(http.StatusNotFound)
 		return
+	}
+
+	// 速率限制与并发上限：防止任意登录用户并发请求造成内存与出站流量放大。
+	if h.coverLimit != nil && !h.coverLimit.allow(time.Now()) {
+		c.Status(http.StatusTooManyRequests)
+		return
+	}
+	if h.coverSem != nil {
+		select {
+		case h.coverSem <- struct{}{}:
+			defer func() { <-h.coverSem }()
+		default:
+			c.Status(http.StatusTooManyRequests)
+			return
+		}
 	}
 
 	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, coverURL.String(), nil)

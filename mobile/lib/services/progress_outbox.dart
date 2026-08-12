@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/api_client.dart';
 import '../api/progress_api.dart';
 import '../providers/anime_provider.dart';
 import '../providers/auth_provider.dart';
@@ -128,6 +129,12 @@ class ProgressOutbox {
       });
 
   /// 尝试同步所有待同步记录。
+  ///
+  /// 对失败做分类处理：仅"该集已被服务端删除"（业务码 1002）属于永久失败，
+  /// 删除对应记录并继续同步其余记录；其余任何错误（网络、401、5xx、未知
+  /// 异常）都立即终止本轮同步并保留剩余记录，等下次同步再重试。避免播放器
+  /// 初始化时因逐条等待超时（每条最多约 10s）而被阻塞数分钟，也避免网络
+  /// 故障时对剩余记录发起无意义的请求风暴。
   Future<void> syncAll(String serverUrl, int userId, String token) =>
       _enqueueSync(() async {
         final pending = await getPending(serverUrl, userId);
@@ -139,9 +146,21 @@ class ProgressOutbox {
               record.watched,
             );
             await removeIfMatched(record);
-          } catch (_) {
-            // 发送失败保留记录，下次重试
-            break;
+          } catch (error) {
+            if (_isPermanentFailure(error)) {
+              // 该集已被服务端删除，重试永远不会成功：丢弃这条永久失效的
+              // 记录（removeIfMatched 只删除内容完全匹配的旧记录，不会误删
+              // 发送期间新到达的更新），并继续同步其余记录。
+              await removeIfMatched(record);
+              continue;
+            }
+            // 其余错误一律停止本轮同步，保留剩余记录等待下次重试：
+            // - ApiException 2001：登录失效，由 ApiClient.onUnauthorized
+            //   统一走重新登录流程；
+            // - DioException 网络类 / badResponse 5xx / ApiException 9999：
+            //   属临时故障或服务端内部错误，继续上报大概率仍失败；
+            // - 未知异常：保守停止，避免请求风暴。
+            return;
           }
         }
       });
@@ -162,6 +181,28 @@ class ProgressOutbox {
       onError: (Object _, StackTrace _) {},
     );
     return result;
+  }
+
+  /// 判断一次上报失败是否属于"永久失败"：即该集已从服务端删除，重试永远
+  /// 不可能成功，应当丢弃本地记录而不是反复上报。
+  ///
+  /// 目前只有业务错误码 1002（"集数不存在"，见后端 handlers/episode.go）
+  /// 被当作永久失败。其余错误都不算永久失败，调用方会停止本轮同步并保留
+  /// 记录等待下次重试，逐类说明如下：
+  /// - ApiException 2001：登录状态已失效，属可恢复状态，由
+  ///   ApiClient.onUnauthorized 统一触发重新登录流程；
+  /// - DioException 网络类（connectionError / connectionTimeout /
+  ///   sendTimeout / receiveTimeout）：断网或超时，本轮重试大概率仍失败，
+  ///   应停止以避开请求风暴，等网络恢复后的下次同步再上报；
+  /// - DioException badResponse 且响应 statusCode >= 500：服务端临时故障，
+  ///   保留记录等下次同步再试；
+  /// - ApiException 9999：服务端内部错误，保留记录等下次同步再试；
+  /// - 其它未知异常：宁可保守停止，也不要反复重试造成请求风暴。
+  bool _isPermanentFailure(Object error) {
+    if (error is ApiException) {
+      return error.code == 1002;
+    }
+    return false;
   }
 
   bool _isAtLeastAsNew(String candidate, String current) {

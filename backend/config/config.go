@@ -116,6 +116,14 @@ func Load(path string) (*Config, error) {
 	cfg.Configured = true
 	cfg.applyDefaults()
 
+	// server.mode 直接进入 gin.SetMode，非法取值会导致 gin panic 崩溃；
+	// 与 jwt.expire 等配置项一致，在加载时返回明确错误。
+	switch cfg.Server.Mode {
+	case "debug", "release", "test":
+	default:
+		return nil, fmt.Errorf("无效的 server.mode: %q，仅支持 debug/release/test", cfg.Server.Mode)
+	}
+
 	return &cfg, nil
 }
 

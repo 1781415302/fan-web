@@ -33,7 +33,9 @@ async function handleUpdate() {
     const data = await performUpdate()
     successMessage.value = `${data.message} ${data.hint ?? ''}`.trim()
   } catch (error: unknown) {
-    errorMessage.value = error instanceof ApiError ? error.message : '更新失败'
+    // 即使请求超时/失败，服务端仍可能继续下载并重启，明确提示避免用户立即重试
+    // （两个并发 PerformUpdate 会以 O_TRUNC 写同一临时文件，导致校验失败）。
+    errorMessage.value = (error instanceof ApiError ? error.message : '更新失败') + '，服务端可能仍在更新，请稍候'
   } finally {
     updating.value = false
   }
@@ -48,7 +50,7 @@ async function handleUpdate() {
         <h1 id="update-title">系统更新</h1>
         <p class="page-description">从 GitHub Releases 检查并更新服务器版本。仅管理员可操作。</p>
       </div>
-      <button type="button" class="primary-btn" :disabled="checking" @click="handleCheck">
+      <button type="button" class="primary-btn" :disabled="checking || updating" @click="handleCheck">
         {{ checking ? '检查中...' : '检查更新' }}
       </button>
     </header>

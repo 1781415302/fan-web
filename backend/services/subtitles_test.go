@@ -2,8 +2,11 @@ package services
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -123,4 +126,113 @@ func minInt(left, right int) int {
 		return left
 	}
 	return right
+}
+
+// TestSubtitleCacheBeginSharesResultIncludingError 是 singleflight 失败路径的核心回归：
+// 旧实现首个请求解析失败时不写缓存、只关闭 done，所有 waiter 醒来发现缓存为空后各自
+// 重新解析同一个 MKV，对损坏/异常文件反而放大了资源消耗。修复后 waiter 共享首次结果
+// （含失败错误），不再重复解析。
+func TestSubtitleCacheBeginSharesResultIncludingError(t *testing.T) {
+	cache := &subtitleDocumentCache{
+		entries:  make(map[subtitleCacheKey]*subtitleDocument),
+		inflight: make(map[subtitleCacheKey]*subtitleInflight),
+	}
+	key := subtitleCacheKey{path: "/x.mkv", size: 1, modTime: 1}
+
+	_, leader, finish := cache.begin(key)
+	if !leader {
+		t.Fatal("首次 begin 应为 leader")
+	}
+
+	const waiters = 5
+	var wg sync.WaitGroup
+	results := make([]error, waiters)
+	registered := make(chan struct{}, waiters)
+	for i := 0; i < waiters; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			e, isLeader, _ := cache.begin(key)
+			if isLeader {
+				t.Errorf("waiter %d 不应为 leader", i)
+				return
+			}
+			// 先注册再等待，确保所有 waiter 都已挂到同一 in-flight 再 finish。
+			registered <- struct{}{}
+			<-e.done
+			results[i] = e.err
+		}(i)
+	}
+	for i := 0; i < waiters; i++ {
+		<-registered
+	}
+
+	parseErr := fmt.Errorf("parse boom")
+	finish(subtitleDocument{}, parseErr)
+
+	wg.Wait()
+
+	for i, err := range results {
+		if !errors.Is(err, parseErr) {
+			t.Fatalf("waiter %d 期望共享失败错误 %v，got %v", i, parseErr, err)
+		}
+	}
+
+	// 失败不被缓存：finish 后 inflight 清空，新请求成为新 leader（可重试）。
+	if _, ok := cache.inflight[key]; ok {
+		t.Fatal("finish 后 inflight 应已清空")
+	}
+	_, leader2, _ := cache.begin(key)
+	if !leader2 {
+		t.Fatal("finish 后新请求应为新 leader")
+	}
+}
+
+// TestSubtitleCacheBeginSharesSuccess 验证成功路径下 waiter 共享 leader 的解析结果。
+func TestSubtitleCacheBeginSharesSuccess(t *testing.T) {
+	cache := &subtitleDocumentCache{
+		entries:  make(map[subtitleCacheKey]*subtitleDocument),
+		inflight: make(map[subtitleCacheKey]*subtitleInflight),
+	}
+	key := subtitleCacheKey{path: "/y.mkv", size: 2, modTime: 2}
+
+	_, leader, finish := cache.begin(key)
+	if !leader {
+		t.Fatal("应为 leader")
+	}
+
+	const waiters = 3
+	var wg sync.WaitGroup
+	got := make([]subtitleDocument, waiters)
+	registered := make(chan struct{}, waiters)
+	for i := 0; i < waiters; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			e, isLeader, _ := cache.begin(key)
+			if isLeader {
+				t.Errorf("waiter %d 不应为 leader", i)
+				return
+			}
+			registered <- struct{}{}
+			<-e.done
+			got[i] = e.doc
+		}(i)
+	}
+	for i := 0; i < waiters; i++ {
+		<-registered
+	}
+
+	doc := subtitleDocument{
+		tracks: map[uint64]*subtitleTrack{7: {SubtitleTrack: SubtitleTrack{TrackNumber: 7}}},
+		cues:   map[uint64][]subtitleCue{},
+	}
+	finish(doc, nil)
+	wg.Wait()
+
+	for i, d := range got {
+		if d.tracks[7] == nil || d.tracks[7].TrackNumber != 7 {
+			t.Fatalf("waiter %d 期望共享解析结果", i)
+		}
+	}
 }

@@ -24,4 +24,5 @@ VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || e
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.AppVersion=$VERSION" -o "$OUT" .
 
 echo "完成: $OUT"
-echo "部署时需在可执行文件旁放置 config.yaml（修改视频目录等配置）。"
+echo "全新部署：不要预置 config.yaml，直接运行并访问 WebUI 初始化页（自动生成 config.yaml 与管理员）。"
+echo "升级部署：保留原有 config.yaml 与 data/fan-web.db，仅覆盖可执行文件即可。"

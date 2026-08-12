@@ -134,6 +134,10 @@ func main() {
 		log.Fatalf("端口绑定失败: %v", err)
 	}
 	log.Printf("服务启动，监听 :%d → http://127.0.0.1:%d", actualPort, actualPort)
+	// 可执行文件 .old 与数据库迁移前备份同属一套回滚资产：
+	// 仅在成功绑定端口后一并清理，任一次启动未能完成绑定都保留二者，保证可完整回滚。
+	services.CleanupUpdateBackup()
+	database.CleanupPreMigrationBackup(cfg.Database.Path)
 	server := &http.Server{
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,

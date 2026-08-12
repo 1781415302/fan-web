@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,14 +13,14 @@ import (
 func RequestLogger(out io.Writer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		path := c.Request.URL.Path
+		path := sanitizeLogField(c.Request.URL.Path)
 		c.Next()
 
 		status := c.Writer.Status()
 		duration := time.Since(start)
 		var errSummary string
 		if len(c.Errors) > 0 {
-			errSummary = c.Errors.ByType(gin.ErrorTypePrivate).String()
+			errSummary = sanitizeLogField(c.Errors.ByType(gin.ErrorTypePrivate).String())
 		}
 
 		// 手动格式化，避免 gin 默认日志把 RawQuery 拼进路径。
@@ -34,6 +35,17 @@ func RequestLogger(out io.Writer) gin.HandlerFunc {
 		}
 		_, _ = io.WriteString(out, logLine+"\n")
 	}
+}
+
+// sanitizeLogField 将字符串中的换行/回车替换为空格，防止 URL.Path 等外部可控
+// 内容（%0a/%0d 会被 Go 解码为原始控制字符）注入伪造日志行（CWE-117）。
+func sanitizeLogField(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 func itoa(v int) string {

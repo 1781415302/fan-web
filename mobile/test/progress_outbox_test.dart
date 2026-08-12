@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -339,6 +340,110 @@ void main() {
       },
     );
   });
+
+  group('ProgressOutbox.syncAll error handling', () {
+    const record10 = PendingProgress(
+      serverUrl: 'http://a',
+      userId: 1,
+      episodeId: 10,
+      position: 100,
+      watched: false,
+      updatedAt: '2026-01-01T00:00:00Z',
+    );
+    const record11 = PendingProgress(
+      serverUrl: 'http://a',
+      userId: 1,
+      episodeId: 11,
+      position: 200,
+      watched: false,
+      updatedAt: '2026-01-01T00:01:00Z',
+    );
+
+    test('permanent 1002 removes the record and continues to next', () async {
+      await outbox.save(record10);
+      await outbox.save(record11);
+      progressApi.errorsByEpisode[10] =
+          const ApiException(1002, '集数不存在');
+
+      await outbox.syncAll('http://a', 1, 'token');
+
+      // 第二条记录仍被上报，说明永久失败没有中断整轮同步。
+      expect(progressApi.reportedEpisodeIds, [10, 11]);
+      // 失败记录（集 10）被移除；集 11 上报成功也被移除，故 outbox 为空。
+      // 若失败记录未被移除，这里会残留 episodeId == 10。
+      final pending = await outbox.getPending('http://a', 1);
+      expect(pending, isEmpty);
+    });
+
+    test('network timeout stops the round and keeps both records', () async {
+      await outbox.save(record10);
+      await outbox.save(record11);
+      progressApi.errorsByEpisode[10] = DioException(
+        requestOptions: RequestOptions(path: '/api/progress/10'),
+        type: DioExceptionType.connectionTimeout,
+      );
+
+      await outbox.syncAll('http://a', 1, 'token');
+
+      // 第二条记录未被上报，说明整轮同步被终止。
+      expect(progressApi.reportedEpisodeIds, [10]);
+      // 两条记录都保留，等待网络恢复后的下次同步。
+      expect(await outbox.getPending('http://a', 1), hasLength(2));
+    });
+
+    test('401 business error stops the round', () async {
+      await outbox.save(record10);
+      await outbox.save(record11);
+      progressApi.errorsByEpisode[10] =
+          const ApiException(2001, '登录状态已失效');
+
+      await outbox.syncAll('http://a', 1, 'token');
+
+      expect(progressApi.reportedEpisodeIds, [10]);
+      expect(await outbox.getPending('http://a', 1), hasLength(2));
+    });
+
+    test('server 5xx badResponse stops the round', () async {
+      await outbox.save(record10);
+      await outbox.save(record11);
+      final options = RequestOptions(path: '/api/progress/10');
+      progressApi.errorsByEpisode[10] = DioException(
+        requestOptions: options,
+        response: Response(requestOptions: options, statusCode: 500),
+        type: DioExceptionType.badResponse,
+      );
+
+      await outbox.syncAll('http://a', 1, 'token');
+
+      expect(progressApi.reportedEpisodeIds, [10]);
+      expect(await outbox.getPending('http://a', 1), hasLength(2));
+    });
+
+    test('unknown error stops the round', () async {
+      await outbox.save(record10);
+      await outbox.save(record11);
+      progressApi.errorsByEpisode[10] = StateError('未知异常');
+
+      await outbox.syncAll('http://a', 1, 'token');
+
+      expect(progressApi.reportedEpisodeIds, [10]);
+      expect(await outbox.getPending('http://a', 1), hasLength(2));
+    });
+
+    test('permanently failed record is not resent on later sync', () async {
+      await outbox.save(record10);
+      progressApi.errorsByEpisode[10] =
+          const ApiException(1002, '集数不存在');
+
+      await outbox.syncAll('http://a', 1, 'token');
+      expect(progressApi.reportedEpisodeIds, [10]);
+      expect(await outbox.getPending('http://a', 1), isEmpty);
+
+      // 记录已被移除，第二轮同步不应再次上报它。
+      await outbox.syncAll('http://a', 1, 'token');
+      expect(progressApi.reportedEpisodeIds, [10]);
+    });
+  });
 }
 
 class _RecordingProgressApi extends ProgressApi {
@@ -349,6 +454,10 @@ class _RecordingProgressApi extends ProgressApi {
   int maxConcurrentReports = 0;
   Completer<void> reportStarted = Completer<void>();
   Completer<void>? _reportRelease;
+
+  /// 按集数配置本次上报要抛出的错误；未配置的集数正常上报成功。
+  /// 上报仍会记录到 reportedEpisodeIds，仅抛出配置的错误。
+  final Map<int, Object?> errorsByEpisode = {};
 
   void pauseReports() {
     reportStarted = Completer<void>();
@@ -371,6 +480,11 @@ class _RecordingProgressApi extends ProgressApi {
       reportStarted.complete();
     }
     try {
+      // 先按配置抛出错误，模拟业务/网络异常；reportedEpisodeIds 已记录。
+      final error = errorsByEpisode[episodeId];
+      if (error != null) {
+        throw error;
+      }
       final release = _reportRelease;
       if (release != null) {
         await release.future;

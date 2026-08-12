@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from './auth'
-import { TOKEN_STORAGE_KEY } from '../api'
+import { ApiError, TOKEN_STORAGE_KEY } from '../api'
 
 vi.mock('../api', () => ({
   TOKEN_STORAGE_KEY: 'fan_web_token',
@@ -60,14 +60,26 @@ describe('auth store', () => {
     expect(store.isAdmin).toBe(true)
   })
 
-  it('clears session when /auth/me fails', async () => {
+  it('clears session when /auth/me reports unauthenticated code 2001', async () => {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'bad')
-    mockedGet.mockRejectedValue(new Error('unauthorized'))
+    mockedGet.mockRejectedValue(new ApiError(2001, 'unauthorized'))
     const store = newStore()
     await store.initialize()
     expect(store.token).toBeNull()
     expect(store.user).toBeNull()
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull()
+  })
+
+  it('keeps a valid token when /auth/me fails with a network error', async () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
+    mockedGet.mockRejectedValue(new Error('network down'))
+    const store = newStore()
+    await store.initialize()
+    expect(store.token).toBe('tok')
+    expect(store.user).toBeNull()
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('tok')
+    // 未初始化为已失败状态，后续导航会重试恢复会话。
+    expect(store.initialized).toBe(false)
   })
 
   it('login stores token user and localStorage', async () => {

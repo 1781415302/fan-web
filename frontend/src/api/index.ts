@@ -76,9 +76,12 @@ function clearStoredToken() {
 }
 
 function redirectToLogin() {
-  if (window.location.pathname !== '/login') {
-    window.location.assign('/login')
+  if (window.location.pathname === '/login') {
+    return
   }
+  // 与路由守卫一致地携带 redirect 参数，登录后回到原页面。
+  const redirect = window.location.pathname + window.location.search
+  window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
 }
 
 export default api

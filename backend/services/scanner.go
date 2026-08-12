@@ -47,13 +47,16 @@ func (s *ScannerService) RootPath() string {
 }
 
 func ValidateRelativeVideoPath(dirPath string) error {
-	if strings.ContainsRune(dirPath, '\x00') || strings.Contains(dirPath, "\\") {
+	if strings.ContainsRune(dirPath, '\x00') {
 		return ErrInvalidVideoPath
 	}
 	if filepath.IsAbs(dirPath) {
 		return ErrInvalidVideoPath
 	}
-	clean := filepath.Clean(strings.TrimSpace(dirPath))
+	// 反斜杠与正斜杠一视同仁：Windows 下库扫描/历史数据中的相对路径可能含 \，
+	// 统一按文件系统分隔符解释后再做穿越校验（转换本身不会产生新的穿越风险，
+	// 因为 Windows 上 filepath 同时识别两种分隔符，Linux 上 \ 只是普通文件名字符）。
+	clean := filepath.Clean(strings.TrimSpace(filepath.FromSlash(dirPath)))
 	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return ErrInvalidVideoPath
 	}
