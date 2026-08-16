@@ -261,13 +261,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<Media> _buildOpenMedia() async {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
-    final loginToken = authState.token ?? config.token;
     final mediaApi = ref.read(mediaApiProvider);
     return buildPlayerMedia(
       requestMediaToken: mediaApi.fetchMediaToken,
       serverUrl: serverUrl,
       episodeId: config.episodeId,
-      loginToken: loginToken,
       startPositionSeconds: _savedPosition,
     );
   }
@@ -765,7 +763,6 @@ Future<Media> buildPlayerMedia({
   required Future<MediaTokenResult> Function(int episodeId) requestMediaToken,
   required String serverUrl,
   required int episodeId,
-  required String loginToken,
   required int startPositionSeconds,
 }) async {
   final result = await requestMediaToken(episodeId);

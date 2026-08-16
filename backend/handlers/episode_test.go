@@ -402,7 +402,7 @@ func TestIssueMediaTokenAndStreamWithMediaToken(t *testing.T) {
 	}
 }
 
-func TestLegacyTokenQueryStillWorks(t *testing.T) {
+func TestLegacyTokenQueryRejected(t *testing.T) {
 	rootPath := t.TempDir()
 	if err := os.WriteFile(filepath.Join(rootPath, "ep01.mp4"), []byte("0123456789"), 0o644); err != nil {
 		t.Fatal(err)

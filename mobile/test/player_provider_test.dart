@@ -16,7 +16,6 @@ void main() {
         },
         serverUrl: 'http://127.0.0.1:8080/',
         episodeId: 7,
-        loginToken: 'LOGIN_MUST_NOT_APPEAR',
         startPositionSeconds: 125,
       );
 
@@ -37,7 +36,6 @@ void main() {
             requestMediaToken: (_) async => throw const MediaTokenUnsupported(),
             serverUrl: 'http://127.0.0.1:8080',
             episodeId: 7,
-            loginToken: 'login+/token',
             startPositionSeconds: 0,
           );
           url = media.uri.toString();
@@ -61,7 +59,6 @@ void main() {
             requestMediaToken: (_) async => throw error,
             serverUrl: 'http://127.0.0.1:8080',
             episodeId: 7,
-            loginToken: 'LOGIN_MUST_NOT_APPEAR',
             startPositionSeconds: 0,
           ),
           throwsA(same(error)),

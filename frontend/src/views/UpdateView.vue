@@ -77,7 +77,7 @@ async function handleUpdate() {
         </div>
       </div>
       <p v-if="result.error" class="hint-text">{{ result.error }}</p>
-      <p v-if="result.stale_old" class="hint-text">检测到更新残留备份，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试</p>
+      <p v-if="result.stale_old" class="hint-text">检测到更新残留备份，请确认现场后手动删除残留 .old 再重试</p>
       <div v-if="result.release_notes" class="release-notes">
         <h3>更新内容</h3>
         <pre>{{ result.release_notes }}</pre>
