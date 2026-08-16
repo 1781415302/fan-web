@@ -58,7 +58,7 @@ git push origin main
 
 ## 五、编译发布产物
 
-先按发布范围选择步骤：App-only 跳过 5.1、5.2、5.4；Server-only 跳过 5.3；两端发布则全部执行。
+先按发布范围选择步骤：App-only 只跳过 5.1、5.2，**不跳过 5.4**；Server-only 跳过 5.3；两端发布则全部执行。
 
 用唯一临时目录承载本次产物，避免旧版本文件混入：
 
@@ -120,9 +120,15 @@ SIGNER=$(find /home/bishe/Android -name "apksigner" -type f 2>/dev/null | head -
 "$SIGNER" verify --print-certs "$RELEASE_DIR/fan-web-app-vX.Y.Z.apk" | grep 'Signer #1 certificate DN'
 ```
 
-### 5.4 生成校验和（只含 4 个服务器二进制，不含 APK，对齐 v1.1.1）
+### 5.4 生成校验和（按实际存在的产物；文本模式、两个空格，不用 `-b` / `*name`）
 ```bash
-(cd "$RELEASE_DIR" && sha256sum fan-web-server* > SHA256SUMS.txt)
+(cd "$RELEASE_DIR" && {
+  shopt -s nullglob
+  files=(fan-web-server* fan-web-app-*.apk)
+  shopt -u nullglob
+  [ ${#files[@]} -gt 0 ] || { echo "no assets to hash" >&2; exit 1; }
+  sha256sum "${files[@]}" > SHA256SUMS.txt
+})
 ```
 
 ## 六、打 tag 并发布
@@ -142,7 +148,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes-file "$RELEASE_DIR/release-not
 **只发移动端**（无服务器二进制）：
 ```bash
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file "$RELEASE_DIR/release-notes.md" \
-  "$RELEASE_DIR/fan-web-app-vX.Y.Z.apk"
+  "$RELEASE_DIR/fan-web-app-vX.Y.Z.apk" "$RELEASE_DIR/SHA256SUMS.txt"
 ```
 **两端都发**：
 ```bash
@@ -155,7 +161,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes-file "$RELEASE_DIR/release-not
 
 - `gh release view vX.Y.Z` 确认 tag、说明和本次应有的资产齐全，且没有混入其他版本文件。
 - `curl -s https://api.github.com/repos/1781415302/fan-web/releases/latest` 的 `tag_name` 应为 `vX.Y.Z`。
-- 包含服务器端时，执行 `cd "$RELEASE_DIR" && sha256sum -c SHA256SUMS.txt`，并再次抽查 Linux AMD64 的 `-version` 与真实前端嵌入状态。
+- 只要本次生成了 `SHA256SUMS.txt`，执行 `cd "$RELEASE_DIR" && sha256sum -c SHA256SUMS.txt`。包含服务器端时，再抽查 Linux AMD64 的 `-version` 与真实前端嵌入状态。
 - 包含 App 时，再次用 `aapt dump badging` 核对 `versionName` / `versionCode`，用 `apksigner verify --print-certs` 核对 release 签名。
 - 按资产组合确认独立提示规则：只发服务器端时 App 不提示更新；只发 APK 时服务器端不提示更新。
 

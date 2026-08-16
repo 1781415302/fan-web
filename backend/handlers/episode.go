@@ -26,7 +26,7 @@ func NewEpisodeHandler(auth *services.AuthService, scanner *services.ScannerServ
 	return &EpisodeHandler{auth: auth, scanner: scanner}
 }
 
-// Stream serves a video file after validating the JWT from the query string.
+// Stream serves a video file after validating Authorization Bearer or ?media_token=.
 func (h *EpisodeHandler) Stream(c *gin.Context) {
 	fullPath, ok := h.resolveEpisodePath(c)
 	if !ok {
@@ -39,8 +39,8 @@ func (h *EpisodeHandler) Stream(c *gin.Context) {
 }
 
 // Subtitles lists embedded text tracks, or returns one selected track as VTT.
-// The token is accepted in the query because ArtPlayer loads subtitle files
-// with fetch() and cannot attach the app's Authorization interceptor.
+// ArtPlayer loads subtitle files with fetch() and cannot attach the app's
+// Authorization interceptor, so ?media_token= is accepted in addition to Bearer.
 func (h *EpisodeHandler) Subtitles(c *gin.Context) {
 	fullPath, ok := h.resolveEpisodePath(c)
 	if !ok {
@@ -73,6 +73,7 @@ func (h *EpisodeHandler) Subtitles(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
+	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("Content-Disposition", `inline; filename="subtitle-`+strconv.FormatUint(track.TrackNumber, 10)+`.vtt"`)
 	c.Data(http.StatusOK, "text/vtt; charset=utf-8", vtt)
 }
@@ -115,14 +116,13 @@ func (h *EpisodeHandler) resolveEpisodePath(c *gin.Context) (string, bool) {
 		return "", false
 	}
 
-	// 按 4.2 顺序选择凭证；一旦提供某一种凭证，只按该凭证校验，不降级尝试其他凭证。
+	// Authorization Bearer 优先于 ?media_token=；一旦提供某一种凭证，只按该凭证校验，不降级尝试其他凭证。
 	authorization := strings.TrimSpace(c.GetHeader("Authorization"))
 	parts := strings.Fields(authorization)
 	hasBearer := len(parts) == 2 && strings.EqualFold(parts[0], "Bearer")
 	mediaToken := strings.TrimSpace(c.Query("media_token"))
-	legacyToken := strings.TrimSpace(c.Query("token"))
 
-	userID, ok := h.authenticateMedia(c, episodeID, hasBearer, parts, mediaToken, legacyToken)
+	userID, ok := h.authenticateMedia(c, episodeID, hasBearer, parts, mediaToken)
 	if !ok {
 		return "", false
 	}
@@ -161,7 +161,6 @@ func (h *EpisodeHandler) authenticateMedia(
 	hasBearer bool,
 	parts []string,
 	mediaToken string,
-	legacyToken string,
 ) (int64, bool) {
 	switch {
 	case hasBearer:
@@ -180,19 +179,6 @@ func (h *EpisodeHandler) authenticateMedia(
 		claims, err := h.auth.ParseMediaToken(mediaToken, episodeID)
 		if err != nil {
 			utils.Error(c, utils.CodeUnauthenticated, "媒体票据无效或已过期")
-			return 0, false
-		}
-		if _, err := database.GetUserByID(claims.UserID); err != nil {
-			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
-			return 0, false
-		}
-		return claims.UserID, true
-
-	case legacyToken != "":
-		// 兼容入口：旧 App（v1.2.2 等）把登录 JWT 放在 ?token=。计划最早在 v1.4.0 移除。
-		claims, err := h.auth.ParseToken(legacyToken)
-		if err != nil {
-			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
 			return 0, false
 		}
 		if _, err := database.GetUserByID(claims.UserID); err != nil {

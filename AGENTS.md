@@ -23,7 +23,7 @@
 - 发布产物命名（对齐既有 Release）：
   - 服务器：`fan-web-server-{goos}-{goarch}`（Windows 加 `.exe`），平台为 linux-amd64 / linux-arm64 / darwin-arm64 / windows-amd64，共 4 个。
   - 移动端：`fan-web-app-vX.Y.Z.apk`。
-  - 校验和：`SHA256SUMS.txt`（对齐 v1.1.1 格式，只含 4 个服务器二进制的 sha256）。
+  - 校验和：`SHA256SUMS.txt`（覆盖本次上传的服务器二进制以及 APK）。
 - 每个 Release 必须**两个端各自独立判断**是否提示更新：
   - 服务器端只在 Release 附带当前平台二进制时 `has_update=true`；
   - 移动端只在 Release 附带 APK 时认为有更新。

@@ -83,8 +83,7 @@ func main() {
 
 		auth := api.Group("/auth")
 		auth.POST("/login", loginRateLimiter.Middleware(), authHandler.Login)
-		// 视频与字幕资源按 4.2 顺序自行选择登录 JWT / 媒体票据 / 旧 token 凭证，
-		// 因此不能放在 JWTAuth 组内。
+		// Stream/Subtitles 自行校验 Bearer 与 media_token，不能放在 JWTAuth 组内。
 		api.GET("/episodes/:id/stream", episodeHandler.Stream)
 		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
 

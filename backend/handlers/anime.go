@@ -264,6 +264,20 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 		return
 	}
 
+	existing, err := database.GetAnimeByBangumiID(request.BangumiID)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "查询已有番剧失败")
+		return
+	}
+	if existing != nil && existing.FilePath != request.FilePath {
+		utils.Error(c, utils.CodeInvalidParams, "番剧已存在但目录不同")
+		return
+	}
+	if existing != nil {
+		utils.Success(c, existing)
+		return
+	}
+
 	subject, err := h.bangumi.GetSubject(request.BangumiID)
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "获取 Bangumi 数据失败: "+err.Error())
@@ -280,6 +294,10 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 	})
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "创建番剧失败")
+		return
+	}
+	if anime.FilePath != request.FilePath {
+		utils.Error(c, utils.CodeInvalidParams, "番剧已存在但目录不同")
 		return
 	}
 	utils.Success(c, anime)

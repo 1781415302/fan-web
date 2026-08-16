@@ -86,7 +86,8 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	}
 
 	rangeRecorder := httptest.NewRecorder()
-	rangeRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/1/stream?token="+token, nil)
+	rangeRequest := httptest.NewRequest(http.MethodGet, "/api/episodes/1/stream", nil)
+	rangeRequest.Header.Set("Authorization", "Bearer "+token)
 	rangeRequest.Header.Set("Range", "bytes=2-5")
 	router.ServeHTTP(rangeRecorder, rangeRequest)
 	if rangeRecorder.Code != http.StatusPartialContent {
@@ -115,9 +116,10 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 		t.Fatalf("expected subtitle unauthenticated code 2001, got %d", subtitleErrorResponse.Code)
 	}
 
-	subtitleURL := "/api/episodes/" + strconv.FormatInt(episodes[0].ID, 10) + "/subtitles?token=" + token
+	subtitleURL := "/api/episodes/" + strconv.FormatInt(episodes[0].ID, 10) + "/subtitles"
 	subtitleRecorder := httptest.NewRecorder()
 	subtitleRequest := httptest.NewRequest(http.MethodGet, subtitleURL, nil)
+	subtitleRequest.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(subtitleRecorder, subtitleRequest)
 	if subtitleRecorder.Code != http.StatusOK {
 		t.Fatalf("expected empty subtitle list with HTTP 200, got %d", subtitleRecorder.Code)
@@ -134,7 +136,8 @@ func TestStreamRequiresTokenAndSupportsRange(t *testing.T) {
 	}
 
 	missingTrackRecorder := httptest.NewRecorder()
-	missingTrackRequest := httptest.NewRequest(http.MethodGet, subtitleURL+"&track=1", nil)
+	missingTrackRequest := httptest.NewRequest(http.MethodGet, subtitleURL+"?track=1", nil)
+	missingTrackRequest.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(missingTrackRecorder, missingTrackRequest)
 	if missingTrackRecorder.Code != http.StatusOK {
 		t.Fatalf("expected missing subtitle track application error with HTTP 200, got %d", missingTrackRecorder.Code)
@@ -399,7 +402,7 @@ func TestIssueMediaTokenAndStreamWithMediaToken(t *testing.T) {
 	}
 }
 
-func TestLegacyTokenQueryStillWorks(t *testing.T) {
+func TestLegacyTokenQueryRejected(t *testing.T) {
 	rootPath := t.TempDir()
 	if err := os.WriteFile(filepath.Join(rootPath, "ep01.mp4"), []byte("0123456789"), 0o644); err != nil {
 		t.Fatal(err)
@@ -447,6 +450,19 @@ func TestLegacyTokenQueryStillWorks(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/stream?token="+url.QueryEscape(loginToken), nil)
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200 with legacy token, got %d body=%s", recorder.Code, recorder.Body.String())
+		t.Fatalf("expected HTTP 200 for legacy token query, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var resp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 2001 {
+		t.Fatalf("expected code 2001 for ?token= only, got %d body=%s", resp.Code, recorder.Body.String())
+	}
+	if resp.Message != "未登录" {
+		t.Fatalf("expected message 未登录 for ?token= only, got %q", resp.Message)
 	}
 }

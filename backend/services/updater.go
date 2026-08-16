@@ -43,6 +43,7 @@ type UpdateCheckResult struct {
 	ReleaseNotes   string `json:"release_notes"`
 	DownloadURL    string `json:"download_url,omitempty"`
 	DownloadSize   int64  `json:"download_size,omitempty"`
+	StaleOld       bool   `json:"stale_old"`
 }
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
@@ -150,6 +151,22 @@ func findSHA256Asset(assets []githubAsset) *githubAsset {
 	return nil
 }
 
+// staleOldAt 报告 execPath+".old" 是否存在（残留回滚闸）。
+func staleOldAt(execPath string) bool {
+	_, err := os.Lstat(execPath + ".old")
+	return err == nil
+}
+
+// HasStaleUpdateBackup 探测当前可执行文件旁是否残留 .old。
+// CheckUpdate 成功路径与 Check 在 GitHub 失败时的手写 gin.H 共用，禁止写死 false。
+func HasStaleUpdateBackup() bool {
+	execPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return staleOldAt(execPath)
+}
+
 func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 	release, err := fetchLatestRelease()
 	if err != nil {
@@ -160,6 +177,7 @@ func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 		LatestVersion:  release.TagName,
 		ReleaseNotes:   release.Body,
 		HasUpdate:      false,
+		StaleOld:       HasStaleUpdateBackup(),
 	}
 	// 服务器端与移动端共用同一个 Release 版本号。
 	// 仅当本次发布包含当前平台对应的服务器二进制时才算作“有更新”，
@@ -283,6 +301,14 @@ func replaceExecutable(execPath, tmpPath string) (string, error) {
 		os.Remove(tmpPath)
 		return backupPath, errUpdateBackupExists
 	}
+	// .prev 是已成功交接的上一版，不挡更新；造新 .old 之前先删掉，避免残留两份旧二进制。
+	prevPath := execPath + ".prev"
+	if _, err := os.Lstat(prevPath); err == nil {
+		if err := os.Remove(prevPath); err != nil {
+			os.Remove(tmpPath)
+			return backupPath, fmt.Errorf("清理上一版本备份失败: %w", err)
+		}
+	}
 	if err := os.Rename(execPath, backupPath); err != nil {
 		os.Remove(tmpPath)
 		return backupPath, fmt.Errorf("备份旧版本失败: %w", err)
@@ -295,10 +321,10 @@ func replaceExecutable(execPath, tmpPath string) (string, error) {
 	return backupPath, nil
 }
 
-// CleanupUpdateBackup 删除自更新留下的上一版本回滚副本（<可执行文件>.old）。
-// 由新版本在成功启动（绑定端口）后调用：只有新版本确认能正常运行时才清理回滚副本，
-// 避免旧版 PerformUpdate 在替换后立刻删除 .old 导致新版起不来时无回滚。
-// 删除失败仅记录日志，不影响启动。
+// CleanupUpdateBackup 将自更新留下的上一版本回滚副本（<可执行文件>.old）
+// 晋升为 .prev。由新版本在成功启动（绑定端口）后调用：只有新版本确认能正常
+// 运行时才交接回滚闸。成功路径把 .old rename 为 .prev（已有 .prev 则先删除），
+// 不 os.Remove(.old)。无 .old 时不碰已有 .prev。失败仅记录日志，不影响启动。
 func CleanupUpdateBackup() {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -307,18 +333,25 @@ func CleanupUpdateBackup() {
 	cleanupUpdateBackupAt(execPath)
 }
 
-// cleanupUpdateBackupAt 删除 execPath 同目录下的 .old 回滚副本；不存在则无操作。
+// cleanupUpdateBackupAt 将 execPath 同目录下的 .old 晋升为 .prev；无 .old 则无操作。
 // 拆出便于测试（不依赖 os.Executable）。
 func cleanupUpdateBackupAt(execPath string) {
-	backupPath := execPath + ".old"
-	if _, err := os.Lstat(backupPath); err != nil {
+	oldPath := execPath + ".old"
+	prevPath := execPath + ".prev"
+	if _, err := os.Lstat(oldPath); err != nil {
 		return
 	}
-	if err := os.Remove(backupPath); err != nil {
-		log.Printf("清理上一版本备份 %s 失败: %v（可手动删除）", backupPath, err)
+	if _, err := os.Lstat(prevPath); err == nil {
+		if err := os.Remove(prevPath); err != nil {
+			log.Printf("清理上一版本备份 %s 失败: %v（可手动删除）", prevPath, err)
+			return
+		}
+	}
+	if err := os.Rename(oldPath, prevPath); err != nil {
+		log.Printf("晋升上一版本备份 %s → %s 失败: %v（可手动处理）", oldPath, prevPath, err)
 		return
 	}
-	log.Printf("已清理上一版本备份 %s", backupPath)
+	log.Printf("已将上一版本备份 %s 晋升为 %s", oldPath, prevPath)
 }
 
 func checkWritable(path string) error {

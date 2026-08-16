@@ -286,7 +286,10 @@ func TestCleanupUpdateBackupRemovesStaleOld(t *testing.T) {
 	cleanupUpdateBackupAt(execPath)
 
 	if _, err := os.Lstat(execPath + ".old"); !os.IsNotExist(err) {
-		t.Fatalf("期望 .old 已删除，got err=%v", err)
+		t.Fatalf("期望 .old 已晋升消失，got err=%v", err)
+	}
+	if data, err := os.ReadFile(execPath + ".prev"); err != nil || string(data) != "old" {
+		t.Fatalf("期望 .prev 为旧二进制，got data=%q err=%v", data, err)
 	}
 	// 当前可执行文件不受影响。
 	if _, err := os.Lstat(execPath); err != nil {
@@ -304,5 +307,115 @@ func TestCleanupUpdateBackupNoOpWithoutOld(t *testing.T) {
 	cleanupUpdateBackupAt(execPath)
 	if _, err := os.Lstat(execPath); err != nil {
 		t.Fatalf("可执行文件不应被误删: %v", err)
+	}
+}
+
+func TestCleanupUpdateBackupLeavesPrevWhenNoOld(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	if err := os.WriteFile(execPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".prev", []byte("prev-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupUpdateBackupAt(execPath)
+
+	if data, err := os.ReadFile(execPath + ".prev"); err != nil || string(data) != "prev-bytes" {
+		t.Fatalf("无 .old 时 .prev 字节应不变，got data=%q err=%v", data, err)
+	}
+	if _, err := os.Lstat(execPath + ".old"); !os.IsNotExist(err) {
+		t.Fatalf("不应凭空造出 .old，got err=%v", err)
+	}
+}
+
+func TestCleanupUpdateBackupPromotesOldOverPrev(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	if err := os.WriteFile(execPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".old", []byte("old-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".prev", []byte("prev-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupUpdateBackupAt(execPath)
+
+	if _, err := os.Lstat(execPath + ".old"); !os.IsNotExist(err) {
+		t.Fatalf("期望 .old 已晋升消失，got err=%v", err)
+	}
+	if data, err := os.ReadFile(execPath + ".prev"); err != nil || string(data) != "old-bytes" {
+		t.Fatalf("期望 .prev 为原 .old 字节，got data=%q err=%v", data, err)
+	}
+}
+
+func TestReplaceExecutableFailsWhenOldAndPrevExist(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	tmpPath := execPath + ".new"
+	if err := os.WriteFile(execPath, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".old", []byte("older"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".prev", []byte("prev-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := replaceExecutable(execPath, tmpPath)
+	if !errors.Is(err, errUpdateBackupExists) {
+		t.Fatalf("期望 errUpdateBackupExists，got %v", err)
+	}
+	if data, _ := os.ReadFile(execPath); string(data) != "current" {
+		t.Fatal("当前二进制不应被改动")
+	}
+	if data, _ := os.ReadFile(execPath + ".old"); string(data) != "older" {
+		t.Fatal("残留 .old 不应被改动")
+	}
+	if data, _ := os.ReadFile(execPath + ".prev"); string(data) != "prev-bytes" {
+		t.Fatal("残留 .prev 不应被改动")
+	}
+	if _, err := os.Lstat(tmpPath); !os.IsNotExist(err) {
+		t.Fatal("tmpPath 应被清理")
+	}
+}
+
+func TestReplaceExecutableDeletesPrevThenBacksUp(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "fan-web-server")
+	tmpPath := execPath + ".new"
+	if err := os.WriteFile(execPath, []byte("current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(execPath+".prev", []byte("prev-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := replaceExecutable(execPath, tmpPath); err != nil {
+		t.Fatalf("replaceExecutable 失败: %v", err)
+	}
+
+	if data, err := os.ReadFile(execPath); err != nil || string(data) != "new" {
+		t.Fatalf("期望 execPath 为新二进制，got data=%q err=%v", data, err)
+	}
+	if data, err := os.ReadFile(execPath + ".old"); err != nil || string(data) != "current" {
+		t.Fatalf("期望 .old 为旧二进制，got data=%q err=%v", data, err)
+	}
+	if _, err := os.Lstat(execPath + ".prev"); !os.IsNotExist(err) {
+		t.Fatalf("期望 .prev 已删除，got err=%v", err)
+	}
+	if _, err := os.Lstat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("期望 tmpPath 已移走，got err=%v", err)
 	}
 }
