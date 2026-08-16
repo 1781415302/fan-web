@@ -31,8 +31,10 @@ type LibraryScanResult struct {
 }
 
 type UnidentifiedFile struct {
-	FileName string `json:"file_name"`
-	Reason   string `json:"reason"`
+	FileName   string           `json:"file_name"`
+	Reason     string           `json:"reason"`
+	FilePath   string           `json:"file_path"`
+	Candidates []MatchCandidate `json:"candidates"`
 }
 
 type libraryFile struct {
@@ -71,7 +73,7 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 		associated, err := database.IsFileAssociated(file.fileName, file.relDir)
 		if err != nil {
 			log.Printf("[Library] 查询文件关联状态失败 %q: %v", file.fileName, err)
-			addUnidentified(result, file.fileName, "查询文件状态失败")
+			addUnidentified(result, file.fileName, file.relDir, "查询文件状态失败")
 			continue
 		}
 		if associated {
@@ -81,11 +83,11 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 
 		parsed := ParseFilename(file.fileName)
 		if parsed.Title == "" {
-			addUnidentified(result, file.fileName, "无法解析文件名")
+			addUnidentified(result, file.fileName, file.relDir, "无法解析文件名")
 			continue
 		}
 		if parsed.EpisodeNum == 0 {
-			addUnidentified(result, file.fileName, "无法识别集数")
+			addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
 			continue
 		}
 		groups[parsed.Title] = append(groups[parsed.Title], parsedLibraryFile{libraryFile: file, parsed: parsed})
@@ -178,17 +180,34 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		return
 	}
 
-	searchItem := searchResults[0]
-	subject, err := s.bangumi.GetSubject(searchItem.ID)
+	decision := DecideBangumiMatch(title, searchResults)
+	if !decision.Accept || decision.Winner == nil {
+		candidates := decision.Candidates
+		if candidates == nil {
+			candidates = []MatchCandidate{}
+		}
+		for _, file := range files {
+			result.Unidentified = append(result.Unidentified, UnidentifiedFile{
+				FileName:   file.fileName,
+				Reason:     "匹配置信度不足",
+				FilePath:   file.relDir,
+				Candidates: candidates,
+			})
+		}
+		return
+	}
+
+	winner := decision.Winner
+	subject, err := s.bangumi.GetSubject(winner.ID)
 	if err != nil {
-		log.Printf("[Library] 获取 Bangumi 详情失败 %d，使用搜索结果: %v", searchItem.ID, err)
+		log.Printf("[Library] 获取 Bangumi 详情失败 %d，使用搜索结果: %v", winner.ID, err)
 		subject = &BangumiSubjectInfo{
-			ID:            searchItem.ID,
-			Name:          searchItem.Name,
-			NameCn:        searchItem.NameCn,
-			Summary:       searchItem.Summary,
-			Cover:         searchItem.Cover,
-			TotalEpisodes: searchItem.EpsCount,
+			ID:            winner.ID,
+			Name:          winner.Name,
+			NameCn:        winner.NameCn,
+			Summary:       winner.Summary,
+			Cover:         winner.Cover,
+			TotalEpisodes: winner.EpsCount,
 		}
 	}
 
@@ -215,6 +234,10 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 			addGroupUnidentified(result, files, "创建番剧失败")
 			return
 		}
+		if anime.FilePath != groupDir {
+			addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
+			return
+		}
 		result.NewAnimes++
 	}
 
@@ -237,7 +260,7 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 			})
 			if err != nil {
 				log.Printf("[Library] 创建集数失败 %q: %v", file.fileName, err)
-				addUnidentified(result, file.fileName, "创建集数失败")
+				addUnidentified(result, file.fileName, file.relDir, "创建集数失败")
 				continue
 			}
 			existingByNumber[file.parsed.EpisodeNum] = models.Episode{
@@ -255,16 +278,16 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		// 无法自动判定，报告给用户；若旧文件已不存在，则视为文件改名，更新 file_path。
 		oldPath := filepath.Join(s.rootPath, anime.FilePath, existing.FilePath)
 		if _, statErr := os.Stat(oldPath); statErr == nil {
-			addUnidentified(result, file.fileName, "集数已存在（旧文件仍在磁盘上），无法自动关联")
+			addUnidentified(result, file.fileName, file.relDir, "集数已存在（旧文件仍在磁盘上），无法自动关联")
 			continue
 		} else if !os.IsNotExist(statErr) {
 			log.Printf("[Library] 检查旧文件 %q 失败: %v", oldPath, statErr)
-			addUnidentified(result, file.fileName, "检查旧文件失败")
+			addUnidentified(result, file.fileName, file.relDir, "检查旧文件失败")
 			continue
 		}
 		if err := database.UpdateEpisodeFilePath(existing.ID, file.fileName); err != nil {
 			log.Printf("[Library] 更新改名文件路径失败 %q: %v", file.fileName, err)
-			addUnidentified(result, file.fileName, "更新改名文件路径失败")
+			addUnidentified(result, file.fileName, file.relDir, "更新改名文件路径失败")
 			continue
 		}
 		existingByNumber[file.parsed.EpisodeNum] = models.Episode{
@@ -278,10 +301,15 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 
 func addGroupUnidentified(result *LibraryScanResult, files []parsedLibraryFile, reason string) {
 	for _, file := range files {
-		addUnidentified(result, file.fileName, reason)
+		addUnidentified(result, file.fileName, file.relDir, reason)
 	}
 }
 
-func addUnidentified(result *LibraryScanResult, fileName, reason string) {
-	result.Unidentified = append(result.Unidentified, UnidentifiedFile{FileName: fileName, Reason: reason})
+func addUnidentified(result *LibraryScanResult, fileName, relDir, reason string) {
+	result.Unidentified = append(result.Unidentified, UnidentifiedFile{
+		FileName:   fileName,
+		Reason:     reason,
+		FilePath:   relDir,
+		Candidates: []MatchCandidate{},
+	})
 }

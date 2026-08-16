@@ -48,6 +48,7 @@ func (h *UpdateHandler) Check(c *gin.Context) {
 				"latest_version":  "",
 				"release_notes":   "",
 				"error":           "无法连接更新服务器",
+				"stale_old":       services.HasStaleUpdateBackup(),
 			},
 		})
 		return

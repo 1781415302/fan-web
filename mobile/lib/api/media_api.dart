@@ -4,9 +4,7 @@ import 'package:dio/dio.dart';
 
 import 'api_client.dart';
 
-/// 媒体票据接口访问。老服务器（v1.2.2/v1.2.3）没有
-/// POST /api/episodes/:id/media-token，会返回业务码 404（接口不存在），
-/// 此时应回落为旧 `token` query 播放 URL。
+/// 媒体票据接口访问。
 class MediaApi {
   MediaApi(this._client);
 
@@ -15,7 +13,7 @@ class MediaApi {
   static const int notFoundCode = 404;
 
   /// 请求指定 episode 的短期媒体票据。
-  /// 老服务器返回 business code 404 时抛出 [MediaTokenUnsupported]，调用方应回退旧 URL。
+  /// 老服务器返回 HTTP 404 或 business code 404 时抛出 [MediaTokenUnsupported]。
   Future<MediaTokenResult> fetchMediaToken(int episodeId) async {
     try {
       final response = await _client.dio.post<dynamic>(
@@ -65,9 +63,4 @@ class MediaTokenResult {
 String buildStreamUrlWithMediaToken(String serverUrl, int episodeId, String mediaToken) {
   final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
   return '$normalized/api/episodes/$episodeId/stream?media_token=${Uri.encodeComponent(mediaToken)}';
-}
-
-String buildLegacyStreamUrl(String serverUrl, int episodeId, String loginToken) {
-  final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-  return '$normalized/api/episodes/$episodeId/stream?token=${Uri.encodeComponent(loginToken)}';
 }

@@ -8,6 +8,7 @@ export interface UpdateCheckData {
   download_url?: string
   download_size?: number
   error?: string
+  stale_old: boolean
 }
 
 export async function checkUpdate(): Promise<UpdateCheckData> {

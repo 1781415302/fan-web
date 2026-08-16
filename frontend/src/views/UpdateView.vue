@@ -34,7 +34,7 @@ async function handleUpdate() {
     successMessage.value = `${data.message} ${data.hint ?? ''}`.trim()
   } catch (error: unknown) {
     // 即使请求超时/失败，服务端仍可能继续下载并重启，明确提示避免用户立即重试
-    // （两个并发 PerformUpdate 会以 O_TRUNC 写同一临时文件，导致校验失败）。
+    // （Perform 用 TryLock + O_EXCL，第二个请求会立即失败，但仍请稍候）。
     errorMessage.value = (error instanceof ApiError ? error.message : '更新失败') + '，服务端可能仍在更新，请稍候'
   } finally {
     updating.value = false
@@ -77,6 +77,7 @@ async function handleUpdate() {
         </div>
       </div>
       <p v-if="result.error" class="hint-text">{{ result.error }}</p>
+      <p v-if="result.stale_old" class="hint-text">检测到更新残留备份，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试</p>
       <div v-if="result.release_notes" class="release-notes">
         <h3>更新内容</h3>
         <pre>{{ result.release_notes }}</pre>

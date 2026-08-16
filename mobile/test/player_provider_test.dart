@@ -25,23 +25,28 @@ void main() {
         'http://127.0.0.1:8080/api/episodes/7/stream?media_token=media%2B%2Ftoken',
       );
       expect(media.uri.toString(), isNot(contains('LOGIN_MUST_NOT_APPEAR')));
+      expect(media.uri.toString(), isNot(contains('?token=')));
       expect(media.start, const Duration(seconds: 125));
     });
 
-    test('falls back to the login token only when unsupported', () async {
-      final media = await buildPlayerMedia(
-        requestMediaToken: (_) async => throw const MediaTokenUnsupported(),
-        serverUrl: 'http://127.0.0.1:8080',
-        episodeId: 7,
-        loginToken: 'login+/token',
-        startPositionSeconds: 0,
+    test('treats MediaTokenUnsupported as a hard fail', () async {
+      String? url;
+      await expectLater(
+        () async {
+          final media = await buildPlayerMedia(
+            requestMediaToken: (_) async => throw const MediaTokenUnsupported(),
+            serverUrl: 'http://127.0.0.1:8080',
+            episodeId: 7,
+            loginToken: 'login+/token',
+            startPositionSeconds: 0,
+          );
+          url = media.uri.toString();
+          return media;
+        },
+        throwsA(isA<MediaTokenUnsupported>()),
       );
-
-      expect(
-        media.uri.toString(),
-        'http://127.0.0.1:8080/api/episodes/7/stream?token=login%2B%2Ftoken',
-      );
-      expect(media.start, isNull);
+      expect(url, isNull);
+      expect(url ?? '', isNot(contains('token=')));
     });
 
     for (final error in <Object>[

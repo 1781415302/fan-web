@@ -71,7 +71,7 @@ void main() {
       );
     });
 
-    test('URL builders encode tokens', () {
+    test('media_token URL builder encodes tokens', () {
       expect(
         buildStreamUrlWithMediaToken(
           ' http://127.0.0.1:8080/// ',
@@ -79,10 +79,6 @@ void main() {
           'token+/=',
         ),
         'http://127.0.0.1:8080/api/episodes/42/stream?media_token=token%2B%2F%3D',
-      );
-      expect(
-        buildLegacyStreamUrl('http://127.0.0.1:8080', 42, 'jwt+/token'),
-        'http://127.0.0.1:8080/api/episodes/42/stream?token=jwt%2B%2Ftoken',
       );
     });
   });

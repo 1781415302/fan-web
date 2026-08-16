@@ -257,7 +257,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
   }
 
-  // 优先使用媒体票据；仅当服务器不支持（业务码/HTTP 404）时回退旧 token URL。
+  // 使用媒体票据打开播放地址；票据接口不可用时按硬失败处理。
   Future<Media> _buildOpenMedia() async {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
@@ -768,35 +768,10 @@ Future<Media> buildPlayerMedia({
   required String loginToken,
   required int startPositionSeconds,
 }) async {
-  String url;
-  try {
-    final result = await requestMediaToken(episodeId);
-    url = buildStreamUrlWithMediaToken(serverUrl, episodeId, result.token);
-  } on MediaTokenUnsupported {
-    url = buildLegacyStreamUrl(serverUrl, episodeId, loginToken);
-  }
+  final result = await requestMediaToken(episodeId);
+  final url = buildStreamUrlWithMediaToken(serverUrl, episodeId, result.token);
   return Media(
     url,
-    start: startPositionSeconds > 0
-        ? Duration(seconds: startPositionSeconds)
-        : null,
-  );
-}
-
-// Legacy 播放 URL：仅当服务器不支持媒体票据时回退使用（登录 JWT 走 query token）。
-String buildStreamUrl(String serverUrl, int episodeId, String loginToken) {
-  final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-  return '$normalized/api/episodes/$episodeId/stream?token=${Uri.encodeComponent(loginToken)}';
-}
-
-Media buildStreamMedia(
-  String serverUrl,
-  int episodeId,
-  String loginToken,
-  int startPositionSeconds,
-) {
-  return Media(
-    buildStreamUrl(serverUrl, episodeId, loginToken),
     start: startPositionSeconds > 0
         ? Duration(seconds: startPositionSeconds)
         : null,

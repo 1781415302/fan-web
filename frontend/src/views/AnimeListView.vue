@@ -3,11 +3,11 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
-import { listAnimes } from '../api/anime'
+import { createAnime, listAnimes, scanAnime } from '../api/anime'
 import { scanLibrary } from '../api/library'
 import { useAuthStore } from '../stores/auth'
 import type { Anime } from '../types/anime'
-import type { LibraryScanResult } from '../types/library'
+import type { LibraryScanResult, MatchCandidate, UnidentifiedFile } from '../types/library'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -22,6 +22,7 @@ const failedCovers = ref(new Set<number>())
 const scanning = ref(false)
 const scanResult = ref<LibraryScanResult | null>(null)
 const scanError = ref('')
+const confirmingPath = ref<string | null>(null)
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 // loadSerial 序列化 load()：搜索防抖、翻页、扫描完成刷新等入口可能并发触发，
@@ -93,6 +94,34 @@ async function handleLibraryScan() {
   }
 }
 
+function candidateLabel(candidate: MatchCandidate) {
+  return candidate.name_cn || candidate.name
+}
+
+function isConfirming(filePath: string) {
+  return confirmingPath.value !== null && confirmingPath.value === filePath
+}
+
+async function confirmCandidate(file: UnidentifiedFile, candidate: MatchCandidate) {
+  if (isConfirming(file.file_path)) return
+  confirmingPath.value = file.file_path
+  scanError.value = ''
+  try {
+    const anime = await createAnime(candidate.id, file.file_path)
+    await scanAnime(anime.id)
+    if (scanResult.value) {
+      scanResult.value.unidentified = scanResult.value.unidentified.filter(
+        (item) => item.file_path !== file.file_path,
+      )
+    }
+    await load()
+  } catch (e: unknown) {
+    scanError.value = e instanceof ApiError ? e.message : '确认失败'
+  } finally {
+    if (confirmingPath.value === file.file_path) confirmingPath.value = null
+  }
+}
+
 onMounted(() => void load())
 onBeforeUnmount(() => {
   ++loadSerial
@@ -161,9 +190,22 @@ onBeforeUnmount(() => {
       <details v-if="scanResult.unidentified.length > 0" class="unidentified-details" open>
         <summary>查看无法识别文件</summary>
         <ul class="unidentified-list">
-          <li v-for="file in scanResult.unidentified" :key="`${file.file_name}-${file.reason}`">
+          <li v-for="file in scanResult.unidentified" :key="`${file.file_path}/${file.file_name}-${file.reason}`">
             <code>{{ file.file_name }}</code>
             <span>{{ file.reason }}</span>
+            <div v-if="file.candidates?.length > 0" class="candidate-picks">
+              <button
+                v-for="candidate in file.candidates"
+                :key="candidate.id"
+                type="button"
+                class="action-btn candidate-btn"
+                :disabled="isConfirming(file.file_path)"
+                @click="confirmCandidate(file, candidate)"
+              >
+                {{ candidateLabel(candidate) }}
+                <span class="candidate-score">{{ candidate.score.toFixed(2) }}</span>
+              </button>
+            </div>
           </li>
         </ul>
       </details>
@@ -439,6 +481,26 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
+}
+
+.candidate-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.candidate-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.candidate-score {
+  margin-left: 6px;
+  color: var(--text-muted-color);
+  font-weight: 500;
+  font-size: 12px;
 }
 
 .unidentified-list code {

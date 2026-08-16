@@ -209,8 +209,8 @@ Future<void> _verifyDownloadIntegrity(
 }
 
 /// 从 SHA256SUMS.txt 中查找本 APK 资产对应的 sha256。
-/// 当前发布格式（对齐 v1.1.1）的 SHA256SUMS.txt 只含 4 个服务器二进制、
-/// 不含 APK 条目，此时返回 null（跳过哈希比对，size 校验仍生效）。
+/// APK 行现为必填并参与哈希校验；SUMS 获取或解析失败时仍 fail-open
+/// （跳过哈希比对，size 校验仍生效）。
 Future<String?> _lookupApkSha256(String sha256sumsUrl, String downloadUrl) async {
   final dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),
