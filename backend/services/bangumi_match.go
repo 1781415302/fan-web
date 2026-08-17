@@ -29,7 +29,10 @@ type MatchCandidate struct {
 
 var matchBracketsRe = regexp.MustCompile(`[\[\(\{（【「『《〈][^\]\)\}）】」』》〉]*[\]\)\}）】」』》〉]`)
 
-var matchSeasonRe = regexp.MustCompile(`\b\d+(?:st|nd|rd|th)\s*season\b|\bseason\s*\d+\b|\bs\d{1,2}\b|第\s*[0-9一二三四五六七八九十百]+\s*季`)
+var matchSeasonRe = regexp.MustCompile(`(?i)\b\d+(?:st|nd|rd|th)\s*season\b|\bseason\s*\d+\b|\bs\d{1,2}\b|第\s*[0-9一二三四五六七八九十百]+\s*季`)
+
+// matchSxxEyyRe 必须先于 \bs\d{1,2}\b：S01E05 里 E 是词字符，后者匹配不到。
+var matchSxxEyyRe = regexp.MustCompile(`(?i)s(\d{1,2})e\d{1,3}`)
 
 // DecideBangumiMatch scores Bangumi search hits against the original title
 // (never a shortened query) and accepts only a clear unique winner.
@@ -125,7 +128,11 @@ func candidateSeason(item BangumiSearchItem) (season int, unnamed bool) {
 }
 
 func extractSeason(s string) int {
-	token := matchSeasonRe.FindString(strings.ToLower(s))
+	lower := strings.ToLower(s)
+	if m := matchSxxEyyRe.FindStringSubmatch(lower); len(m) > 1 {
+		return firstASCIIDigits(m[1])
+	}
+	token := matchSeasonRe.FindString(lower)
 	if token == "" {
 		return 0
 	}
@@ -163,6 +170,7 @@ func firstASCIIDigits(s string) int {
 var chineseNumRe = regexp.MustCompile(`[一二三四五六七八九十百]+`)
 
 func parseChineseNum(s string) int {
+	// 只认 1–10。十一、二十、百 一律 0。
 	digits := map[rune]int{
 		'一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
 		'六': 6, '七': 7, '八': 8, '九': 9,
@@ -173,24 +181,6 @@ func parseChineseNum(s string) int {
 	runes := []rune(s)
 	if len(runes) == 1 {
 		return digits[runes[0]]
-	}
-	if runes[0] == '十' {
-		if len(runes) == 2 {
-			return 10 + digits[runes[1]]
-		}
-		return 0
-	}
-	if len(runes) >= 2 && runes[1] == '十' {
-		tens := digits[runes[0]]
-		if tens == 0 {
-			return 0
-		}
-		if len(runes) == 2 {
-			return tens * 10
-		}
-		if len(runes) == 3 {
-			return tens*10 + digits[runes[2]]
-		}
 	}
 	return 0
 }

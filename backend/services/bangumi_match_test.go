@@ -29,8 +29,9 @@ func TestExtractSeason(t *testing.T) {
 		{in: "Title 4th season", want: 4},
 		{in: "Title Season 2", want: 2},
 		{in: "葬送的芙莉莲 第2季", want: 2},
-		{in: "Title S01E05", want: 0},
+		{in: "Title S01E05", want: 1},
 		{in: "Bocchi the Rock!", want: 0},
+		{in: "番剧 第十一季", want: 0},
 	}
 	for _, test := range tests {
 		if got := extractSeason(test.in); got != test.want {
