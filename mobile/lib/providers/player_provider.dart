@@ -343,6 +343,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       final shouldPlay = state.isPlaying;
       await player.open(media, play: false);
       _hasOpened = true;
+      _didNearExpiryReopen = false;
       if (resume > Duration.zero) {
         try {
           await player.seek(resume);

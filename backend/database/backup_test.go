@@ -388,3 +388,40 @@ func TestBackupDatabaseClosedDBLeavesDestUnchanged(t *testing.T) {
 		t.Fatalf("tmp should be cleaned up after failure, got %v", err)
 	}
 }
+
+func TestBackupDatabaseReplacesDestAndRemovesSidecar(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "src.db")
+	dest := filepath.Join(dir, "dest.bak")
+	if err := os.WriteFile(dest, []byte("stale-dest"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE t (id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := BackupDatabase(db, dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("expected dest after success: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) == "stale-dest" {
+		t.Fatal("dest should be the new snapshot, not the old marker")
+	}
+	if _, err := os.Stat(dest + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("tmp should be gone, got %v", err)
+	}
+	if _, err := os.Stat(dest + ".prevsnap"); !os.IsNotExist(err) {
+		t.Fatalf("sidecar should be gone, got %v", err)
+	}
+}
