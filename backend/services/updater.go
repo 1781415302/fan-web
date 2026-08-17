@@ -167,6 +167,19 @@ func HasStaleUpdateBackup() bool {
 	return staleOldAt(execPath)
 }
 
+// rejectStaleUpdateBackup 在下载前拦截残留 .old，避免无谓下载后才发现无法替换。
+func rejectStaleUpdateBackup() error {
+	if !HasStaleUpdateBackup() {
+		return nil
+	}
+	execPath, err := os.Executable()
+	backupPath := ".old"
+	if err == nil {
+		backupPath = execPath + ".old"
+	}
+	return fmt.Errorf("检测到更新残留备份 %s，请确认现场后手动删除该文件再重试: %w", backupPath, errUpdateBackupExists)
+}
+
 func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 	release, err := fetchLatestRelease()
 	if err != nil {
@@ -219,6 +232,10 @@ func PerformUpdate(currentVersion string) error {
 		return fmt.Errorf("Windows 平台暂不支持自动更新，请到 GitHub Releases 手动下载 %s 并替换可执行文件", asset.Name)
 	}
 
+	if err := rejectStaleUpdateBackup(); err != nil {
+		return err
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("获取可执行文件路径失败: %w", err)
@@ -267,7 +284,7 @@ func PerformUpdate(currentVersion string) error {
 	backupPath, err := replaceExecutable(execPath, tmpPath)
 	if err != nil {
 		if errors.Is(err, errUpdateBackupExists) {
-			return fmt.Errorf("检测到更新残留备份 %s，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试", backupPath)
+			return fmt.Errorf("检测到更新残留备份 %s，请确认现场后手动删除该文件再重试", backupPath)
 		}
 		return err
 	}
@@ -293,7 +310,7 @@ func PerformUpdate(currentVersion string) error {
 //
 // 关键：替换成功后保留 .old，不在此处删除——由新版本成功启动后通过 CleanupUpdateBackup
 // 清理。这样若新版因数据库迁移失败、配置错误等起不来，旧版二进制仍在，可手动回滚。
-// 替换前若已存在 .old（上一次更新的新版本未成功启动、未自动清理），拒绝覆盖以免丢失
+// 替换前若已存在 .old（上一次更新的新版本未成功启动、未晋升为 .prev），拒绝覆盖以免丢失
 // 唯一回滚副本。任一步失败均清理 tmpPath 并尝试回滚到旧版本，保证现场不被写坏。
 func replaceExecutable(execPath, tmpPath string) (string, error) {
 	backupPath := execPath + ".old"

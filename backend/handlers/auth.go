@@ -47,12 +47,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// 本次尝试的额度已由限流中间件的 Allow 原子计入，失败时无需再重复计数。
 	user, err := database.GetUserByUsername(request.Username)
 	if err != nil {
-		// 用户不存在时对固定 dummy 哈希执行一次等价的 bcrypt 比较，
-		// 使两条失败路径的耗时一致，避免账号枚举时序侧信道。
 		if err == sql.ErrNoRows {
+			// 用户不存在时对固定 dummy 哈希执行一次等价的 bcrypt 比较，
+			// 使两条失败路径的耗时一致，避免账号枚举时序侧信道。
 			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(request.Password))
+			utils.Error(c, utils.CodeLoginFailed, "用户名或密码错误")
+			return
 		}
-		utils.Error(c, utils.CodeLoginFailed, "用户名或密码错误")
+		h.rateLimiter.Reset(middleware.ClientIP(c))
+		utils.Error(c, utils.CodeInternal, "查询用户失败")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)) != nil {

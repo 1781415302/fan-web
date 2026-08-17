@@ -78,6 +78,28 @@ func TestDecodeASSDialogueRemovesFormatting(t *testing.T) {
 	}
 }
 
+func TestDecodeASSDialogueMatroskaNineField(t *testing.T) {
+	input := `0:00:01.00,0:00:03.00,Default,,0,0,0,,{\an8}第一行\N第二行`
+	got := decodeASSDialogue(input)
+	if got != "第一行\n第二行" {
+		t.Fatalf("unexpected Matroska ASS text: %q", got)
+	}
+	if strings.Contains(got, `{\an8}`) {
+		t.Fatalf("must not return raw {\\an8}: %q", got)
+	}
+}
+
+func TestDecodeASSDialogueTooFewFieldsStillStripsTags(t *testing.T) {
+	input := `{\an8}只有一行\h文本`
+	got := decodeASSDialogue(input)
+	if got != "只有一行 文本" {
+		t.Fatalf("too-few-fields path should still strip tags, got %q", got)
+	}
+	if strings.Contains(got, "{") || strings.Contains(got, `{\an8}`) {
+		t.Fatalf("must not return raw ASS tags: %q", got)
+	}
+}
+
 func TestReadRealMatroskaSubtitle(t *testing.T) {
 	path := os.Getenv("FAN_WEB_REAL_MKV")
 	if path == "" {

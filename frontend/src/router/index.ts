@@ -114,6 +114,9 @@ export function createAppRouter(history: RouterHistory, setupStatus: SetupStatus
     }
 
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+      if (authStore.token && !authStore.initialized) {
+        return true
+      }
       return {
         name: 'login',
         query: { redirect: to.fullPath },

@@ -25,6 +25,7 @@ async function handleCheck() {
 
 async function handleUpdate() {
   if (!result.value?.has_update) return
+  if (result.value.stale_old) return
   if (!window.confirm(`确定更新到 ${result.value.latest_version} 吗？更新后服务将自动重启。`)) return
   updating.value = true
   errorMessage.value = ''
@@ -82,8 +83,8 @@ async function handleUpdate() {
         <h3>更新内容</h3>
         <pre>{{ result.release_notes }}</pre>
       </div>
-      <div v-if="result.has_update" class="panel-actions">
-        <button type="button" class="primary-btn" :disabled="updating" @click="handleUpdate">
+      <div v-if="result.has_update && !result.stale_old" class="panel-actions">
+        <button type="button" class="primary-btn" :disabled="updating || result.stale_old" @click="handleUpdate">
           {{ updating ? '更新中...' : '立即更新' }}
         </button>
         <span v-if="result.download_size" class="panel-note">安装包约 {{ (result.download_size / 1024 / 1024).toFixed(1) }} MB</span>

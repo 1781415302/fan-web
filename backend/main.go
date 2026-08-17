@@ -133,10 +133,16 @@ func main() {
 		log.Fatalf("端口绑定失败: %v", err)
 	}
 	log.Printf("服务启动，监听 :%d → http://127.0.0.1:%d", actualPort, actualPort)
-	// 可执行文件 .old 与数据库迁移前备份同属一套回滚资产：
-	// 仅在成功绑定端口后一并清理，任一次启动未能完成绑定都保留二者，保证可完整回滚。
-	services.CleanupUpdateBackup()
-	database.CleanupPreMigrationBackup(cfg.Database.Path)
+	// 可执行文件 .old 与数据库迁移前备份同属一套回滚资产。
+	// 仅当实际绑定端口等于配置端口（含 -port 覆盖后的值）才清理；
+	// 回退绑定视为启动未完全按配置成功，保留 .old 与 .pre-migration.bak。
+	// 回退端口只用于本次监听，不写回配置。
+	if shouldCleanupRollback(actualPort, cfg.Server.Port) {
+		services.CleanupUpdateBackup()
+		database.CleanupPreMigrationBackup(cfg.Database.Path)
+	} else {
+		log.Printf("端口回退到 %d（配置为 %d），保留 .old 与 .pre-migration.bak 以便回滚", actualPort, cfg.Server.Port)
+	}
 	server := &http.Server{
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -148,6 +154,11 @@ func main() {
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
+}
+
+// shouldCleanupRollback 仅在实际绑定端口等于配置端口时清理回滚资产。
+func shouldCleanupRollback(actualPort, configuredPort int) bool {
+	return actualPort == configuredPort
 }
 
 // listenWithFallback 从起始端口开始监听，端口被占用时自动顺延，最多尝试 maxAttempts 次。

@@ -17,27 +17,72 @@ const preMigrationBackupSuffix = ".pre-migration.bak"
 // BackupDatabase 对数据库做一致性快照备份到 backupPath。
 // 使用 SQLite 的 "VACUUM INTO"：在 WAL 模式下也能捕获已提交内容，
 // 直接复制主数据库文件会漏掉 -wal 中尚未 checkpoint 的提交，不足以回滚。
-// 目标文件必须不存在，VACUUM INTO 在目标已存在时直接报错，故先删除旧的。
+// 先 VACUUM INTO 临时文件（backupPath+".tmp"），chmod 0600 后再替换目标。
+// 已有 dest 先改名为 sidecar，tmp 就位后再删 sidecar；任一步失败都把 dest 还原。
+// dest 不在而 sidecar 在，视为上次崩溃窗口，先把 sidecar 还原成 dest，禁止一上来删 sidecar。
 // 注意：VACUUM INTO 的目标不支持绑定参数，只能以转义后的字符串字面量拼入 SQL，
 // 路径中的单引号按 SQLite 字面量规则翻倍转义。
 func BackupDatabase(db *sql.DB, backupPath string) error {
-	if _, err := os.Stat(backupPath); err == nil {
-		if err := os.Remove(backupPath); err != nil {
-			return fmt.Errorf("删除旧的迁移前备份 %s 失败: %w", backupPath, err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("检查迁移前备份 %s 失败: %w", backupPath, err)
+	tmpPath := backupPath + ".tmp"
+	sidecarPath := backupPath + ".prevsnap"
+	_ = os.Remove(tmpPath)
+	if err := recoverBackupSidecar(backupPath, sidecarPath); err != nil {
+		return err
 	}
 
-	escaped := strings.ReplaceAll(backupPath, "'", "''")
+	escaped := strings.ReplaceAll(tmpPath, "'", "''")
 	if _, err := db.Exec(fmt.Sprintf("VACUUM INTO '%s'", escaped)); err != nil {
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("VACUUM INTO 创建迁移前备份失败: %w", err)
 	}
 	// 备份含 bcrypt 密码哈希与用户名，权限收紧为 0600，与主库一致。
-	if err := os.Chmod(backupPath, 0o600); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("设置迁移前备份权限失败 (%s): %w", backupPath, err)
+	if err := os.Chmod(tmpPath, 0o600); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("设置迁移前备份权限失败 (%s): %w", tmpPath, err)
 	}
+
+	movedDest := false
+	if _, err := os.Stat(backupPath); err == nil {
+		if err := os.Rename(backupPath, sidecarPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("挪开旧的迁移前备份 %s 失败: %w", backupPath, err)
+		}
+		movedDest = true
+	} else if err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("检查迁移前备份 %s 失败: %w", backupPath, err)
+	}
+
+	if err := os.Rename(tmpPath, backupPath); err != nil {
+		if movedDest {
+			_ = os.Rename(sidecarPath, backupPath)
+		}
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("提交迁移前备份 %s 失败: %w", backupPath, err)
+	}
+	_ = os.Remove(sidecarPath)
 	log.Printf("已创建迁移前数据库备份 %s", backupPath)
+	return nil
+}
+
+
+func recoverBackupSidecar(backupPath, sidecarPath string) error {
+	_, destErr := os.Stat(backupPath)
+	if destErr == nil {
+		_ = os.Remove(sidecarPath)
+		return nil
+	}
+	if !os.IsNotExist(destErr) {
+		return fmt.Errorf("检查迁移前备份 %s 失败: %w", backupPath, destErr)
+	}
+	if _, err := os.Stat(sidecarPath); err == nil {
+		if err := os.Rename(sidecarPath, backupPath); err != nil {
+			return fmt.Errorf("还原迁移前备份 %s 失败: %w", backupPath, err)
+		}
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("检查迁移前备份旁路 %s 失败: %w", sidecarPath, err)
+	}
 	return nil
 }
 
@@ -61,7 +106,8 @@ func HasPendingMigrations(db *sql.DB) (bool, error) {
 }
 
 // CleanupPreMigrationBackup 删除 dbPath 对应的迁移前备份（<dbPath>.pre-migration.bak）。
-// 由新版本在成功绑定端口后调用，与 CleanupUpdateBackup 一并清理整套回滚资产；
+// 由新版本在绑定到配置端口后调用，与 CleanupUpdateBackup 一并清理整套回滚资产；
+// 端口回退时不得调用，以便保留回滚现场。
 // 文件不存在视为正常（无待清理），真实失败记录日志并返回错误。
 func CleanupPreMigrationBackup(dbPath string) error {
 	backupPath := dbPath + preMigrationBackupSuffix

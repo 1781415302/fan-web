@@ -445,14 +445,20 @@ func decodeSubtitleText(codec string, data []byte) string {
 
 func decodeASSDialogue(value string) string {
 	line := strings.TrimSpace(value)
-	if !strings.HasPrefix(strings.ToLower(line), "dialogue:") {
-		return line
+	text := line
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "dialogue:") {
+		rest := strings.TrimSpace(line[len("Dialogue:"):])
+		fields := strings.SplitN(rest, ",", 10)
+		if len(fields) >= 10 {
+			text = fields[9]
+		}
+	} else {
+		fields := strings.SplitN(line, ",", 9)
+		if len(fields) >= 9 {
+			text = fields[8]
+		}
 	}
-	fields := strings.SplitN(strings.TrimSpace(line[len("Dialogue:"):]), ",", 10)
-	if len(fields) < 10 {
-		return ""
-	}
-	text := fields[9]
 	text = strings.ReplaceAll(text, `\N`, "\n")
 	text = strings.ReplaceAll(text, `\n`, "\n")
 	text = strings.ReplaceAll(text, `\h`, " ")

@@ -37,7 +37,15 @@ func NewSetupHandler(configPath string, cfg *config.Config, authService *service
 func (h *SetupHandler) IsConfigured() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.cfg.Configured
+	if h.cfg.Configured {
+		return true
+	}
+	n, err := database.CountAdmins()
+	if err != nil {
+		// 查管理员失败时按已初始化处理，避免把已有实例暴露给 /api/setup。
+		return true
+	}
+	return n > 0
 }
 
 // Status 返回系统是否已完成初始化。
@@ -57,7 +65,17 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	// 已持有写锁，禁止再调 IsConfigured()（它会再抢读锁）。先看内存旗标，再查管理员数。
 	if h.cfg.Configured {
+		utils.Error(c, utils.CodeForbidden, "系统已初始化")
+		return
+	}
+	n, countErr := database.CountAdmins()
+	if countErr != nil {
+		utils.Error(c, utils.CodeInternal, "查询用户失败")
+		return
+	}
+	if n > 0 {
 		utils.Error(c, utils.CodeForbidden, "系统已初始化")
 		return
 	}

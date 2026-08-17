@@ -254,3 +254,68 @@ admin:
 		t.Fatalf("LegacyPassword must be cleared in memory, got %q", cfg.Admin.LegacyPassword)
 	}
 }
+
+func TestBootstrapMissingConfigWithAdminsRefusesStartup(t *testing.T) {
+	bootstrapTestDB(t)
+	if _, err := database.CreateUser("admin", "password", true); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Configured = false
+	missing := filepath.Join(t.TempDir(), "missing-config.yaml")
+
+	err := prepareConfiguredInstance(missing, cfg)
+	if err == nil {
+		t.Fatal("expected startup to be refused when config.yaml is missing but admins exist")
+	}
+	if !strings.Contains(err.Error(), "配置文件缺失但数据库已有管理员，拒绝以未初始化状态启动，请恢复 config.yaml") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBootstrapMissingConfigWithoutAdminsIsFirstRun(t *testing.T) {
+	bootstrapTestDB(t)
+	cfg := config.Default()
+	cfg.Configured = false
+	missing := filepath.Join(t.TempDir(), "missing-config.yaml")
+
+	if err := prepareConfiguredInstance(missing, cfg); err != nil {
+		t.Fatalf("missing config + 0 admins is first-run, got %v", err)
+	}
+}
+
+func TestBootstrapMissingConfigCountAdminsFailure(t *testing.T) {
+	bootstrapTestDB(t)
+	if database.DB != nil {
+		_ = database.DB.Close()
+	}
+	cfg := config.Default()
+	cfg.Configured = false
+	missing := filepath.Join(t.TempDir(), "missing-config.yaml")
+
+	err := prepareConfiguredInstance(missing, cfg)
+	if err == nil {
+		t.Fatal("expected CountAdmins failure to abort startup")
+	}
+	if !strings.Contains(err.Error(), "查询管理员数量失败") {
+		t.Fatalf("expected wrapped CountAdmins error, got %v", err)
+	}
+}
+
+func TestBootstrapPresentFileUnchangedWhenConfiguredFalse(t *testing.T) {
+	bootstrapTestDB(t)
+	path := writeConfig(t, `
+server:
+  port: 8080
+jwt:
+  secret: custom-secret-1234
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Configured = false
+	if err := prepareConfiguredInstance(path, cfg); err != nil {
+		t.Fatalf("present file + Configured=false is first-run, got %v", err)
+	}
+}

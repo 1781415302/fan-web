@@ -97,7 +97,9 @@ func Default() *Config {
 }
 
 // Load 从指定路径加载配置文件。
-// 配置文件不存在时返回带默认值的配置，Configured 为 false，调用方可进入初始化流程。
+// 配置文件不存在时返回带默认值的配置，Configured 为 false。
+// 是否允许进入初始化由 prepareConfiguredInstance 结合管理员数量决定：
+// 无管理员视为首次运行；已有管理员则拒绝以未初始化状态启动。
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

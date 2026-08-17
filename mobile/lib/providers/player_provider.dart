@@ -80,6 +80,7 @@ class PlayerState {
     this.volume = 1,
     this.brightness = 0.5,
     this.subtitleFontSize = 20,
+    this.notice,
   });
 
   final bool isInitialized;
@@ -98,6 +99,7 @@ class PlayerState {
   final double volume;
   final double brightness;
   final double subtitleFontSize;
+  final String? notice;
 
   PlayerState copyWith({
     bool? isInitialized,
@@ -119,6 +121,8 @@ class PlayerState {
     double? volume,
     double? brightness,
     double? subtitleFontSize,
+    String? notice,
+    bool clearNotice = false,
   }) {
     return PlayerState(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -141,6 +145,7 @@ class PlayerState {
       volume: volume ?? this.volume,
       brightness: brightness ?? this.brightness,
       subtitleFontSize: subtitleFontSize ?? this.subtitleFontSize,
+      notice: notice ?? (clearNotice ? null : this.notice),
     );
   }
 }
@@ -172,6 +177,10 @@ class PlayerNotifier extends Notifier<PlayerState> {
   bool _subtitleUserSelected = false;
   bool _disposing = false;
   bool _disposed = false;
+  DateTime? _mediaExpiresAt;
+  Timer? _mediaRefreshTimer;
+  bool _mediaTokenRefreshInFlight = false;
+  bool _didNearExpiryReopen = false;
 
   @override
   PlayerState build() {
@@ -251,7 +260,32 @@ class PlayerNotifier extends Notifier<PlayerState> {
       _startProgressTimer();
       final duration = await _waitForDuration();
       await _restoreAndStart(duration);
+    } on MediaTokenUnsupported {
+      _setState(
+        state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'),
+      );
+      return;
     } catch (_) {
+      if (_isWithin60sOfExpiry() && !_didNearExpiryReopen) {
+        _didNearExpiryReopen = true;
+        try {
+          await _refreshMediaToken();
+          if (_disposed || _disposing) {
+            return;
+          }
+          _hasOpened = true;
+          _openCompleted = true;
+          _startProgressTimer();
+          final duration = await _waitForDuration();
+          await _restoreAndStart(duration);
+          return;
+        } on MediaTokenUnsupported {
+          _setState(
+            state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'),
+          );
+          return;
+        } catch (_) {}
+      }
       _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       return;
     }
@@ -262,12 +296,67 @@ class PlayerNotifier extends Notifier<PlayerState> {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
     final mediaApi = ref.read(mediaApiProvider);
-    return buildPlayerMedia(
+    final built = await buildPlayerMedia(
       requestMediaToken: mediaApi.fetchMediaToken,
       serverUrl: serverUrl,
       episodeId: config.episodeId,
       startPositionSeconds: _savedPosition,
     );
+    _mediaExpiresAt = built.expiresAt;
+    _scheduleMediaTokenRefresh(built.expiresAt);
+    return built.media;
+  }
+
+  void _scheduleMediaTokenRefresh(DateTime? expiresAt) {
+    _mediaRefreshTimer?.cancel();
+    if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) {
+      return;
+    }
+    var delay = expiresAt.difference(DateTime.now()) - const Duration(minutes: 5);
+    if (delay < const Duration(minutes: 1)) {
+      delay = const Duration(minutes: 1);
+    }
+    _mediaRefreshTimer = Timer(delay, () {
+      unawaited(_refreshMediaToken());
+    });
+  }
+
+  bool _isWithin60sOfExpiry() {
+    final expiresAt = _mediaExpiresAt;
+    if (expiresAt == null) {
+      return false;
+    }
+    return !DateTime.now().isBefore(expiresAt.subtract(const Duration(seconds: 60)));
+  }
+
+  Future<void> _refreshMediaToken() async {
+    if (_mediaTokenRefreshInFlight || _disposed || _disposing) {
+      return;
+    }
+    _mediaTokenRefreshInFlight = true;
+    try {
+      final media = await _buildOpenMedia();
+      if (_disposed || _disposing) {
+        return;
+      }
+      final resume = state.position;
+      final shouldPlay = state.isPlaying;
+      await player.open(media, play: false);
+      _hasOpened = true;
+      _didNearExpiryReopen = false;
+      if (resume > Duration.zero) {
+        try {
+          await player.seek(resume);
+        } catch (_) {}
+      }
+      if (shouldPlay) {
+        try {
+          await player.play();
+        } catch (_) {}
+      }
+    } finally {
+      _mediaTokenRefreshInFlight = false;
+    }
   }
 
   void _handlePlaying(bool playing) {
@@ -342,6 +431,16 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   void _handleError(String message) {
+    if (_mediaTokenRefreshInFlight) {
+      return;
+    }
+    if (_isWithin60sOfExpiry()) {
+      if (!_didNearExpiryReopen) {
+        _didNearExpiryReopen = true;
+        unawaited(_refreshMediaToken());
+      }
+      return;
+    }
     _setState(
       state.copyWith(
         isLoading: false,
@@ -401,14 +500,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
     if (!restored) {
       // 断点恢复失败时不进入终态 error（媒体已加载、从头播放完全可行），
-      // 回退为从头播放，保留正常播放与进度上报能力。
-      _savedPosition = 0;
+      // 回退为从头播放，但保留原来的正进度哨兵，避免后续 0 上报覆盖服务端断点。
+      final origSaved = _savedPosition;
       _restoreHandled = true;
       _setState(
         state.copyWith(
           isLoading: false,
           isRestoring: false,
-          savedPosition: 0,
+          savedPosition: origSaved,
           position: Duration.zero,
         ),
       );
@@ -549,7 +648,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       await player.seek(target);
       _setState(state.copyWith(position: target, isCompleted: false));
     } catch (_) {
-      _setState(state.copyWith(error: '跳转失败，请稍后重试'));
+      _setState(state.copyWith(notice: '跳转失败，请稍后重试'));
     }
   }
 
@@ -595,7 +694,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
         _setState(state.copyWith(currentSubtitleTrack: track));
       }
     } catch (_) {
-      _setState(state.copyWith(error: '字幕切换失败'));
+      _setState(state.copyWith(notice: '字幕切换失败'));
     }
   }
 
@@ -613,6 +712,13 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     _setState(state.copyWith(clearRestoredPosition: true));
+  }
+
+  void consumeNotice() {
+    if (_disposed || state.notice == null) {
+      return;
+    }
+    _setState(state.copyWith(clearNotice: true));
   }
 
   Future<void> _loadBrightness() async {
@@ -660,6 +766,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     final safePosition = position.inSeconds < 0 ? 0 : position.inSeconds;
+    if (!shouldQueueProgress(safePosition)) {
+      return;
+    }
     final now = DateTime.now().toIso8601String();
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
@@ -720,12 +829,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _disposed = true;
     _progressTimer?.cancel();
     _progressTimer = null;
+    _mediaRefreshTimer?.cancel();
+    _mediaRefreshTimer = null;
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
     _subscriptions.clear();
 
-    if (_hasOpened) {
+    if (_hasOpened && shouldQueueProgress(state.position.inSeconds)) {
       await _queueCurrentProgress();
     }
     final reportChain = _reportChain;
@@ -759,19 +870,37 @@ bool _isPositionNear(Duration actual, Duration target) {
   return (actual.inSeconds - target.inSeconds).abs() <= 2;
 }
 
-Future<Media> buildPlayerMedia({
+class BuiltPlayerMedia {
+  const BuiltPlayerMedia({required this.media, this.expiresAt});
+
+  final Media media;
+  final DateTime? expiresAt;
+}
+
+/// Dispose / 未起播的 0 秒哨兵不得写入 outbox 或上报，以免覆盖已有正进度。
+bool shouldQueueProgress(int positionSeconds) => positionSeconds >= 1;
+
+Future<BuiltPlayerMedia> buildPlayerMedia({
   required Future<MediaTokenResult> Function(int episodeId) requestMediaToken,
   required String serverUrl,
   required int episodeId,
   required int startPositionSeconds,
 }) async {
   final result = await requestMediaToken(episodeId);
+  DateTime? expiresAt;
+  final raw = result.expiresAt.trim();
+  if (raw.isNotEmpty) {
+    expiresAt = DateTime.tryParse(raw);
+  }
   final url = buildStreamUrlWithMediaToken(serverUrl, episodeId, result.token);
-  return Media(
-    url,
-    start: startPositionSeconds > 0
-        ? Duration(seconds: startPositionSeconds)
-        : null,
+  return BuiltPlayerMedia(
+    media: Media(
+      url,
+      start: startPositionSeconds > 0
+          ? Duration(seconds: startPositionSeconds)
+          : null,
+    ),
+    expiresAt: expiresAt,
   );
 }
 

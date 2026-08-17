@@ -18,12 +18,13 @@ var videoExts = map[string]bool{
 }
 
 var epPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\[(\d{1,3})\]`),
-	regexp.MustCompile(`-\s*(\d{1,3})\b`),
-	regexp.MustCompile(`(?i)ep\.?\s*(\d{1,3})\b`),
+	regexp.MustCompile(`(?i)\[(\d{1,3})(?:v\d+)?\]`),
+	regexp.MustCompile(`(?i)-\s*(\d{1,3})(?:v\d+)?\b`),
+	regexp.MustCompile(`(?i)ep\.?\s*(\d{1,3})(?:v\d+)?\b`),
 	regexp.MustCompile(`第\s*(\d{1,3})\s*[集話话]`),
 	regexp.MustCompile(`(?i)S\d{1,2}E(\d{1,3})\b`),
-	regexp.MustCompile(`(?i)(\d{1,3})\.(?:mkv|mp4|avi|mov|flv|webm|ts|m4v)$`),
+	// RE2 无 lookbehind，用 (?:^|[^vV\d]) 等价于 (?<![vV\d])，避免把 v2.mkv 当成第 2 集。
+	regexp.MustCompile(`(?i)(?:^|[^vV\d])(\d{1,3})(?:v\d+)?\.(?:mkv|mp4|avi|mov|flv|webm|ts|m4v)$`),
 }
 
 var ErrInvalidVideoPath = errors.New("文件目录必须是视频根目录下的相对目录")

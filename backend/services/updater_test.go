@@ -419,3 +419,35 @@ func TestReplaceExecutableDeletesPrevThenBacksUp(t *testing.T) {
 		t.Fatalf("期望 tmpPath 已移走，got err=%v", err)
 	}
 }
+
+func TestRejectStaleUpdateBackupBeforeDownload(t *testing.T) {
+	execPath, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPath := execPath + ".old"
+	if err := os.WriteFile(oldPath, []byte("stale-old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(oldPath)
+	})
+
+	if !HasStaleUpdateBackup() {
+		t.Fatal("expected HasStaleUpdateBackup after creating .old")
+	}
+	err = rejectStaleUpdateBackup()
+	if !errors.Is(err, errUpdateBackupExists) {
+		t.Fatalf("expected errUpdateBackupExists before download, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "检测到更新残留备份") {
+		t.Fatalf("expected user-facing stale backup message, got %v", err)
+	}
+
+	if err := os.Remove(oldPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectStaleUpdateBackup(); err != nil {
+		t.Fatalf("no .old must allow update to proceed to download, got %v", err)
+	}
+}

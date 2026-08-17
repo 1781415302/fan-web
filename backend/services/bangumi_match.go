@@ -29,7 +29,10 @@ type MatchCandidate struct {
 
 var matchBracketsRe = regexp.MustCompile(`[\[\(\{（【「『《〈][^\]\)\}）】」』》〉]*[\]\)\}）】」』》〉]`)
 
-var matchSeasonRe = regexp.MustCompile(`\b\d+(?:st|nd|rd|th)\s*season\b|\bseason\s*\d+\b|\bs\d{1,2}\b|第\s*[0-9一二三四五六七八九十百]+\s*季`)
+var matchSeasonRe = regexp.MustCompile(`(?i)\b\d+(?:st|nd|rd|th)\s*season\b|\bseason\s*\d+\b|\bs\d{1,2}\b|第\s*[0-9一二三四五六七八九十百]+\s*季`)
+
+// matchSxxEyyRe 必须先于 \bs\d{1,2}\b：S01E05 里 E 是词字符，后者匹配不到。
+var matchSxxEyyRe = regexp.MustCompile(`(?i)s(\d{1,2})e\d{1,3}`)
 
 // DecideBangumiMatch scores Bangumi search hits against the original title
 // (never a shortened query) and accepts only a clear unique winner.
@@ -39,11 +42,12 @@ func DecideBangumiMatch(originalTitle string, items []BangumiSearchItem) Bangumi
 	}
 
 	normOrig := normalizeTitle(originalTitle)
+	querySeason := extractSeason(originalTitle)
 	scored := make([]scoredItem, 0, len(items))
 	for i, item := range items {
 		scored = append(scored, scoredItem{
 			idx:   i,
-			score: itemMatchScore(normOrig, item),
+			score: itemMatchScore(normOrig, querySeason, item),
 		})
 	}
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -89,19 +93,101 @@ type scoredItem struct {
 	score float64
 }
 
-func itemMatchScore(normOrig string, item BangumiSearchItem) float64 {
+func itemMatchScore(normOrig string, querySeason int, item BangumiSearchItem) float64 {
 	nameScore := diceBigram(normOrig, normalizeTitle(item.Name))
 	cnScore := diceBigram(normOrig, normalizeTitle(item.NameCn))
+	score := nameScore
 	if cnScore > nameScore {
-		return cnScore
+		score = cnScore
 	}
-	return nameScore
+
+	candSeason, unnamed := candidateSeason(item)
+	if querySeason == 0 {
+		return score
+	}
+	if querySeason == 1 && unnamed {
+		return score
+	}
+	if querySeason > 0 && querySeason != candSeason {
+		if score > 0.85 {
+			score = 0.85
+		}
+	}
+	return score
+}
+
+func candidateSeason(item BangumiSearchItem) (season int, unnamed bool) {
+	season = extractSeason(item.Name)
+	if season == 0 {
+		season = extractSeason(item.NameCn)
+	}
+	if season == 0 {
+		return 1, true
+	}
+	return season, false
+}
+
+func extractSeason(s string) int {
+	lower := strings.ToLower(s)
+	if m := matchSxxEyyRe.FindStringSubmatch(lower); len(m) > 1 {
+		return firstASCIIDigits(m[1])
+	}
+	token := matchSeasonRe.FindString(lower)
+	if token == "" {
+		return 0
+	}
+	return parseSeasonToken(token)
+}
+
+func parseSeasonToken(token string) int {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if n := firstASCIIDigits(token); n > 0 {
+		return n
+	}
+	cn := chineseNumRe.FindString(token)
+	if cn == "" {
+		return 0
+	}
+	return parseChineseNum(cn)
+}
+
+func firstASCIIDigits(s string) int {
+	n := 0
+	found := false
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			found = true
+			n = n*10 + int(r-'0')
+			continue
+		}
+		if found {
+			break
+		}
+	}
+	return n
+}
+
+var chineseNumRe = regexp.MustCompile(`[一二三四五六七八九十百]+`)
+
+func parseChineseNum(s string) int {
+	// 只认 1–10。十一、二十、百 一律 0。
+	digits := map[rune]int{
+		'一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+		'六': 6, '七': 7, '八': 8, '九': 9,
+	}
+	if s == "十" {
+		return 10
+	}
+	runes := []rune(s)
+	if len(runes) == 1 {
+		return digits[runes[0]]
+	}
+	return 0
 }
 
 func normalizeTitle(s string) string {
 	s = strings.ToLower(s)
 	s = stripAll(s, matchBracketsRe)
-	s = stripAll(s, matchSeasonRe)
 	s = replacePunctWithSpace(s)
 	return strings.Join(strings.Fields(s), " ")
 }

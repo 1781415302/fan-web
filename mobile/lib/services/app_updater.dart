@@ -184,17 +184,21 @@ Future<void> _verifyDownloadIntegrity(
           '文件大小不匹配（GitHub 声明 $expectedSize 字节，实际 $actualSize 字节）';
     }
   }
-  if (failReason.isEmpty && sha256sumsUrl != null && sha256sumsUrl.isNotEmpty) {
+  if (failReason.isEmpty && requireApkSha256(sha256sumsUrl)) {
     String? expectedHash;
     try {
-      expectedHash = await _lookupApkSha256(sha256sumsUrl, url);
+      expectedHash = await _lookupApkSha256(sha256sumsUrl!, url);
     } catch (_) {
-      // 校验和文件获取失败时跳过哈希比对，size 校验仍生效。
+      failReason = '无法获取 SHA256SUMS.txt';
     }
-    if (expectedHash != null) {
-      final digest = await sha256.bind(file.openRead()).first;
-      if (digest.toString() != expectedHash.toLowerCase()) {
-        failReason = 'SHA256 校验失败';
+    if (failReason.isEmpty) {
+      if (expectedHash == null || expectedHash.isEmpty) {
+        failReason = 'SHA256SUMS.txt 未包含本 APK 记录';
+      } else {
+        final digest = await sha256.bind(file.openRead()).first;
+        if (digest.toString() != expectedHash.toLowerCase()) {
+          failReason = 'SHA256 校验失败';
+        }
       }
     }
   }
@@ -208,9 +212,12 @@ Future<void> _verifyDownloadIntegrity(
   }
 }
 
+/// sha256sumsUrl 非空时必须拿到本 APK 行（获取失败或缺行均失败关闭并删除 APK）。
+/// URL 为 null/空时只做 size 校验。
+bool requireApkSha256(String? sha256sumsUrl) =>
+    sha256sumsUrl != null && sha256sumsUrl.isNotEmpty;
+
 /// 从 SHA256SUMS.txt 中查找本 APK 资产对应的 sha256。
-/// APK 行现为必填并参与哈希校验；SUMS 获取或解析失败时仍 fail-open
-/// （跳过哈希比对，size 校验仍生效）。
 Future<String?> _lookupApkSha256(String sha256sumsUrl, String downloadUrl) async {
   final dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),

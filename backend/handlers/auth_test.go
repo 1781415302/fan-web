@@ -53,6 +53,54 @@ func TestLoginRateLimiterIntegrationCountsFailuresAndResetsOnSuccess(t *testing.
 	}
 }
 
+func TestLoginDatabaseErrorResetsRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	if err := database.Init(filepath.Join(t.TempDir(), "login-db-error.db")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CreateUser("alice", "correct-password", false); err != nil {
+		t.Fatal(err)
+	}
+	if database.DB != nil {
+		_ = database.DB.Close()
+	}
+
+	limiter := middleware.NewLoginRateLimiter(5, time.Minute)
+	handler := NewAuthHandler(services.NewAuthService("login-db-error-secret", time.Hour), limiter)
+	router := gin.New()
+	router.POST("/api/auth/login", limiter.Middleware(), handler.Login)
+
+	for i := 0; i < 6; i++ {
+		code, message := loginResponse(t, router, "alice", "correct-password")
+		if code != 9999 {
+			t.Fatalf("closed-DB login %d should be 9999, got %d %q", i+1, code, message)
+		}
+		if message != "查询用户失败" {
+			t.Fatalf("closed-DB login should say 查询用户失败, got %q", message)
+		}
+	}
+}
+
+func loginResponse(t *testing.T, router http.Handler, username, password string) (int, string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{"username": username, "password": password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
+	}
+	return response.Code, response.Message
+}
+
 func loginResponseCode(t *testing.T, router http.Handler, username, password string) int {
 	t.Helper()
 	body, err := json.Marshal(map[string]string{"username": username, "password": password})

@@ -176,7 +176,7 @@ func TestWatchedIsIrreversible(t *testing.T) {
 		t.Fatalf("expected watched after reporting true, got unwatched")
 	}
 
-	// 看完 -> position=0, watched=false 仍为看完
+	// 看完 -> position=0, watched=false 仍为看完，且不得用 0 覆盖已有正进度
 	if err := UpsertProgress(user.ID, epID, 0, false); err != nil {
 		t.Fatal(err)
 	}
@@ -187,8 +187,8 @@ func TestWatchedIsIrreversible(t *testing.T) {
 	if !p.Watched {
 		t.Fatalf("watched should be irreversible after position=0 watched=false, got unwatched")
 	}
-	if p.Position != 0 {
-		t.Fatalf("position should update to 0, got %d", p.Position)
+	if p.Position != 590 {
+		t.Fatalf("position=0 must not overwrite existing >0, got %d", p.Position)
 	}
 
 	// 看完 -> position>0, watched=false 仍为看完
@@ -216,5 +216,45 @@ func TestWatchedIsIrreversible(t *testing.T) {
 	}
 	if !p.Watched || p.Position != 200 {
 		t.Fatalf("expected watched=true pos=200, got watched=%v pos=%d", p.Watched, p.Position)
+	}
+}
+
+func TestUpsertProgressFirstInsertZero(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "progress-insert-zero.db")
+	if err := Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if DB != nil {
+			_ = DB.Close()
+		}
+	})
+	if _, err := DB.Exec(`INSERT INTO users (username, password, is_admin) VALUES (?, ?, ?)`, "zero-user", "x", 0); err != nil {
+		t.Fatal(err)
+	}
+	user, err := GetUserByUsername("zero-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := CreateAnime(&models.Anime{Title: "Zero Insert", EpCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: "e01.mp4"}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := UpsertProgress(user.ID, episodes[0].ID, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	p, err := GetProgress(user.ID, episodes[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Position != 0 || p.Watched {
+		t.Fatalf("first INSERT of 0 must persist, got %#v", p)
 	}
 }

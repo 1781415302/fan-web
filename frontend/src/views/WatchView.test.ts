@@ -15,6 +15,12 @@ const mocks = vi.hoisted(() => ({
   getSubtitleTracks: vi.fn(),
   requestMediaToken: vi.fn(),
   artOptions: [] as Array<Record<string, unknown>>,
+  artOn: [] as Array<{ event: string; handler: () => void }>,
+  switchQuality: vi.fn(async (_url: string) => undefined),
+  lastPlayer: null as {
+    currentTime: number
+    emit: (event: string) => void
+  } | null,
   destroy: vi.fn(),
 }))
 
@@ -63,13 +69,28 @@ vi.mock('artplayer', () => ({
     subtitle = {
       switch: vi.fn(async () => undefined),
     }
+    private handlers = new Map<string, Array<() => void>>()
 
     constructor(options: Record<string, unknown>) {
       mocks.artOptions.push(options)
+      mocks.lastPlayer = this
     }
 
     cssVar(_name: string, _value: string) {}
-    on(_event: string, _handler: () => void) {}
+    on(event: string, handler: () => void) {
+      mocks.artOn.push({ event, handler })
+      const list = this.handlers.get(event) ?? []
+      list.push(handler)
+      this.handlers.set(event, list)
+    }
+    emit(event: string) {
+      for (const handler of this.handlers.get(event) ?? []) {
+        handler()
+      }
+    }
+    async switchQuality(url: string) {
+      return mocks.switchQuality(url)
+    }
     destroy() {
       mocks.destroy()
     }
@@ -101,6 +122,8 @@ describe('WatchView media token flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.artOptions.length = 0
+    mocks.artOn.length = 0
+    mocks.lastPlayer = null
     mocks.route!.params.id = '1'
     mocks.route!.params.epId = '3'
     mocks.getAnime.mockResolvedValue({
@@ -123,7 +146,7 @@ describe('WatchView media token flow', () => {
     mocks.getSubtitleTracks.mockResolvedValue([])
     mocks.requestMediaToken.mockImplementation(async (episodeId: number) => ({
       token: `media-${episodeId}`,
-      expires_at: '2026-08-11T00:00:00Z',
+      expires_at: new Date(Date.now() + 12 * 3600_000).toISOString(),
     }))
   })
 
@@ -167,6 +190,101 @@ describe('WatchView media token flow', () => {
     first.resolve({ token: 'late-media-3', expires_at: '2026-08-11T00:00:00Z' })
     await flushPromises()
     expect(mocks.artOptions).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('records artplayer on() and implements switchQuality', async () => {
+    const wrapper = mountWatch()
+    await flushPromises()
+    expect(mocks.artOn.some((item) => item.event === 'video:error')).toBe(true)
+    expect(typeof mocks.lastPlayer?.emit).toBe('function')
+    await mocks.lastPlayer?.emit('video:error')
+    expect(mocks.switchQuality).toHaveBeenCalledTimes(0)
+    wrapper.unmount()
+  })
+
+  it('ignores video:error while a token refresh is in flight', async () => {
+    const refresh = deferred<{ token: string; expires_at: string }>()
+    mocks.requestMediaToken
+      .mockResolvedValueOnce({ token: 'media-3', expires_at: new Date(Date.now() + 30_000).toISOString() })
+      .mockImplementationOnce(() => refresh.promise)
+
+    const wrapper = mountWatch()
+    await flushPromises()
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('视频加载失败')
+
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('视频加载失败')
+
+    refresh.resolve({ token: 'media-3-next', expires_at: new Date(Date.now() + 12 * 3600_000).toISOString() })
+    await flushPromises()
+    expect(mocks.switchQuality).toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('视频加载失败')
+    wrapper.unmount()
+  })
+
+  it('ignores video:error while pendingResumeAfterReload is set', async () => {
+    mocks.requestMediaToken
+      .mockResolvedValueOnce({ token: 'media-3', expires_at: new Date(Date.now() + 30_000).toISOString() })
+      .mockResolvedValueOnce({ token: 'media-3-next', expires_at: new Date(Date.now() + 12 * 3600_000).toISOString() })
+
+    const wrapper = mountWatch()
+    await flushPromises()
+    mocks.lastPlayer!.currentTime = 40
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(mocks.switchQuality).toHaveBeenCalled()
+
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('视频加载失败')
+    wrapper.unmount()
+  })
+
+  it('resets pending resume when switchQuality fails', async () => {
+    mocks.switchQuality.mockRejectedValueOnce(new Error('switch failed'))
+    mocks.requestMediaToken
+      .mockResolvedValueOnce({ token: 'media-3', expires_at: new Date(Date.now() + 30_000).toISOString() })
+      .mockResolvedValueOnce({ token: 'media-3-next', expires_at: new Date(Date.now() + 12 * 3600_000).toISOString() })
+
+    const wrapper = mountWatch()
+    await flushPromises()
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(wrapper.text()).toContain('媒体票据续期失败')
+
+    mocks.requestMediaToken.mockResolvedValueOnce({
+      token: 'media-3',
+      expires_at: new Date(Date.now() + 12 * 3600_000).toISOString(),
+    })
+    mocks.lastPlayer?.emit('video:error')
+    await flushPromises()
+    expect(wrapper.text()).toContain('视频加载失败')
+    wrapper.unmount()
+  })
+
+  it('skips progress report on destroy when currentTime is under 1s', async () => {
+    const wrapper = mountWatch()
+    await flushPromises()
+    mocks.lastPlayer!.currentTime = 0.4
+    wrapper.unmount()
+    await flushPromises()
+    expect(mocks.reportProgress).not.toHaveBeenCalled()
+  })
+
+  it('escapes subtitle track labels only in html assignment', async () => {
+    mocks.getSubtitleTracks.mockResolvedValue([
+      { track_number: 1, label: 'zh & <b>x</b>' },
+    ])
+    const wrapper = mountWatch()
+    await flushPromises()
+    const controls = mocks.artOptions[0]?.controls as Array<{ selector?: Array<{ html?: string }> }>
+    const html = controls?.[0]?.selector?.[1]?.html
+    expect(html).toBe('zh &amp; &lt;b&gt;x&lt;/b&gt;')
+    expect(html).not.toBe('zh & <b>x</b>')
     wrapper.unmount()
   })
 })
