@@ -19,13 +19,16 @@ const preMigrationBackupSuffix = ".pre-migration.bak"
 // 直接复制主数据库文件会漏掉 -wal 中尚未 checkpoint 的提交，不足以回滚。
 // 先 VACUUM INTO 临时文件（backupPath+".tmp"），chmod 0600 后再替换目标。
 // 已有 dest 先改名为 sidecar，tmp 就位后再删 sidecar；任一步失败都把 dest 还原。
+// dest 不在而 sidecar 在，视为上次崩溃窗口，先把 sidecar 还原成 dest，禁止一上来删 sidecar。
 // 注意：VACUUM INTO 的目标不支持绑定参数，只能以转义后的字符串字面量拼入 SQL，
 // 路径中的单引号按 SQLite 字面量规则翻倍转义。
 func BackupDatabase(db *sql.DB, backupPath string) error {
 	tmpPath := backupPath + ".tmp"
 	sidecarPath := backupPath + ".prevsnap"
 	_ = os.Remove(tmpPath)
-	_ = os.Remove(sidecarPath)
+	if err := recoverBackupSidecar(backupPath, sidecarPath); err != nil {
+		return err
+	}
 
 	escaped := strings.ReplaceAll(tmpPath, "'", "''")
 	if _, err := db.Exec(fmt.Sprintf("VACUUM INTO '%s'", escaped)); err != nil {
@@ -59,6 +62,27 @@ func BackupDatabase(db *sql.DB, backupPath string) error {
 	}
 	_ = os.Remove(sidecarPath)
 	log.Printf("已创建迁移前数据库备份 %s", backupPath)
+	return nil
+}
+
+
+func recoverBackupSidecar(backupPath, sidecarPath string) error {
+	_, destErr := os.Stat(backupPath)
+	if destErr == nil {
+		_ = os.Remove(sidecarPath)
+		return nil
+	}
+	if !os.IsNotExist(destErr) {
+		return fmt.Errorf("检查迁移前备份 %s 失败: %w", backupPath, destErr)
+	}
+	if _, err := os.Stat(sidecarPath); err == nil {
+		if err := os.Rename(sidecarPath, backupPath); err != nil {
+			return fmt.Errorf("还原迁移前备份 %s 失败: %w", backupPath, err)
+		}
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("检查迁移前备份旁路 %s 失败: %w", sidecarPath, err)
+	}
 	return nil
 }
 

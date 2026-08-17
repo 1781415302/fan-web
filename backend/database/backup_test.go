@@ -425,3 +425,39 @@ func TestBackupDatabaseReplacesDestAndRemovesSidecar(t *testing.T) {
 		t.Fatalf("sidecar should be gone, got %v", err)
 	}
 }
+
+func TestBackupDatabaseRestoresSidecarWhenDestMissing(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "src.db")
+	dest := filepath.Join(dir, "dest.bak")
+	sidecar := dest + ".prevsnap"
+	marker := []byte("only-copy-in-sidecar")
+	if err := os.WriteFile(sidecar, marker, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE t (id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := BackupDatabase(db, dest); err == nil {
+		t.Fatal("expected BackupDatabase on closed DB to fail")
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(marker) {
+		t.Fatalf("sidecar should be restored to dest on crash-window entry, got %q", got)
+	}
+	if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
+		t.Fatalf("sidecar should have been moved back to dest, got %v", err)
+	}
+}
