@@ -111,6 +111,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _notifier = notifier;
     ref.listen<PlayerState>(provider, (previous, next) {
       _maybeScheduleInitialControlsHide(next);
+      final notice = next.notice;
+      if (notice != null && notice.isNotEmpty) {
+        notifier.consumeNotice();
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(content: Text(notice)));
+          });
+        }
+      }
       final restoredPosition = next.restoredPosition;
       if (restoredPosition == null) {
         return;

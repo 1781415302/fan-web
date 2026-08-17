@@ -141,6 +141,7 @@ class AuthNotifier extends Notifier<AuthState> {
         token: storedToken,
         serverUrl: serverUrl,
       );
+      unawaited(_syncOutbox(serverUrl, user.id, storedToken));
     } catch (error) {
       if (_isUnauthorizedError(error)) {
         await _invalidateSession(storedServerUrl);
@@ -194,6 +195,17 @@ class AuthNotifier extends Notifier<AuthState> {
       token: result.token,
       serverUrl: normalizedServerUrl,
     );
+    unawaited(_syncOutbox(normalizedServerUrl, result.user.id, result.token));
+  }
+
+  void _syncOutbox(String serverUrl, int userId, String token) {
+    if (token.isEmpty) {
+      return;
+    }
+    try {
+      final outbox = ref.read(progressOutboxProvider);
+      unawaited(outbox.syncAll(serverUrl, userId, token));
+    } catch (_) {}
   }
 
   Future<void> logout() async {

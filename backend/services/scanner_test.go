@@ -16,6 +16,7 @@ func TestScannerRecognizesSupportedEpisodeNames(t *testing.T) {
 		"Title 第4集.webm",
 		"Title S01E05.mov",
 		"06.m4v",
+		"Title-08v2.mkv",
 		"ignored.txt",
 		"Title [67].mkv:Zone.Identifier",
 	}
@@ -29,10 +30,10 @@ func TestScannerRecognizesSupportedEpisodeNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(episodes) != 6 {
-		t.Fatalf("expected 6 episodes, got %d: %#v", len(episodes), episodes)
+	if len(episodes) != 7 {
+		t.Fatalf("expected 7 episodes, got %d: %#v", len(episodes), episodes)
 	}
-	want := []int{2, 3, 4, 5, 6, 67}
+	want := []int{2, 3, 4, 5, 6, 8, 67}
 	for i, episode := range episodes {
 		if episode.EpNumber != want[i] {
 			t.Fatalf("episode %d: expected number %d, got %d", i, want[i], episode.EpNumber)

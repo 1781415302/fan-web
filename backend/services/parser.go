@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -9,6 +10,7 @@ import (
 type ParsedFilename struct {
 	Title      string
 	EpisodeNum int
+	Season     int // 0=unknown
 	FileName   string
 }
 
@@ -52,14 +54,23 @@ func ParseFilename(filename string) ParsedFilename {
 		return " " + content + " "
 	})
 
-	// 4. 去除非方括号内的集数模式（如 - 01、EP03、S01E05）
+	// 4. 在剥离集数之前提取季号，避免 S01E05 一类模式把季信息带走。
+	parsed.Season = extractSeason(title)
+
+	// 5. 去除非方括号内的集数模式（如 - 01、EP03、S01E05）
 	for _, pattern := range epPatterns {
 		title = pattern.ReplaceAllString(title, " ")
 	}
 
-	// 5. 清理：合并空格、去除首尾的空格和横线
+	// 6. 清理：合并空格、去除首尾的空格和横线
 	title = strings.Join(strings.Fields(title), " ")
 	title = strings.Trim(title, " -")
+	if parsed.Season > 0 {
+		title = stripAll(title, matchSeasonRe)
+		title = strings.Join(strings.Fields(title), " ")
+		title = strings.Trim(title, " -")
+		title = fmt.Sprintf("%s 第%d季", title, parsed.Season)
+	}
 
 	parsed.Title = title
 	return parsed
@@ -72,8 +83,8 @@ func isMetadataBracket(content string) bool {
 		return true
 	}
 
-	// 纯数字（集数编号）
-	matched, _ := regexp.MatchString(`^\d{1,4}$`, lower)
+	// 纯数字或带修订号的集数编号（01、01v2）
+	matched, _ := regexp.MatchString(`(?i)^\d{1,4}(?:v\d+)?$`, lower)
 	if matched {
 		return true
 	}

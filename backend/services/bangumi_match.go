@@ -39,11 +39,12 @@ func DecideBangumiMatch(originalTitle string, items []BangumiSearchItem) Bangumi
 	}
 
 	normOrig := normalizeTitle(originalTitle)
+	querySeason := extractSeason(originalTitle)
 	scored := make([]scoredItem, 0, len(items))
 	for i, item := range items {
 		scored = append(scored, scoredItem{
 			idx:   i,
-			score: itemMatchScore(normOrig, item),
+			score: itemMatchScore(normOrig, querySeason, item),
 		})
 	}
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -89,19 +90,114 @@ type scoredItem struct {
 	score float64
 }
 
-func itemMatchScore(normOrig string, item BangumiSearchItem) float64 {
+func itemMatchScore(normOrig string, querySeason int, item BangumiSearchItem) float64 {
 	nameScore := diceBigram(normOrig, normalizeTitle(item.Name))
 	cnScore := diceBigram(normOrig, normalizeTitle(item.NameCn))
+	score := nameScore
 	if cnScore > nameScore {
-		return cnScore
+		score = cnScore
 	}
-	return nameScore
+
+	candSeason, unnamed := candidateSeason(item)
+	if querySeason == 0 {
+		return score
+	}
+	if querySeason == 1 && unnamed {
+		return score
+	}
+	if querySeason > 0 && querySeason != candSeason {
+		if score > 0.85 {
+			score = 0.85
+		}
+	}
+	return score
+}
+
+func candidateSeason(item BangumiSearchItem) (season int, unnamed bool) {
+	season = extractSeason(item.Name)
+	if season == 0 {
+		season = extractSeason(item.NameCn)
+	}
+	if season == 0 {
+		return 1, true
+	}
+	return season, false
+}
+
+func extractSeason(s string) int {
+	token := matchSeasonRe.FindString(strings.ToLower(s))
+	if token == "" {
+		return 0
+	}
+	return parseSeasonToken(token)
+}
+
+func parseSeasonToken(token string) int {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if n := firstASCIIDigits(token); n > 0 {
+		return n
+	}
+	cn := chineseNumRe.FindString(token)
+	if cn == "" {
+		return 0
+	}
+	return parseChineseNum(cn)
+}
+
+func firstASCIIDigits(s string) int {
+	n := 0
+	found := false
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			found = true
+			n = n*10 + int(r-'0')
+			continue
+		}
+		if found {
+			break
+		}
+	}
+	return n
+}
+
+var chineseNumRe = regexp.MustCompile(`[一二三四五六七八九十百]+`)
+
+func parseChineseNum(s string) int {
+	digits := map[rune]int{
+		'一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+		'六': 6, '七': 7, '八': 8, '九': 9,
+	}
+	if s == "十" {
+		return 10
+	}
+	runes := []rune(s)
+	if len(runes) == 1 {
+		return digits[runes[0]]
+	}
+	if runes[0] == '十' {
+		if len(runes) == 2 {
+			return 10 + digits[runes[1]]
+		}
+		return 0
+	}
+	if len(runes) >= 2 && runes[1] == '十' {
+		tens := digits[runes[0]]
+		if tens == 0 {
+			return 0
+		}
+		if len(runes) == 2 {
+			return tens * 10
+		}
+		if len(runes) == 3 {
+			return tens*10 + digits[runes[2]]
+		}
+	}
+	return 0
 }
 
 func normalizeTitle(s string) string {
 	s = strings.ToLower(s)
 	s = stripAll(s, matchBracketsRe)
-	s = stripAll(s, matchSeasonRe)
 	s = replacePunctWithSpace(s)
 	return strings.Join(strings.Fields(s), " ")
 }

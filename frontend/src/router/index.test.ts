@@ -110,6 +110,17 @@ describe('router guards', () => {
     store.setSession('tok', { id: 1, username: 'root', is_admin: true, created_at: '' })
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('tok')
   })
+
+  it('does not redirect to login when token exists but session is not initialized', async () => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'tok')
+    const router = makeRouter(async () => true)
+    const route = await go(router, '/animes')
+    expect(route.name).toBe('anime-list')
+    const store = useAuthStore()
+    expect(store.token).toBe('tok')
+    expect(store.initialized).toBe(false)
+    expect(store.isAuthenticated).toBe(false)
+  })
 })
 
 describe('getSafeRedirect', () => {

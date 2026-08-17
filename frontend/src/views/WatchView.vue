@@ -186,6 +186,7 @@ async function refreshMediaToken() {
     const expiresAtMs = new Date(media.expires_at).getTime()
     scheduleMediaTokenRefresh(expiresAtMs)
     mediaTokenExpiresAt = expiresAtMs
+    playerError.value = ''
     if (media.token === mediaToken.value) return
 
     const instance = player
@@ -199,7 +200,13 @@ async function refreshMediaToken() {
     // artplayer 内部在 switchUrl 时注册的 loadedmetadata 处理器晚于视图的处理器，
     // 按注册顺序后执行，会把 currentTime 覆写为 0 导致续期重载后跳回片头；
     // switchQuality 由 artplayer 自己在最后恢复为刷新前的播放位置。
-    await instance.switchQuality(getStreamUrl(episode.id, media.token))
+    try {
+      await instance.switchQuality(getStreamUrl(episode.id, media.token))
+    } catch (e: unknown) {
+      pendingResumeAfterReload = -1
+      pendingResumeShouldPlay = false
+      throw e
+    }
     if (subtitleTrack !== null) {
       const label = subtitleTracks.value.find((track) => track.track_number === subtitleTrack)?.label ?? ''
       void instance.subtitle.switch(getSubtitleUrl(episode.id, subtitleTrack, media.token), {
@@ -207,8 +214,11 @@ async function refreshMediaToken() {
         type: 'vtt',
       })
     }
+    playerError.value = ''
     statusMessage.value = '播放票据已续期'
   } catch (e: unknown) {
+    pendingResumeAfterReload = -1
+    pendingResumeShouldPlay = false
     if (serial === loadSerial) {
       playerError.value = e instanceof ApiError ? `${e.message}，请刷新页面后重试` : '媒体票据续期失败，请刷新页面后重试'
     }
@@ -226,7 +236,8 @@ function destroyPlayer() {
   if (!player) return
 
   const oldPlayer = player
-  if (activeEpisode) {
+  const currentTime = Number.isFinite(oldPlayer.currentTime) ? oldPlayer.currentTime : 0
+  if (activeEpisode && currentTime >= 1) {
     void queueProgressReport(oldPlayer, activeEpisode)
   }
   player = null
@@ -298,7 +309,7 @@ function createSubtitleControl(episode: Episode) {
     selector: [
       { html: '关闭字幕', value: 'off' },
       ...tracks.map((track, index) => ({
-        html: track.label,
+        html: escapeTrackLabel(track.label),
         value: track.track_number,
         default: index === 0,
       })),
@@ -414,6 +425,9 @@ function createPlayer(episode: Episode) {
 
   instance.on('video:error', () => {
     if (player !== instance) return
+    if (mediaTokenRefreshInFlight || pendingResumeAfterReload >= 0) {
+      return
+    }
     // 媒体票据过期（12h）后 stream 返回 200+JSON 错误体，视频解码失败触发 error。
     // 此时尝试重取票据并重载；票据仍在有效期内则按普通加载失败提示。
     if (
@@ -426,6 +440,14 @@ function createPlayer(episode: Episode) {
     }
     playerError.value = '视频加载失败，请检查视频文件或网络连接'
   })
+}
+
+function escapeTrackLabel(label: string) {
+  return label
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 async function load() {

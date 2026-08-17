@@ -353,3 +353,38 @@ func TestHasPendingMigrations(t *testing.T) {
 		t.Fatal("期望 v2 库无待应用迁移")
 	}
 }
+
+func TestBackupDatabaseClosedDBLeavesDestUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "src.db")
+	dest := filepath.Join(dir, "dest.bak")
+	marker := []byte("original-dest-bytes-must-survive")
+	if err := os.WriteFile(dest, marker, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE t (id INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := BackupDatabase(db, dest); err == nil {
+		t.Fatal("expected BackupDatabase on closed DB to fail")
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(marker) {
+		t.Fatalf("dest bytes changed on VACUUM failure: %q", got)
+	}
+	if _, err := os.Stat(dest + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("tmp should be cleaned up after failure, got %v", err)
+	}
+}

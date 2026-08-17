@@ -5,6 +5,40 @@ import (
 	"testing"
 )
 
+func TestItemMatchScoreSeasonGate(t *testing.T) {
+	unnamed := BangumiSearchItem{Name: "Sousou no Frieren", NameCn: "葬送的芙莉莲"}
+	normS1 := normalizeTitle("葬送的芙莉莲 第1季")
+	normS2 := normalizeTitle("葬送的芙莉莲 第2季")
+	uncapped := itemMatchScore(normS1, 0, unnamed)
+	s1 := itemMatchScore(normS1, 1, unnamed)
+	s2 := itemMatchScore(normS2, 2, unnamed)
+	if s1 != uncapped {
+		t.Fatalf("querySeason==1 + unnamed candidate must not cap, got %v want %v", s1, uncapped)
+	}
+	if s2 > 0.85 {
+		t.Fatalf("querySeason==2 vs unnamed S1 must cap at 0.85, got %v", s2)
+	}
+}
+
+func TestExtractSeason(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int
+	}{
+		{in: "Title S3", want: 3},
+		{in: "Title 4th season", want: 4},
+		{in: "Title Season 2", want: 2},
+		{in: "葬送的芙莉莲 第2季", want: 2},
+		{in: "Title S01E05", want: 0},
+		{in: "Bocchi the Rock!", want: 0},
+	}
+	for _, test := range tests {
+		if got := extractSeason(test.in); got != test.want {
+			t.Fatalf("extractSeason(%q) = %d, want %d", test.in, got, test.want)
+		}
+	}
+}
+
 func TestNormalizeTitle(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -13,10 +47,10 @@ func TestNormalizeTitle(t *testing.T) {
 		{in: "Bocchi the Rock!", want: "bocchi the rock"},
 		{in: "TITLE", want: "title"},
 		{in: "[ANi] Bocchi the Rock! (2022)", want: "bocchi the rock"},
-		{in: "葬送的芙莉莲 第2季", want: "葬送的芙莉莲"},
-		{in: "Title S01", want: "title"},
-		{in: "Title Season 1", want: "title"},
-		{in: "Title 2nd Season", want: "title"},
+		{in: "葬送的芙莉莲 第2季", want: "葬送的芙莉莲 第2季"},
+		{in: "Title S01", want: "title s01"},
+		{in: "Title Season 1", want: "title season 1"},
+		{in: "Title 2nd Season", want: "title 2nd season"},
 		{in: "SPY×FAMILY", want: "spy family"},
 		{in: "  Foo   Bar  ", want: "foo bar"},
 	}
@@ -126,6 +160,28 @@ func TestDecideBangumiMatch(t *testing.T) {
 			title:      "   ",
 			items:      []BangumiSearchItem{exact},
 			wantAccept: false,
+		},
+		{
+			name:        "Re Zero S3 vs S1 Name rejected",
+			title:       "Re Zero kara Hajimeru Isekai Seikatsu S3",
+			items:       []BangumiSearchItem{{ID: 3519, Name: "Re:Zero kara Hajimeru Isekai Seikatsu", NameCn: "Re：从零开始的异世界生活"}},
+			wantAccept:  false,
+			wantCandIDs: []int{3519},
+		},
+		{
+			name:        "芙莉莲 第2季 vs S1 NameCn rejected",
+			title:       "葬送的芙莉莲 第2季",
+			items:       []BangumiSearchItem{{ID: 400602, Name: "Sousou no Frieren", NameCn: "葬送的芙莉莲"}},
+			wantAccept:  false,
+			wantCandIDs: []int{400602},
+		},
+		{
+			name:         "芙莉莲 第1季 vs same NameCn may Accept",
+			title:        "葬送的芙莉莲 第1季",
+			items:        []BangumiSearchItem{{ID: 400602, Name: "Sousou no Frieren", NameCn: "葬送的芙莉莲 第1季"}},
+			wantAccept:   true,
+			wantWinnerID: 400602,
+			checkPtrIdx:  0,
 		},
 	}
 

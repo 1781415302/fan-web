@@ -21,7 +21,17 @@ func prepareConfiguredInstance(configPath string, cfg *config.Config) error {
 
 func prepareConfiguredInstanceWithDelete(configPath string, cfg *config.Config, deleteUser func(int64) error) error {
 	if !cfg.Configured {
-		// 未初始化，交给 Web 初始化页面处理。
+		// 配置文件存在时保持原有首次运行路径。文件缺失时必须再看数据库：
+		// 已有管理员说明这是已部署实例丢了 config.yaml，绝不能降级为未初始化。
+		if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+			adminCount, countErr := database.CountAdmins()
+			if countErr != nil {
+				return fmt.Errorf("查询管理员数量失败: %w", countErr)
+			}
+			if adminCount > 0 {
+				return fmt.Errorf("配置文件缺失但数据库已有管理员，拒绝以未初始化状态启动，请恢复 config.yaml")
+			}
+		}
 		return nil
 	}
 

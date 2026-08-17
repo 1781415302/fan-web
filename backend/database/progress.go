@@ -26,7 +26,8 @@ func GetProgress(userID, episodeID int64) (*models.WatchProgress, error) {
 }
 
 // UpsertProgress 写入观看进度。watched 字段不可逆：一旦为 true，
-// 后续上报 watched=false 不会降级。position 始终更新为最新值。
+// 后续上报 watched=false 不会降级。position=0 且已有正进度时保留原值，
+// 避免播放器销毁瞬间的 0 哨兵覆盖断点；首次 INSERT 的 0 仍会写入。
 func UpsertProgress(userID, episodeID int64, position int, watched bool) error {
 	watchedValue := 0
 	if watched {
@@ -36,7 +37,11 @@ func UpsertProgress(userID, episodeID int64, position int, watched bool) error {
 		INSERT INTO watch_progress (user_id, episode_id, position, watched, updated_at)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(user_id, episode_id) DO UPDATE SET
-			position = excluded.position,
+			position = CASE
+				WHEN excluded.position = 0 AND watch_progress.position > 0
+				THEN watch_progress.position
+				ELSE excluded.position
+			END,
 			watched = MAX(watch_progress.watched, excluded.watched),
 			updated_at = excluded.updated_at
 	`, userID, episodeID, position, watchedValue)

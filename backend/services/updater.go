@@ -167,6 +167,19 @@ func HasStaleUpdateBackup() bool {
 	return staleOldAt(execPath)
 }
 
+// rejectStaleUpdateBackup 在下载前拦截残留 .old，避免无谓下载后才发现无法替换。
+func rejectStaleUpdateBackup() error {
+	if !HasStaleUpdateBackup() {
+		return nil
+	}
+	execPath, err := os.Executable()
+	backupPath := ".old"
+	if err == nil {
+		backupPath = execPath + ".old"
+	}
+	return fmt.Errorf("检测到更新残留备份 %s，请确认上一次更新已成功启动（新版本会在启动后自动清理该文件）后手动删除再重试: %w", backupPath, errUpdateBackupExists)
+}
+
 func CheckUpdate(currentVersion string) (*UpdateCheckResult, error) {
 	release, err := fetchLatestRelease()
 	if err != nil {
@@ -217,6 +230,10 @@ func PerformUpdate(currentVersion string) error {
 		// 方式打开），os.Rename 无法将其改名备份，替换必然失败。直接返回明确提示
 		// 让用户手动替换，避免无谓的完整下载与校验耗时。
 		return fmt.Errorf("Windows 平台暂不支持自动更新，请到 GitHub Releases 手动下载 %s 并替换可执行文件", asset.Name)
+	}
+
+	if err := rejectStaleUpdateBackup(); err != nil {
+		return err
 	}
 
 	execPath, err := os.Executable()

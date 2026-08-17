@@ -25,6 +25,7 @@ void main() {
   late ApiClient apiClient;
   late _StubAuthApi authApi;
   late ProviderContainer container;
+  late _RecordingOutbox recordingOutbox;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({
@@ -40,6 +41,10 @@ void main() {
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(apiClient),
         authApiProvider.overrideWithValue(authApi),
+        progressOutboxProvider.overrideWith((ref) {
+          recordingOutbox = _RecordingOutbox(ref);
+          return recordingOutbox;
+        }),
       ],
     );
   });
@@ -151,6 +156,41 @@ void main() {
     expect(preferences.getString(fanWebTokenKey), isNull);
   });
 
+  test('successful restoreSession syncs outbox', () async {
+    final notifier = container.read(authProvider.notifier);
+    await notifier.init();
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(authProvider).isSessionDegraded, isFalse);
+    expect(recordingOutbox.syncCalls, 1);
+  });
+
+  test('degraded restoreSession does not sync outbox', () async {
+    await restoreWith(_dioError(DioExceptionType.connectionTimeout));
+    await Future<void>.delayed(Duration.zero);
+    expect(recordingOutbox.syncCalls, 0);
+  });
+
+  test('login syncs outbox', () async {
+    SharedPreferences.setMockInitialValues({});
+    preferences = await SharedPreferences.getInstance();
+    container.dispose();
+    container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        apiClientProvider.overrideWithValue(apiClient),
+        authApiProvider.overrideWithValue(authApi),
+        progressOutboxProvider.overrideWith((ref) {
+          recordingOutbox = _RecordingOutbox(ref);
+          return recordingOutbox;
+        }),
+      ],
+    );
+    final notifier = container.read(authProvider.notifier);
+    await notifier.login(serverUrl, 'tester', 'secret');
+    await Future<void>.delayed(Duration.zero);
+    expect(recordingOutbox.syncCalls, 1);
+  });
+
   test('logout clears user data and outbox but preserves server URL', () async {
     final notifier = container.read(authProvider.notifier);
     await notifier.init();
@@ -208,5 +248,28 @@ class _StubAuthApi extends AuthApi {
   }
 
   @override
+  Future<bool> checkHealth(String serverUrl) async => true;
+
+  @override
+  Future<LoginResponse> login(String username, String password) async {
+    return LoginResponse(
+      token: 'login-token',
+      expiresAt: '2026-08-18T00:00:00Z',
+      user: currentUser,
+    );
+  }
+
+  @override
   Future<void> logout() async {}
+}
+
+class _RecordingOutbox extends ProgressOutbox {
+  _RecordingOutbox(super.ref);
+
+  int syncCalls = 0;
+
+  @override
+  Future<void> syncAll(String serverUrl, int userId, String token) async {
+    syncCalls++;
+  }
 }

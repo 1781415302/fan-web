@@ -503,3 +503,140 @@ func TestSetupSubmitConcurrentRequestsOnlyOneSucceeds(t *testing.T) {
 		t.Fatalf("config, memory and successful response must agree: disk=%q memory=%q response=%q", loaded.Admin.Username, cfg.Admin.Username, successes[0].username)
 	}
 }
+
+func TestIsConfiguredUsesAdminCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dbPath := filepath.Join(t.TempDir(), "is-configured.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(filepath.Join(t.TempDir(), "config.yaml"), cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+	if handler.IsConfigured() {
+		t.Fatal("expected IsConfigured=false when flag is false and no admins")
+	}
+
+	if _, err := database.CreateUser("admin", "password", true); err != nil {
+		t.Fatal(err)
+	}
+	if !handler.IsConfigured() {
+		t.Fatal("expected IsConfigured=true when CountAdmins()>0 even if flag is false")
+	}
+
+	cfg.Configured = true
+	if !handler.IsConfigured() {
+		t.Fatal("expected IsConfigured=true when flag is true")
+	}
+}
+
+func TestIsConfiguredCountErrorFailClosed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dbPath := filepath.Join(t.TempDir(), "is-configured-fail.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	if database.DB != nil {
+		_ = database.DB.Close()
+	}
+
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(filepath.Join(t.TempDir(), "config.yaml"), cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+	if !handler.IsConfigured() {
+		t.Fatal("CountAdmins error must fail closed as configured=true")
+	}
+}
+
+func TestSetupSubmitAdminsExistForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dbPath := filepath.Join(t.TempDir(), "setup-admins-exist.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if _, err := database.CreateUser("existing", "password", true); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(filepath.Join(t.TempDir(), "config.yaml"), cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+	router := gin.New()
+	router.POST("/api/setup", handler.Submit)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"admin_username":  "admin",
+		"admin_password":  "password",
+		"video_root_path": t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != 2002 {
+		t.Fatalf("expected forbidden 2002 when admins exist, got %d %s", response.Code, response.Message)
+	}
+}
+
+func TestSetupSubmitCountAdminsFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dbPath := filepath.Join(t.TempDir(), "setup-count-fail.db")
+	if err := database.Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	if database.DB != nil {
+		_ = database.DB.Close()
+	}
+
+	cfg := config.Default()
+	cfg.Configured = false
+	handler := NewSetupHandler(filepath.Join(t.TempDir(), "config.yaml"), cfg, services.NewAuthService("secret", 0), services.NewScannerService(""), nil)
+	router := gin.New()
+	router.POST("/api/setup", handler.Submit)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"admin_username":  "admin",
+		"admin_password":  "password",
+		"video_root_path": t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != 9999 || response.Message != "查询用户失败" {
+		t.Fatalf("expected 9999 查询用户失败, got %d %q", response.Code, response.Message)
+	}
+}
