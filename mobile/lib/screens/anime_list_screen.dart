@@ -213,12 +213,25 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
       _unidentifiedError = null;
     });
     try {
-      final result = await ref.read(libraryApiProvider).listUnidentified();
+      final items = <UnidentifiedFile>[];
+      var page = 1;
+      var total = 0;
+      while (true) {
+        final result = await ref
+            .read(libraryApiProvider)
+            .listUnidentified(page: page, pageSize: 100);
+        total = result.total;
+        items.addAll(result.items);
+        if (items.length >= total || result.items.isEmpty) {
+          break;
+        }
+        page++;
+      }
       if (!mounted) {
         return;
       }
       setState(() {
-        _unidentified = result.items;
+        _unidentified = items;
         _loadingUnidentified = false;
       });
     } catch (error) {

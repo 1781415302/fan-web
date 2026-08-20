@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -84,10 +85,13 @@ func (h *BangumiMeHandler) Put(c *gin.Context) {
 		return
 	}
 	if err := database.EnqueueWatchedForUser(userID); err != nil {
-		utils.Error(c, utils.CodeInternal, "入队已看剧集失败")
-		return
+		// 令牌已保存：入队失败不回滚绑定，避免 UI 显示失败但 GET 已是 linked。
+		log.Printf("[Bangumi] 入队已看剧集失败: %v", err)
 	}
 	utils.Success(c, bangumiLinkStatus(token, true))
+	if h.sync != nil {
+		go h.sync.Drain()
+	}
 }
 
 func (h *BangumiMeHandler) Delete(c *gin.Context) {
@@ -96,12 +100,12 @@ func (h *BangumiMeHandler) Delete(c *gin.Context) {
 		utils.Error(c, utils.CodeUnauthenticated, "未登录")
 		return
 	}
-	if err := database.DeleteBangumiToken(userID); err != nil {
-		utils.Error(c, utils.CodeInternal, "解除 Bangumi 绑定失败")
-		return
-	}
 	if err := database.DeleteBangumiOutboxByUser(userID); err != nil {
 		utils.Error(c, utils.CodeInternal, "清除同步队列失败")
+		return
+	}
+	if err := database.DeleteBangumiToken(userID); err != nil {
+		utils.Error(c, utils.CodeInternal, "解除 Bangumi 绑定失败")
 		return
 	}
 	utils.Success(c, bangumiLinkData{Linked: false})

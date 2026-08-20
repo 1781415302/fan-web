@@ -925,6 +925,14 @@ Episode? nextEpisodeOf(List<Episode> episodes, int episodeId) {
   return episodes[index + 1];
 }
 
+Episode? prevEpisodeOf(List<Episode> episodes, int episodeId) {
+  final index = episodes.indexWhere((episode) => episode.id == episodeId);
+  if (index <= 0) {
+    return null;
+  }
+  return episodes[index - 1];
+}
+
 /// Dispose / 未起播的 0 秒哨兵不得写入 outbox 或上报，以免覆盖已有正进度。
 bool shouldQueueProgress(int positionSeconds) => positionSeconds >= 1;
 

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -138,5 +139,21 @@ func TestListUnidentifiedClampsPageAndPageSize(t *testing.T) {
 	}
 	if total != 3 || len(items) != 3 {
 		t.Fatalf("pageSize 上限 100，got total=%d len=%d", total, len(items))
+	}
+}
+
+func TestListUnidentifiedOverflowPageIsEmpty(t *testing.T) {
+	newUnidentifiedTestDB(t)
+	if err := ReplaceUnidentified([]models.UnidentifiedFile{
+		{FilePath: "D", FileName: "a.mkv", Reason: "r"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	items, total, err := ListUnidentified(math.MaxInt, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(items) != 0 {
+		t.Fatalf("overflow page should be empty with real total, got total=%d len=%d", total, len(items))
 	}
 }

@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"fan-web/models"
 )
@@ -61,6 +62,9 @@ func ListUnidentified(page, pageSize int) ([]models.UnidentifiedFile, int, error
 		return nil, 0, err
 	}
 
+	if page-1 > math.MaxInt/pageSize {
+		return []models.UnidentifiedFile{}, total, nil
+	}
 	offset := (page - 1) * pageSize
 	rows, err := DB.Query(`
 		SELECT id, file_path, file_name, reason, candidates, updated_at

@@ -135,6 +135,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Episode? get _nextEpisode => nextEpisodeOf(_episodes, widget.episodeId);
+  Episode? get _prevEpisode => prevEpisodeOf(_episodes, widget.episodeId);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
@@ -398,6 +399,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        if (_prevEpisode != null)
+                          SizedBox.square(
+                            dimension: playButtonSize,
+                            child: IconButton(
+                              tooltip: '上一集',
+                              onPressed: () =>
+                                  unawaited(_openAdjacentEpisode(notifier, _prevEpisode!)),
+                              icon: Icon(
+                                Icons.skip_previous,
+                                size: isLandscape ? 26 : 30,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         SizedBox.square(
                           dimension: playButtonSize,
                           child: IconButton.filled(
@@ -423,7 +438,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             child: IconButton(
                               tooltip: '下一集',
                               onPressed: () =>
-                                  unawaited(_openNextEpisode(notifier)),
+                                  unawaited(_openAdjacentEpisode(notifier, _nextEpisode!)),
                               icon: Icon(
                                 Icons.skip_next,
                                 size: isLandscape ? 26 : 30,
@@ -997,21 +1012,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  Future<void> _openNextEpisode(PlayerNotifier notifier) async {
-    final next = _nextEpisode;
-    if (next == null) {
-      return;
-    }
+  Future<void> _openAdjacentEpisode(
+    PlayerNotifier notifier,
+    Episode episode,
+  ) async {
     await notifier.pauseAndReport();
     if (!mounted) {
       return;
     }
     context.goNamed(
       'watch',
-      pathParameters: {'id': '${widget.animeId}', 'epId': '${next.id}'},
+      pathParameters: {'id': '${widget.animeId}', 'epId': '${episode.id}'},
       extra: PlayerLaunchInfo(
         animeTitle: _config?.animeTitle ?? widget.animeTitle,
-        episodeNumber: next.epNumber,
+        episodeNumber: episode.epNumber,
       ),
     );
   }

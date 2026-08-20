@@ -113,7 +113,7 @@ async function mockUnidentifiedPage(unidentified: UnidentifiedFile[]) {
     items: unidentified,
     total: unidentified.length,
     page: 1,
-    page_size: 50,
+    page_size: 100,
   })
 }
 
@@ -121,9 +121,9 @@ async function scanAsAdmin(unidentified: UnidentifiedFile[]) {
   const { startLibraryScan, getLibraryScan } = await mockedLibraryApi()
   asMock(startLibraryScan).mockResolvedValue({ state: 'running' })
   asMock(getLibraryScan).mockResolvedValue(doneJob(unidentified))
-  await mockUnidentifiedPage(unidentified)
   const wrapper = mountList(true)
   await flushPromises()
+  await mockUnidentifiedPage(unidentified)
   const scanBtn = wrapper.findAll('button').find((btn) => btn.text().includes('库扫描'))
   expect(scanBtn).toBeTruthy()
   await scanBtn!.trigger('click')
@@ -181,14 +181,15 @@ describe('AnimeListView scan polling', () => {
       }),
     )
     asMock(listUnidentified).mockResolvedValue({
-      items: files,
-      total: files.length,
+      items: [],
+      total: 0,
       page: 1,
-      page_size: 50,
+      page_size: 100,
     })
 
     const wrapper = mountList(true)
     await flushPromises()
+    await mockUnidentifiedPage(files)
     const scanBtn = wrapper.findAll('button').find((btn) => btn.text().includes('库扫描'))
     expect(scanBtn).toBeTruthy()
     await scanBtn!.trigger('click')
@@ -196,18 +197,28 @@ describe('AnimeListView scan polling', () => {
 
     expect(startLibraryScan).toHaveBeenCalledTimes(1)
     expect(getLibraryScan).toHaveBeenCalledTimes(1)
-    expect(listUnidentified).not.toHaveBeenCalled()
+    const callsWhileRunning = asMock(listUnidentified).mock.calls.length
     expect(wrapper.text()).not.toContain('ep01.mkv')
-    expect(wrapper.text()).not.toContain('无法识别')
 
     resolveGet(doneJob(files))
     await flushPromises()
 
-    expect(listUnidentified).toHaveBeenCalledTimes(1)
+    expect(asMock(listUnidentified).mock.calls.length).toBeGreaterThan(callsWhileRunning)
     expect(wrapper.text()).toContain('ep01.mkv')
     expect(wrapper.text()).toContain('ep02.mkv')
     expect(wrapper.text()).toContain('ep03.mkv')
     expect(wrapper.text()).toContain('无法识别')
+    wrapper.unmount()
+  })
+
+  it('loads persisted unidentified on admin enter without scanning', async () => {
+    const files = threeSiblingFiles()
+    await mockUnidentifiedPage(files)
+    const wrapper = mountList(true)
+    await flushPromises()
+    expect(wrapper.text()).toContain('ep01.mkv')
+    expect(wrapper.text()).toContain('无法识别文件')
+    expect(wrapper.text()).toContain('（3）')
     wrapper.unmount()
   })
 })
@@ -235,6 +246,7 @@ describe('AnimeListView unidentified confirm', () => {
     const callsBeforeConfirm = asMock(listAnimes).mock.calls.length
     const pick = wrapper.findAll('.candidate-btn').find((btn) => btn.text().includes('候选番剧'))
     expect(pick).toBeTruthy()
+    await mockUnidentifiedPage([])
     await pick!.trigger('click')
     await flushPromises()
 
@@ -298,6 +310,7 @@ describe('AnimeListView unidentified confirm', () => {
 
     const pick = wrapper.findAll('.candidate-btn').find((btn) => btn.text().includes('根目录番'))
     expect(pick).toBeTruthy()
+    await mockUnidentifiedPage([])
     await pick!.trigger('click')
     await flushPromises()
 

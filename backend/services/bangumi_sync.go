@@ -61,6 +61,14 @@ func (s *BangumiSync) EnqueueWatched(userID, episodeID int64) {
 	if s == nil {
 		return
 	}
+	token, ok, err := database.GetBangumiToken(userID)
+	if err != nil {
+		log.Printf("[BangumiSync] 读取令牌失败: %v", err)
+		return
+	}
+	if !ok || token == "" {
+		return
+	}
 	if err := database.EnqueueBangumiOutbox(userID, episodeID); err != nil {
 		log.Printf("[BangumiSync] 入队失败: %v", err)
 		return
@@ -93,6 +101,10 @@ func (s *BangumiSync) Drain() {
 			continue
 		}
 		if !ok || token == "" {
+			if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
+				log.Printf("[BangumiSync] 清除无令牌 outbox 失败: %v", delErr)
+			}
+			unauthorized[row.UserID] = true
 			continue
 		}
 		if !first {

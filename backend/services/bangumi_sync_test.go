@@ -365,3 +365,70 @@ func TestSyncInboundType2KeepsPosition(t *testing.T) {
 		t.Fatalf("position = %d, want 12", progress.Position)
 	}
 }
+
+func TestEnqueueWatchedSkipsWithoutToken(t *testing.T) {
+	user := setupSyncDB(t)
+	_, episode := mustBoundAnime(t, 201, 1)
+	sync := newTestSync(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no Bangumi HTTP expected, got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	sync.EnqueueWatched(user.ID, episode.ID)
+	rows, err := database.ListBangumiOutbox(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("unbound user must not enqueue, got %#v", rows)
+	}
+}
+
+func TestDrainDeletesRowsWithoutToken(t *testing.T) {
+	bound := setupSyncDB(t)
+	user, err := database.CreateUser("viewer", "password12", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, episode := mustBoundAnime(t, 202, 1)
+	if err := database.EnqueueBangumiOutbox(user.ID, episode.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveBangumiToken(bound.ID, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.EnqueueBangumiOutbox(bound.ID, episode.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var patched atomic.Int32
+	sync := newTestSync(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v0/me":
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case r.URL.Path == "/v0/episodes":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []BangumiEpisode{{ID: 1, Ep: 1, Sort: 1}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/v0/users/-/collections/") && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"subject_id":202}`))
+		case strings.HasSuffix(r.URL.Path, "/episodes") && r.Method == http.MethodPatch:
+			patched.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	sync.Drain()
+
+	rows, err := database.ListBangumiOutbox(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("no-token rows should be deleted and bound row drained, got %#v", rows)
+	}
+	if patched.Load() != 1 {
+		t.Fatalf("bound user should still PATCH, got %d", patched.Load())
+	}
+}

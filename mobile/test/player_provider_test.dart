@@ -126,4 +126,32 @@ void main() {
       expect(nextEpisodeOf([first], 10), isNull);
     });
   });
+
+  group('prevEpisodeOf', () {
+    const first = Episode(
+      id: 10,
+      animeId: 1,
+      epNumber: 1,
+      title: '01',
+      filePath: '01.mkv',
+      duration: 0,
+    );
+    const second = Episode(
+      id: 11,
+      animeId: 1,
+      epNumber: 2,
+      title: '02',
+      filePath: '02.mkv',
+      duration: 0,
+    );
+
+    test('returns the previous episode id when present', () {
+      expect(prevEpisodeOf([first, second], 11)?.id, 10);
+    });
+
+    test('returns null on the first episode', () {
+      expect(prevEpisodeOf([first, second], 10), isNull);
+      expect(prevEpisodeOf([first], 10), isNull);
+    });
+  });
 }

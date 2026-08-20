@@ -23,6 +23,8 @@ const scanning = ref(false)
 const scanResult = ref<LibraryScanResult | null>(null)
 const scanError = ref('')
 const confirmingPath = ref<string | null>(null)
+const inboxItems = ref<UnidentifiedFile[]>([])
+const inboxTotal = ref(0)
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 // loadSerial 序列化 load()：搜索防抖、翻页、扫描完成刷新等入口可能并发触发，
@@ -90,14 +92,26 @@ function progressPercent(anime: Anime) {
   return Math.min(100, Math.max(0, ((anime.watched_count ?? 0) / anime.ep_count) * 100))
 }
 
-async function applyScanResult(result: LibraryScanResult) {
+async function loadInbox() {
+  if (!authStore.isAdmin) {
+    inboxItems.value = []
+    inboxTotal.value = 0
+    return
+  }
   try {
-    const listed = await listUnidentified(1, 50)
-    scanResult.value = { ...result, unidentified: listed.items }
+    const listed = await listUnidentified(1, 100)
+    inboxItems.value = listed.items
+    inboxTotal.value = listed.total
   } catch (e: unknown) {
-    scanResult.value = result
+    inboxItems.value = []
+    inboxTotal.value = 0
     scanError.value = e instanceof ApiError ? e.message : '加载未识别文件失败'
   }
+}
+
+async function applyScanResult(result: LibraryScanResult) {
+  await loadInbox()
+  scanResult.value = { ...result, unidentified: inboxItems.value }
   await load()
 }
 
@@ -152,10 +166,9 @@ async function confirmCandidate(file: UnidentifiedFile, candidate: MatchCandidat
   try {
     const anime = await createAnime(candidate.id, file.file_path)
     await scanAnime(anime.id)
+    await loadInbox()
     if (scanResult.value) {
-      scanResult.value.unidentified = scanResult.value.unidentified.filter(
-        (item) => item.file_path !== file.file_path,
-      )
+      scanResult.value = { ...scanResult.value, unidentified: inboxItems.value }
     }
     await load()
   } catch (e: unknown) {
@@ -165,7 +178,10 @@ async function confirmCandidate(file: UnidentifiedFile, candidate: MatchCandidat
   }
 }
 
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  void loadInbox()
+})
 onBeforeUnmount(() => {
   ++loadSerial
   ++scanSerial
@@ -225,22 +241,51 @@ onBeforeUnmount(() => {
           <strong>{{ scanResult.new_episodes }}</strong>
           <span>新增集数</span>
         </div>
-        <div class="scan-stat" :class="{ 'scan-stat-warning': scanResult.unidentified.length > 0 }">
-          <strong>{{ scanResult.unidentified.length }}</strong>
+        <div class="scan-stat" :class="{ 'scan-stat-warning': inboxTotal > 0 }">
+          <strong>{{ inboxTotal }}</strong>
           <span>无法识别</span>
         </div>
       </div>
       <p class="scan-skipped">跳过 {{ scanResult.skipped }} 个已关联文件</p>
-      <details v-if="scanResult.unidentified.length > 0" class="unidentified-details" open>
-        <summary>查看无法识别文件</summary>
+      <details v-if="inboxItems.length > 0" class="unidentified-details" open>
+        <summary>查看无法识别文件（{{ inboxTotal }}）</summary>
         <ul class="unidentified-list">
-          <li v-for="file in scanResult.unidentified" :key="`${file.file_path}/${file.file_name}-${file.reason}`">
+          <li v-for="file in inboxItems" :key="`${file.file_path}/${file.file_name}-${file.reason}`">
             <code>{{ file.file_name }}</code>
             <span>{{ file.reason }}</span>
             <div v-if="file.candidates?.length > 0" class="candidate-picks">
               <button
                 v-for="candidate in file.candidates"
                 :key="candidate.id"
+                type="button"
+                class="action-btn candidate-btn"
+                :disabled="isConfirming(file.file_path)"
+                @click="confirmCandidate(file, candidate)"
+              >
+                {{ candidateLabel(candidate) }}
+                <span class="candidate-score">{{ candidate.score.toFixed(2) }}</span>
+              </button>
+            </div>
+          </li>
+        </ul>
+      </details>
+    </section>
+
+    <section
+      v-if="authStore.isAdmin && !scanResult && inboxItems.length > 0"
+      class="scan-result"
+      aria-label="未识别文件"
+    >
+      <details class="unidentified-details" open>
+        <summary>无法识别文件（{{ inboxTotal }}）</summary>
+        <ul class="unidentified-list">
+          <li v-for="file in inboxItems" :key="`inbox-${file.file_path}/${file.file_name}-${file.reason}`">
+            <code>{{ file.file_name }}</code>
+            <span>{{ file.reason }}</span>
+            <div v-if="file.candidates?.length > 0" class="candidate-picks">
+              <button
+                v-for="candidate in file.candidates"
+                :key="`inbox-${candidate.id}-${file.file_name}`"
                 type="button"
                 class="action-btn candidate-btn"
                 :disabled="isConfirming(file.file_path)"

@@ -102,7 +102,7 @@ class _ContinueBarState extends ConsumerState<ContinueBar> {
               separatorBuilder: (context, index) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
                 final item = _items[index];
-                return _ContinueCard(item: item, onTap: () => _open(item));
+                return _ContinueCard(item: item, onTap: () => unawaited(_open(item)));
               },
             ),
           ),
@@ -111,8 +111,8 @@ class _ContinueBarState extends ConsumerState<ContinueBar> {
     );
   }
 
-  void _open(ContinueItem item) {
-    context.pushNamed(
+  Future<void> _open(ContinueItem item) async {
+    await context.pushNamed(
       'watch',
       pathParameters: {'id': '${item.anime.id}', 'epId': '${item.episode.id}'},
       extra: PlayerLaunchInfo(
@@ -120,6 +120,9 @@ class _ContinueBarState extends ConsumerState<ContinueBar> {
         episodeNumber: item.episode.epNumber,
       ),
     );
+    if (mounted) {
+      await _load();
+    }
   }
 }
 
