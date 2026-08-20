@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:fan_web/api/progress_api.dart';
 import 'package:fan_web/models/anime.dart';
 import 'package:fan_web/widgets/episode_tile.dart';
 
@@ -86,5 +87,48 @@ void main() {
       ),
       EpisodeStatus.watched,
     );
+  });
+
+  test('parses continue API items envelope', () {
+    final items = parseContinueItems({
+      'items': [
+        {
+          'anime': {
+            'id': 3,
+            'title': 'Original',
+            'title_cn': '中文标题',
+            'bangumi_id': 9,
+            'cover': '',
+            'summary': '',
+            'ep_count': 12,
+            'file_path': 'show',
+            'created_at': '2026-08-01T10:00:00Z',
+          },
+          'episode': {
+            'id': 21,
+            'anime_id': 3,
+            'ep_number': 2,
+            'title': '02',
+            'file_path': '02.mkv',
+            'duration': 1440,
+          },
+          'position': 125,
+          'watched': 0,
+          'updated_at': '2026-08-20T08:00:00Z',
+        },
+      ],
+    });
+
+    expect(items, hasLength(1));
+    expect(items.single.anime.titleCn, '中文标题');
+    expect(items.single.episode.id, 21);
+    expect(items.single.episode.epNumber, 2);
+    expect(items.single.position, 125);
+    expect(items.single.watched, isFalse);
+  });
+
+  test('continue items stay empty when API returns no items', () {
+    expect(parseContinueItems({'items': []}), isEmpty);
+    expect(parseContinueItems({'items': null}), isEmpty);
   });
 }

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
 import { createAnime, listAnimes, scanAnime } from '../api/anime'
-import { scanLibrary } from '../api/library'
+import { getLibraryScan, listUnidentified, startLibraryScan } from '../api/library'
 import { useAuthStore } from '../stores/auth'
 import type { Anime } from '../types/anime'
 import type { LibraryScanResult, MatchCandidate, UnidentifiedFile } from '../types/library'
@@ -28,6 +28,16 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined
 // loadSerial 序列化 load()：搜索防抖、翻页、扫描完成刷新等入口可能并发触发，
 // 过期响应到达时不得覆盖新数据（对齐 WatchView.vue 的机制）。
 let loadSerial = 0
+let scanSerial = 0
+
+const SCAN_POLL_INTERVAL_MS = 1000
+const SCAN_POLL_TIMEOUT_MS = 15 * 60 * 1000
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
 
 const totalPages = () => Math.max(1, Math.ceil(total.value / pageSize))
 
@@ -80,17 +90,50 @@ function progressPercent(anime: Anime) {
   return Math.min(100, Math.max(0, ((anime.watched_count ?? 0) / anime.ep_count) * 100))
 }
 
+async function applyScanResult(result: LibraryScanResult) {
+  try {
+    const listed = await listUnidentified(1, 50)
+    scanResult.value = { ...result, unidentified: listed.items }
+  } catch (e: unknown) {
+    scanResult.value = result
+    scanError.value = e instanceof ApiError ? e.message : '加载未识别文件失败'
+  }
+  await load()
+}
+
 async function handleLibraryScan() {
+  const serial = ++scanSerial
   scanning.value = true
   scanError.value = ''
   scanResult.value = null
+  const startedAt = Date.now()
   try {
-    scanResult.value = await scanLibrary()
-    await load()
+    let job = await startLibraryScan()
+    while (job.state !== 'done' && job.state !== 'error') {
+      if (serial !== scanSerial) return
+      if (Date.now() - startedAt >= SCAN_POLL_TIMEOUT_MS) {
+        scanError.value = '扫描仍在服务器执行，已停止前端轮询'
+        return
+      }
+      job = await getLibraryScan()
+      if (job.state === 'done' || job.state === 'error') break
+      await wait(SCAN_POLL_INTERVAL_MS)
+    }
+    if (serial !== scanSerial) return
+    if (job.state === 'error') {
+      scanError.value = job.error || '库扫描失败'
+      return
+    }
+    if (!job.result) {
+      scanError.value = '扫描结果缺失'
+      return
+    }
+    await applyScanResult(job.result)
   } catch (e: unknown) {
+    if (serial !== scanSerial) return
     scanError.value = e instanceof ApiError ? e.message : '库扫描失败'
   } finally {
-    scanning.value = false
+    if (serial === scanSerial) scanning.value = false
   }
 }
 
@@ -125,6 +168,7 @@ async function confirmCandidate(file: UnidentifiedFile, candidate: MatchCandidat
 onMounted(() => void load())
 onBeforeUnmount(() => {
   ++loadSerial
+  ++scanSerial
   if (searchTimer) clearTimeout(searchTimer)
 })
 </script>

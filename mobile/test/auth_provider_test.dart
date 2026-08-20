@@ -47,6 +47,7 @@ void main() {
         }),
       ],
     );
+    container.read(progressOutboxProvider);
   });
 
   tearDown(() {

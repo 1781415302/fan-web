@@ -9,6 +9,7 @@ import 'package:volume_controller/volume_controller.dart';
 
 import '../api/media_api.dart';
 import '../api/progress_api.dart';
+import '../models/anime.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
 import 'auth_provider.dart';
@@ -80,6 +81,7 @@ class PlayerState {
     this.volume = 1,
     this.brightness = 0.5,
     this.subtitleFontSize = 20,
+    this.playbackRate = 1,
     this.notice,
   });
 
@@ -99,6 +101,7 @@ class PlayerState {
   final double volume;
   final double brightness;
   final double subtitleFontSize;
+  final double playbackRate;
   final String? notice;
 
   PlayerState copyWith({
@@ -121,6 +124,7 @@ class PlayerState {
     double? volume,
     double? brightness,
     double? subtitleFontSize,
+    double? playbackRate,
     String? notice,
     bool clearNotice = false,
   }) {
@@ -145,6 +149,7 @@ class PlayerState {
       volume: volume ?? this.volume,
       brightness: brightness ?? this.brightness,
       subtitleFontSize: subtitleFontSize ?? this.subtitleFontSize,
+      playbackRate: playbackRate ?? this.playbackRate,
       notice: notice ?? (clearNotice ? null : this.notice),
     );
   }
@@ -261,9 +266,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
       final duration = await _waitForDuration();
       await _restoreAndStart(duration);
     } on MediaTokenUnsupported {
-      _setState(
-        state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'),
-      );
+      _setState(state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'));
       return;
     } catch (_) {
       if (_isWithin60sOfExpiry() && !_didNearExpiryReopen) {
@@ -312,7 +315,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) {
       return;
     }
-    var delay = expiresAt.difference(DateTime.now()) - const Duration(minutes: 5);
+    var delay =
+        expiresAt.difference(DateTime.now()) - const Duration(minutes: 5);
     if (delay < const Duration(minutes: 1)) {
       delay = const Duration(minutes: 1);
     }
@@ -326,7 +330,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (expiresAt == null) {
       return false;
     }
-    return !DateTime.now().isBefore(expiresAt.subtract(const Duration(seconds: 60)));
+    return !DateTime.now().isBefore(
+      expiresAt.subtract(const Duration(seconds: 60)),
+    );
   }
 
   Future<void> _refreshMediaToken() async {
@@ -707,6 +713,21 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _setState(state.copyWith(subtitleFontSize: value.clamp(20, 28).toDouble()));
   }
 
+  Future<void> setPlaybackRate(double value) async {
+    if (_disposed || _disposing) {
+      return;
+    }
+    final rate = normalizePlaybackRate(value);
+    try {
+      await player.setRate(rate);
+      if (!_disposed && !_disposing) {
+        _setState(state.copyWith(playbackRate: rate));
+      }
+    } catch (_) {
+      _setState(state.copyWith(notice: '倍速切换失败'));
+    }
+  }
+
   void consumeRestoredPosition() {
     if (_disposed || state.restoredPosition == null) {
       return;
@@ -875,6 +896,33 @@ class BuiltPlayerMedia {
 
   final Media media;
   final DateTime? expiresAt;
+}
+
+const List<double> playbackRateOptions = <double>[0.5, 1, 1.25, 1.5, 2];
+
+double normalizePlaybackRate(double value) {
+  for (final option in playbackRateOptions) {
+    if (option == value) {
+      return option;
+    }
+  }
+  return 1;
+}
+
+String playbackRateLabel(double rate) {
+  final normalized = normalizePlaybackRate(rate);
+  if (normalized == normalized.roundToDouble()) {
+    return '${normalized.toInt()}x';
+  }
+  return '${normalized}x';
+}
+
+Episode? nextEpisodeOf(List<Episode> episodes, int episodeId) {
+  final index = episodes.indexWhere((episode) => episode.id == episodeId);
+  if (index < 0 || index + 1 >= episodes.length) {
+    return null;
+  }
+  return episodes[index + 1];
 }
 
 /// Dispose / 未起播的 0 秒哨兵不得写入 outbox 或上报，以免覆盖已有正进度。

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../api'
 import { useAuthStore } from '../stores/auth'
-import type { UnidentifiedFile } from '../types/library'
+import type { ScanJob, UnidentifiedFile } from '../types/library'
 import AnimeListView from './AnimeListView.vue'
 
 vi.mock('vue-router', () => ({
@@ -17,7 +17,9 @@ vi.mock('../api/anime', () => ({
   scanAnime: vi.fn(),
 }))
 vi.mock('../api/library', () => ({
-  scanLibrary: vi.fn(),
+  startLibraryScan: vi.fn(),
+  getLibraryScan: vi.fn(),
+  listUnidentified: vi.fn(),
 }))
 
 function unidentifiedFile(
@@ -92,15 +94,34 @@ function threeSiblingFiles(): UnidentifiedFile[] {
   ]
 }
 
-async function scanAsAdmin(unidentified: UnidentifiedFile[]) {
-  const { scanLibrary } = await mockedLibraryApi()
-  asMock(scanLibrary).mockResolvedValue({
-    total_files: unidentified.length,
-    skipped: 0,
-    new_animes: 0,
-    new_episodes: 0,
-    unidentified,
+function doneJob(unidentified: UnidentifiedFile[]): ScanJob {
+  return {
+    state: 'done',
+    result: {
+      total_files: unidentified.length,
+      skipped: 0,
+      new_animes: 0,
+      new_episodes: 0,
+      unidentified,
+    },
+  }
+}
+
+async function mockUnidentifiedPage(unidentified: UnidentifiedFile[]) {
+  const { listUnidentified } = await mockedLibraryApi()
+  asMock(listUnidentified).mockResolvedValue({
+    items: unidentified,
+    total: unidentified.length,
+    page: 1,
+    page_size: 50,
   })
+}
+
+async function scanAsAdmin(unidentified: UnidentifiedFile[]) {
+  const { startLibraryScan, getLibraryScan } = await mockedLibraryApi()
+  asMock(startLibraryScan).mockResolvedValue({ state: 'running' })
+  asMock(getLibraryScan).mockResolvedValue(doneJob(unidentified))
+  await mockUnidentifiedPage(unidentified)
   const wrapper = mountList(true)
   await flushPromises()
   const scanBtn = wrapper.findAll('button').find((btn) => btn.text().includes('库扫描'))
@@ -118,6 +139,7 @@ describe('AnimeListView admin controls', () => {
     asMock(listAnimes).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
     asMock(createAnime).mockResolvedValue(sampleAnime)
     asMock(scanAnime).mockResolvedValue({ scanned: 0, episodes: [] })
+    await mockUnidentifiedPage([])
   })
 
   it('hides library-scan and add buttons for ordinary users', async () => {
@@ -137,6 +159,59 @@ describe('AnimeListView admin controls', () => {
   })
 })
 
+describe('AnimeListView scan polling', () => {
+  beforeEach(async () => {
+    window.localStorage.clear()
+    vi.clearAllMocks()
+    const { listAnimes, createAnime, scanAnime } = await mockedAnimeApi()
+    asMock(listAnimes).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
+    asMock(createAnime).mockResolvedValue(sampleAnime)
+    asMock(scanAnime).mockResolvedValue({ scanned: 0, episodes: [] })
+    await mockUnidentifiedPage([])
+  })
+
+  it('renders unidentified only after GET scan returns done', async () => {
+    const files = threeSiblingFiles()
+    const { startLibraryScan, getLibraryScan, listUnidentified } = await mockedLibraryApi()
+    asMock(startLibraryScan).mockResolvedValue({ state: 'running' })
+    let resolveGet!: (job: ScanJob) => void
+    asMock(getLibraryScan).mockReturnValue(
+      new Promise((resolve) => {
+        resolveGet = resolve
+      }),
+    )
+    asMock(listUnidentified).mockResolvedValue({
+      items: files,
+      total: files.length,
+      page: 1,
+      page_size: 50,
+    })
+
+    const wrapper = mountList(true)
+    await flushPromises()
+    const scanBtn = wrapper.findAll('button').find((btn) => btn.text().includes('库扫描'))
+    expect(scanBtn).toBeTruthy()
+    await scanBtn!.trigger('click')
+    await flushPromises()
+
+    expect(startLibraryScan).toHaveBeenCalledTimes(1)
+    expect(getLibraryScan).toHaveBeenCalledTimes(1)
+    expect(listUnidentified).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('ep01.mkv')
+    expect(wrapper.text()).not.toContain('无法识别')
+
+    resolveGet(doneJob(files))
+    await flushPromises()
+
+    expect(listUnidentified).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('ep01.mkv')
+    expect(wrapper.text()).toContain('ep02.mkv')
+    expect(wrapper.text()).toContain('ep03.mkv')
+    expect(wrapper.text()).toContain('无法识别')
+    wrapper.unmount()
+  })
+})
+
 describe('AnimeListView unidentified confirm', () => {
   beforeEach(async () => {
     window.localStorage.clear()
@@ -145,6 +220,7 @@ describe('AnimeListView unidentified confirm', () => {
     asMock(listAnimes).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
     asMock(createAnime).mockResolvedValue(sampleAnime)
     asMock(scanAnime).mockResolvedValue({ scanned: 3, episodes: [] })
+    await mockUnidentifiedPage([])
   })
 
   it('creates then scans and dismisses sibling rows with the same file_path', async () => {

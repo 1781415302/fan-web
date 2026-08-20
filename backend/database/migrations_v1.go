@@ -20,6 +20,11 @@ var migrations = []migration{
 		name:    "unique_anime_episode_keys",
 		fn:      migrateUniqueAnimeEpisodeKeys,
 	},
+	{
+		version: 3,
+		name:    "library_inbox_and_bangumi_sync",
+		fn:      migrateLibraryInboxAndBangumiSync,
+	},
 }
 
 // migrateInitialSchema 建立初始业务表与索引。

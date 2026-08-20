@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	"fan-web/models"
 )
@@ -97,4 +98,136 @@ func scanProgress(row scanner, progress *models.WatchProgress) error {
 	}
 	progress.Watched = watched != 0
 	return nil
+}
+
+// ListContinueWatching 返回有进度的番剧，按该番 max(wp.updated_at) 降序。
+// 每番用 PickContinueEpisode 选继续播放的集；全看完（nil）则跳过。
+// limit 夹紧为 1..50，非法默认 20。
+func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error) {
+	if limit < 1 {
+		limit = 20
+	} else if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := DB.Query(`
+		SELECT a.id, MAX(wp.updated_at)
+		FROM animes a
+		JOIN episodes e ON e.anime_id = a.id
+		JOIN watch_progress wp ON wp.episode_id = e.id
+		WHERE wp.user_id = ?
+		GROUP BY a.id
+		ORDER BY MAX(wp.updated_at) DESC, a.id DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type animeActivity struct {
+		id        int64
+		updatedAt time.Time
+	}
+	activities := make([]animeActivity, 0)
+	for rows.Next() {
+		var item animeActivity
+		var raw sql.NullString
+		if err := rows.Scan(&item.id, &raw); err != nil {
+			return nil, err
+		}
+		if raw.Valid {
+			parsed, err := parseSQLiteDateTime(raw.String)
+			if err != nil {
+				return nil, err
+			}
+			item.updatedAt = parsed
+		}
+		activities = append(activities, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]models.ContinueItem, 0)
+	for _, activity := range activities {
+		if len(items) >= limit {
+			break
+		}
+		episodes, err := ListEpisodesByAnimeID(activity.id)
+		if err != nil {
+			return nil, err
+		}
+		progressList, err := ListProgressByAnime(userID, activity.id)
+		if err != nil {
+			return nil, err
+		}
+		picked := PickContinueEpisode(episodes, progressList)
+		if picked == nil {
+			continue
+		}
+		anime, err := GetAnimeByID(activity.id)
+		if err != nil {
+			return nil, err
+		}
+		position := 0
+		watched := false
+		for _, progress := range progressList {
+			if progress.EpisodeID == picked.ID {
+				position = progress.Position
+				watched = progress.Watched
+				break
+			}
+		}
+		items = append(items, models.ContinueItem{
+			Anime:     *anime,
+			Episode:   *picked,
+			Position:  position,
+			Watched:   watched,
+			UpdatedAt: activity.updatedAt,
+		})
+	}
+	return items, nil
+}
+
+// PickContinueEpisode 与 Dart pickContinueEpisode 同序：先第一个
+// !watched && position>0，再第一个 !watched，全看完返回 nil。
+// episodes 必须已是 ListEpisodesByAnimeID 顺序，本函数不再排序。
+func PickContinueEpisode(episodes []models.Episode, progress []models.WatchProgress) *models.Episode {
+	byEpisode := make(map[int64]models.WatchProgress, len(progress))
+	for _, item := range progress {
+		byEpisode[item.EpisodeID] = item
+	}
+	for i := range episodes {
+		item, ok := byEpisode[episodes[i].ID]
+		if ok && !item.Watched && item.Position > 0 {
+			episode := episodes[i]
+			return &episode
+		}
+	}
+	for i := range episodes {
+		item, ok := byEpisode[episodes[i].ID]
+		if !ok || !item.Watched {
+			episode := episodes[i]
+			return &episode
+		}
+	}
+	return nil
+}
+
+func parseSQLiteDateTime(value string) (time.Time, error) {
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05",
+	}
+	var lastErr error
+	for _, layout := range layouts {
+		parsed, err := time.ParseInLocation(layout, value, time.UTC)
+		if err == nil {
+			return parsed, nil
+		}
+		lastErr = err
+	}
+	return time.Time{}, lastErr
 }

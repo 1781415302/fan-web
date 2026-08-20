@@ -57,6 +57,11 @@ func (s *LibraryService) SetRootPath(rootPath string) {
 	s.rootPath = rootPath
 }
 
+// RootPath 返回当前视频根目录，供 handler 接线 ListSubDirs。
+func (s *LibraryService) RootPath() string {
+	return s.rootPath
+}
+
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()

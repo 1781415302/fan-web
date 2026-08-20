@@ -24,7 +24,9 @@ func setupRBAC(t *testing.T) (*httptest.ResponseRecorder, *gin.Engine, *services
 	if err := database.Init(dbPath); err != nil {
 		t.Fatal(err)
 	}
+	var libraryHandler *LibraryHandler
 	t.Cleanup(func() {
+		waitLibraryJobIdle(t, libraryHandler)
 		if database.DB != nil {
 			_ = database.DB.Close()
 		}
@@ -42,7 +44,7 @@ func setupRBAC(t *testing.T) (*httptest.ResponseRecorder, *gin.Engine, *services
 	bangumiService := services.NewBangumiService()
 	animeHandler := NewAnimeHandler(bangumiService, scanner)
 	episodeHandler := NewEpisodeHandler(auth, scanner)
-	libraryHandler := NewLibraryHandler(services.NewLibraryService(bangumiService, rootPath))
+	libraryHandler = NewLibraryHandler(services.NewLibraryService(bangumiService, rootPath))
 	bangumiHandler := NewBangumiHandler(bangumiService)
 
 	router := gin.New()

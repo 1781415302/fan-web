@@ -20,10 +20,15 @@ import (
 type EpisodeHandler struct {
 	auth    *services.AuthService
 	scanner *services.ScannerService
+	sync    *services.BangumiSync
 }
 
 func NewEpisodeHandler(auth *services.AuthService, scanner *services.ScannerService) *EpisodeHandler {
 	return &EpisodeHandler{auth: auth, scanner: scanner}
+}
+
+func (h *EpisodeHandler) SetBangumiSync(sync *services.BangumiSync) {
+	h.sync = sync
 }
 
 // Stream serves a video file after validating Authorization Bearer or ?media_token=.
@@ -254,6 +259,9 @@ func (h *EpisodeHandler) ReportProgress(c *gin.Context) {
 		return
 	}
 	utils.Success(c, nil)
+	if h.sync != nil && request.Watched {
+		go h.sync.EnqueueWatched(userID, episodeID)
+	}
 }
 
 func (h *EpisodeHandler) AnimeProgress(c *gin.Context) {
@@ -285,6 +293,26 @@ func (h *EpisodeHandler) AnimeProgress(c *gin.Context) {
 		data = append(data, toProgressResponse(progress, true))
 	}
 	utils.Success(c, data)
+}
+
+func (h *EpisodeHandler) Continue(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		utils.Error(c, utils.CodeUnauthenticated, "未登录")
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit < 1 {
+		limit = 20
+	} else if limit > 50 {
+		limit = 50
+	}
+	items, err := database.ListContinueWatching(userID, limit)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "查询继续观看失败")
+		return
+	}
+	utils.Success(c, gin.H{"items": items})
 }
 
 func (h *EpisodeHandler) progressIDs(c *gin.Context, parameter string) (int64, int64, bool) {

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart' show SubtitleTrack;
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../models/anime.dart';
+import '../providers/anime_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../theme/app_theme.dart';
@@ -57,6 +59,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _initialControlsHideScheduled = false;
   DateTime? _controlsShownAt;
   EdgeInsets? _requestedSubtitlePadding;
+  List<Episode> _episodes = const [];
 
   static const _controlsAutoHideDelay = Duration(seconds: 3);
 
@@ -64,6 +67,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bindConfig();
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_loadEpisodes());
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(PlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animeId != widget.animeId ||
+        oldWidget.episodeId != widget.episodeId ||
+        oldWidget.animeTitle != widget.animeTitle ||
+        oldWidget.episodeNumber != widget.episodeNumber) {
+      _bindConfig();
+    }
+    if (oldWidget.animeId != widget.animeId) {
+      unawaited(_loadEpisodes());
+    }
+  }
+
+  void _bindConfig() {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl;
     final token = authState.token;
@@ -79,11 +108,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         animeTitle: widget.animeTitle,
         episodeNumber: widget.episodeNumber,
       );
+    } else {
+      _config = null;
     }
-    unawaited(
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
-    );
   }
+
+  Future<void> _loadEpisodes() async {
+    try {
+      final episodes = await ref
+          .read(animeApiProvider)
+          .listEpisodes(widget.animeId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _episodes = episodes;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _episodes = const [];
+      });
+    }
+  }
+
+  Episode? get _nextEpisode => nextEpisodeOf(_episodes, widget.episodeId);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
@@ -279,6 +330,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                       ),
                     ),
+                    _buildPlaybackRateButton(playerState, notifier),
                     IconButton(
                       tooltip: '字幕',
                       onPressed: playerState.subtitleTracks.isEmpty
@@ -343,24 +395,43 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ],
                     ),
                     SizedBox(height: isLandscape ? 2 : 4),
-                    SizedBox.square(
-                      dimension: playButtonSize,
-                      child: IconButton.filled(
-                        tooltip: playerState.isPlaying ? '暂停' : '播放',
-                        onPressed: playerState.error == null
-                            ? () => unawaited(_togglePlayback(notifier))
-                            : null,
-                        icon: Icon(
-                          playerState.isPlaying
-                              ? Icons.pause
-                              : Icons.play_arrow,
-                          size: isLandscape ? 26 : 30,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox.square(
+                          dimension: playButtonSize,
+                          child: IconButton.filled(
+                            tooltip: playerState.isPlaying ? '暂停' : '播放',
+                            onPressed: playerState.error == null
+                                ? () => unawaited(_togglePlayback(notifier))
+                                : null,
+                            icon: Icon(
+                              playerState.isPlaying
+                                  ? Icons.pause
+                                  : Icons.play_arrow,
+                              size: isLandscape ? 26 : 30,
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: AppTheme.background,
+                            ),
+                          ),
                         ),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.accent,
-                          foregroundColor: AppTheme.background,
-                        ),
-                      ),
+                        if (_nextEpisode != null)
+                          SizedBox.square(
+                            dimension: playButtonSize,
+                            child: IconButton(
+                              tooltip: '下一集',
+                              onPressed: () =>
+                                  unawaited(_openNextEpisode(notifier)),
+                              icon: Icon(
+                                Icons.skip_next,
+                                size: isLandscape ? 26 : 30,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -892,6 +963,57 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       },
     );
     _showControls();
+  }
+
+  Widget _buildPlaybackRateButton(
+    PlayerState playerState,
+    PlayerNotifier notifier,
+  ) {
+    return PopupMenuButton<double>(
+      tooltip: '倍速',
+      initialValue: playerState.playbackRate,
+      color: AppTheme.muted,
+      onSelected: (value) => unawaited(notifier.setPlaybackRate(value)),
+      itemBuilder: (context) {
+        return [
+          for (final rate in playbackRateOptions)
+            PopupMenuItem<double>(
+              value: rate,
+              child: Text(playbackRateLabel(rate)),
+            ),
+        ];
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Text(
+          playbackRateLabel(playerState.playbackRate),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openNextEpisode(PlayerNotifier notifier) async {
+    final next = _nextEpisode;
+    if (next == null) {
+      return;
+    }
+    await notifier.pauseAndReport();
+    if (!mounted) {
+      return;
+    }
+    context.goNamed(
+      'watch',
+      pathParameters: {'id': '${widget.animeId}', 'epId': '${next.id}'},
+      extra: PlayerLaunchInfo(
+        animeTitle: _config?.animeTitle ?? widget.animeTitle,
+        episodeNumber: next.epNumber,
+      ),
+    );
   }
 
   String get _playerTitle {

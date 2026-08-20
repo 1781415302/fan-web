@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
+import 'screens/anime_add_screen.dart';
 import 'screens/anime_detail_screen.dart';
 import 'screens/anime_list_screen.dart';
 import 'screens/player_screen.dart';
@@ -26,6 +27,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (location == '/login') {
         return '/';
       }
+      if (location == '/animes/new' && authState.user?.isAdmin != true) {
+        return '/';
+      }
       return null;
     },
     routes: [
@@ -38,6 +42,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/',
         name: 'home',
         builder: (context, state) => const _HomeRouteScreen(),
+      ),
+      GoRoute(
+        path: '/animes/new',
+        name: 'animeAdd',
+        builder: (context, state) => const AnimeAddScreen(),
       ),
       GoRoute(
         path: '/animes/:id',

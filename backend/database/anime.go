@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -322,4 +323,25 @@ func scanEpisode(row scanner) (*models.Episode, error) {
 		return nil, err
 	}
 	return &episode, nil
+}
+
+var ErrBangumiBound = errors.New("bangumi already bound")
+
+// UpdateAnimeBangumi 写入 Bangumi 元数据（bangumi_id/title/title_cn/cover/summary/ep_count），
+// 不改 file_path。命中 bangumi_id 唯一索引时返回 ErrBangumiBound。
+func UpdateAnimeBangumi(id int64, meta *models.Anime) error {
+	if _, err := GetAnimeByID(id); err != nil {
+		return err
+	}
+	_, err := DB.Exec(
+		`UPDATE animes SET bangumi_id = ?, title = ?, title_cn = ?, cover = ?, summary = ?, ep_count = ? WHERE id = ?`,
+		meta.BangumiID, meta.Title, meta.TitleCn, meta.Cover, meta.Summary, meta.EpCount, id,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return ErrBangumiBound
+		}
+		return err
+	}
+	return nil
 }
