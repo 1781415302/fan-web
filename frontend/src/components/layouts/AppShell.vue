@@ -6,7 +6,24 @@ import { useThemeStore } from '../../stores/theme'
 import ThemeSwitcher from '../ThemeSwitcher.vue'
 
 const themeStore = useThemeStore()
-const { appStore, authStore, handleLogout } = useShell()
+const {
+  appStore,
+  authStore,
+  handleLogout,
+  bangumiPanelOpen,
+  bangumiLinked,
+  bangumiSuffix,
+  bangumiTokenDraft,
+  bangumiLoading,
+  bangumiSyncing,
+  bangumiError,
+  bangumiMessage,
+  openBangumiPanel,
+  closeBangumiPanel,
+  bindBangumi,
+  unbindBangumi,
+  syncBangumiProgress,
+} = useShell()
 
 // 固定外壳：切换 UI 风格只替换导航（chrome）与内容区样式类，
 // <main> 与其中的 router-view 始终保持挂载，页面（播放器、列表状态）不被卸载。
@@ -65,6 +82,7 @@ const contentClass = computed(() => {
         <ThemeSwitcher />
         <template v-if="authStore.initialized && authStore.isAuthenticated && authStore.user">
           <span class="cinema-user" :title="authStore.user.username">{{ authStore.user.username }}</span>
+          <button type="button" class="bangumi-trigger" @click="openBangumiPanel">Bangumi</button>
           <button type="button" class="cinema-logout" @click="handleLogout">退出登录</button>
         </template>
         <router-link v-else-if="authStore.initialized" to="/login" class="cinema-nav-link">
@@ -100,6 +118,7 @@ const contentClass = computed(() => {
           <ThemeSwitcher />
           <template v-if="authStore.initialized && authStore.isAuthenticated && authStore.user">
             <span class="glass-user" :title="authStore.user.username">{{ authStore.user.username }}</span>
+            <button type="button" class="bangumi-trigger" @click="openBangumiPanel">Bangumi</button>
             <button type="button" class="glass-logout" @click="handleLogout">退出登录</button>
           </template>
           <router-link v-else-if="authStore.initialized" to="/login" class="glass-nav-link">
@@ -135,6 +154,7 @@ const contentClass = computed(() => {
           <ThemeSwitcher />
           <template v-if="authStore.initialized && authStore.isAuthenticated && authStore.user">
             <span class="fluent-user" :title="authStore.user.username">{{ authStore.user.username }}</span>
+            <button type="button" class="bangumi-trigger" @click="openBangumiPanel">Bangumi</button>
             <button type="button" class="fluent-logout" @click="handleLogout">退出登录</button>
           </template>
           <router-link v-else-if="authStore.initialized" to="/login" class="fluent-link">
@@ -171,6 +191,7 @@ const contentClass = computed(() => {
           <ThemeSwitcher />
           <template v-if="authStore.initialized && authStore.isAuthenticated && authStore.user">
             <span class="user-name" :title="authStore.user.username">{{ authStore.user.username }}</span>
+            <button type="button" class="bangumi-trigger" @click="openBangumiPanel">Bangumi</button>
             <button type="button" class="logout-button" @click="handleLogout">退出登录</button>
           </template>
           <router-link v-else-if="authStore.initialized" to="/login" class="nav-link">
@@ -184,6 +205,85 @@ const contentClass = computed(() => {
     <main id="main-content" :class="contentClass" tabindex="-1">
       <slot />
     </main>
+
+    <div
+      v-if="bangumiPanelOpen"
+      class="bangumi-backdrop"
+      @click.self="closeBangumiPanel"
+    >
+      <section
+        class="bangumi-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bangumi-panel-title"
+        @keydown.esc="closeBangumiPanel"
+      >
+        <header class="bangumi-panel-head">
+          <div>
+            <p class="bangumi-kicker">Bangumi</p>
+            <h2 id="bangumi-panel-title">个人令牌</h2>
+          </div>
+          <button type="button" class="action-btn" @click="closeBangumiPanel">关闭</button>
+        </header>
+
+        <p v-if="bangumiLinked" class="bangumi-status">
+          已绑定 ···{{ bangumiSuffix }}
+        </p>
+        <p v-else class="bangumi-status">未绑定</p>
+
+        <p class="bangumi-hint">
+          在
+          <a
+            href="https://next.bgm.tv/demo/access-token"
+            target="_blank"
+            rel="noopener noreferrer"
+          >next.bgm.tv</a>
+          签发 Access Token，只同步「看过」。
+        </p>
+
+        <form v-if="!bangumiLinked" class="bangumi-form" @submit.prevent="bindBangumi">
+          <label class="bangumi-label" for="bangumi-access-token">Access Token</label>
+          <input
+            id="bangumi-access-token"
+            v-model="bangumiTokenDraft"
+            type="password"
+            name="bangumi-access-token"
+            autocomplete="off"
+            maxlength="512"
+            placeholder="粘贴令牌，绑定后只显示末 4 位"
+          />
+          <button
+            class="primary-btn"
+            type="submit"
+            :disabled="bangumiLoading || bangumiSyncing"
+          >
+            {{ bangumiLoading ? '绑定中...' : '绑定' }}
+          </button>
+        </form>
+
+        <div v-else class="bangumi-actions">
+          <button
+            type="button"
+            class="primary-btn"
+            :disabled="bangumiLoading || bangumiSyncing"
+            @click="syncBangumiProgress"
+          >
+            {{ bangumiSyncing ? '同步中...' : '同步进度' }}
+          </button>
+          <button
+            type="button"
+            class="action-btn"
+            :disabled="bangumiLoading || bangumiSyncing"
+            @click="unbindBangumi"
+          >
+            {{ bangumiLoading ? '处理中...' : '解除绑定' }}
+          </button>
+        </div>
+
+        <p v-if="bangumiError" class="bangumi-error" role="alert">{{ bangumiError }}</p>
+        <p v-if="bangumiMessage" class="bangumi-ok" role="status">{{ bangumiMessage }}</p>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -621,4 +721,129 @@ const contentClass = computed(() => {
     padding: 40px 16px 56px;
   }
 }
+
+/* ===== Bangumi 令牌面板（四套 data-ui 共用变量）===== */
+.bangumi-trigger {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color 180ms ease-out, color 180ms ease-out, border-color 180ms ease-out;
+}
+
+.bangumi-trigger:hover {
+  color: var(--text-color);
+  background: var(--surface-hover);
+  border-color: var(--border-strong-color);
+}
+
+.bangumi-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.bangumi-panel {
+  display: grid;
+  width: min(100%, 420px);
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-color);
+  box-shadow: var(--shadow-lg);
+}
+
+.bangumi-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bangumi-kicker {
+  margin-bottom: 4px;
+  color: var(--accent-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bangumi-panel h2 {
+  color: var(--text-color);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.bangumi-status,
+.bangumi-hint,
+.bangumi-label {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.bangumi-status {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.bangumi-hint a {
+  color: var(--primary-hover-color);
+}
+
+.bangumi-form,
+.bangumi-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.bangumi-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--border-strong-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted-color);
+  color: var(--text-color);
+  outline: none;
+  font-size: 16px;
+}
+
+.bangumi-form input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.bangumi-error,
+.bangumi-ok {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.bangumi-error {
+  border: 1px solid var(--danger-soft-border);
+  background: var(--danger-soft-bg);
+  color: var(--danger-color);
+}
+
+.bangumi-ok {
+  border: 1px solid var(--success-border);
+  background: var(--primary-soft-bg);
+  color: var(--success-color);
+}
+
 </style>

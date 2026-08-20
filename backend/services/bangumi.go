@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,11 @@ import (
 )
 
 var ErrBangumiNotFound = errors.New("未找到该条目")
+var (
+	ErrBangumiUnauthorized = errors.New("Bangumi 令牌无效")
+	ErrBangumiRateLimited  = errors.New("Bangumi 请求过于频繁")
+	ErrBangumiBadRequest   = errors.New("Bangumi 请求无效")
+)
 
 const (
 	bangumiBaseURL = "https://api.bgm.tv"
@@ -71,7 +77,8 @@ type bgmImages struct {
 }
 
 type BangumiService struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewBangumiService() *BangumiService {
@@ -127,6 +134,171 @@ func (s *BangumiService) GetSubject(id int) (*BangumiSubjectInfo, error) {
 		Cover:         toHTTPS(pickCover(subject.Images)),
 		TotalEpisodes: totalEpisodes,
 	}, nil
+}
+
+const (
+	subjectEpisodePageLimit    = 200
+	episodeCollectionPageLimit = 1000
+)
+
+// BangumiEpisode 是上游章节（本篇 type=0）的映射字段。
+type BangumiEpisode struct {
+	ID   int     `json:"id"`
+	Ep   float64 `json:"ep"`
+	Sort float64 `json:"sort"`
+}
+
+// BangumiEpisodeCollection 是用户章节收藏行。Type 2 = 看过。
+type BangumiEpisodeCollection struct {
+	Episode BangumiEpisode `json:"episode"`
+	Type    int            `json:"type"`
+}
+
+type bgmEpisodePage struct {
+	Data []BangumiEpisode `json:"data"`
+}
+
+type bgmEpisodeCollectionPage struct {
+	Data []BangumiEpisodeCollection `json:"data"`
+}
+
+// SetBaseURL 把上游指到测试服务器。生产路径保持默认 https://api.bgm.tv。
+func (s *BangumiService) SetBaseURL(baseURL string) {
+	s.baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+}
+
+func (s *BangumiService) endpoint(path string) string {
+	base := bangumiBaseURL
+	if s != nil && s.baseURL != "" {
+		base = s.baseURL
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return strings.TrimRight(base, "/") + path
+}
+
+func (s *BangumiService) GetMe(token string) error {
+	return s.doAuthRequest(http.MethodGet, "/v0/me", token, nil, &struct{}{})
+}
+
+func (s *BangumiService) ListSubjectEpisodes(token string, subjectID int) ([]BangumiEpisode, error) {
+	all := make([]BangumiEpisode, 0)
+	offset := 0
+	for {
+		path := fmt.Sprintf("/v0/episodes?subject_id=%d&type=0&limit=%d&offset=%d",
+			subjectID, subjectEpisodePageLimit, offset)
+		var page bgmEpisodePage
+		if err := s.doAuthRequest(http.MethodGet, path, token, nil, &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Data...)
+		if len(page.Data) < subjectEpisodePageLimit {
+			break
+		}
+		offset += len(page.Data)
+	}
+	return all, nil
+}
+
+func (s *BangumiService) EnsureCollection(token string, subjectID int) error {
+	path := fmt.Sprintf("/v0/users/-/collections/%d", subjectID)
+	err := s.doAuthRequest(http.MethodGet, path, token, nil, &struct{}{})
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, ErrBangumiNotFound) {
+		return err
+	}
+	postErr := s.doAuthRequest(http.MethodPost, path, token, map[string]int{"type": 3}, nil)
+	if postErr == nil || errors.Is(postErr, ErrBangumiBadRequest) {
+		return nil
+	}
+	return postErr
+}
+
+func (s *BangumiService) PatchEpisodeCollection(token string, subjectID int, episodeIDs []int) error {
+	path := fmt.Sprintf("/v0/users/-/collections/%d/episodes", subjectID)
+	body := map[string]interface{}{
+		"episode_id": episodeIDs,
+		"type":       2,
+	}
+	return s.doAuthRequest(http.MethodPatch, path, token, body, nil)
+}
+
+func (s *BangumiService) ListEpisodeCollection(token string, subjectID int) ([]BangumiEpisodeCollection, error) {
+	all := make([]BangumiEpisodeCollection, 0)
+	offset := 0
+	for {
+		path := fmt.Sprintf("/v0/users/-/collections/%d/episodes?episode_type=0&limit=%d&offset=%d",
+			subjectID, episodeCollectionPageLimit, offset)
+		var page bgmEpisodeCollectionPage
+		if err := s.doAuthRequest(http.MethodGet, path, token, nil, &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Data...)
+		if len(page.Data) < episodeCollectionPageLimit {
+			break
+		}
+		offset += len(page.Data)
+	}
+	return all, nil
+}
+
+func (s *BangumiService) doAuthRequest(method, path, token string, body any, target interface{}) error {
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, s.endpoint(path), reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", bangumiUA)
+	req.Header.Set("Authorization", "Bearer "+token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	response, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求 Bangumi API 失败: %w", err)
+	}
+	defer response.Body.Close()
+
+	limited := io.LimitReader(response.Body, maxBangumiResponseBytes+1)
+	raw, err := io.ReadAll(limited)
+	if err != nil {
+		return fmt.Errorf("读取 Bangumi API 响应失败: %w", err)
+	}
+	if len(raw) > maxBangumiResponseBytes {
+		return fmt.Errorf("Bangumi API 响应过大，超过 %d 字节上限", maxBangumiResponseBytes)
+	}
+
+	switch response.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+		if target == nil || response.StatusCode == http.StatusNoContent || len(raw) == 0 {
+			return nil
+		}
+		if err := json.Unmarshal(raw, target); err != nil {
+			return fmt.Errorf("解析 Bangumi 响应失败: %w", err)
+		}
+		return nil
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return ErrBangumiUnauthorized
+	case http.StatusNotFound:
+		return ErrBangumiNotFound
+	case http.StatusBadRequest:
+		return ErrBangumiBadRequest
+	case http.StatusTooManyRequests:
+		return ErrBangumiRateLimited
+	default:
+		return fmt.Errorf("Bangumi API 返回状态码 %d", response.StatusCode)
+	}
 }
 
 func (s *BangumiService) doRequest(apiURL string, target interface{}) error {

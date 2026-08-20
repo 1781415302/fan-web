@@ -8,25 +8,26 @@ fan-web 诞生于对现有自托管方案的不满。此前我使用 Alist 管�
 
 因此我决定做一个**专门为看番场景设计**的轻量方案，核心差异化如下：
 
-- **无需手动整理**：直接把视频文件丢进根目录即可。系统会遍历目录、自动识别番剧、集数与季号（兼容 `[01]`、`[01v2]`、`EP01`、`第1集`、`S1E1` 等常见命名），并按季匹配 Bangumi 信息入库，省去建库时的逐个分类整理。
-- **为番剧优化**：以「番剧 -> 剧集」为粒度组织内容，配合观看进度记录、续播提醒、Bangumi 番组信息，解决「我追到哪里了」这类核心需求。
+- **无需手动整理**：直接把视频文件丢进根目录即可。系统会遍历目录、自动识别番剧、集数与季号（兼容 `[01]`、`[01v2]`、`EP01`、`第1集`、`S1E1` 等常见命名），并按季匹配 Bangumi 信息入库，省去建库时的逐个分类整理。未识别目录会落库，可事后确认。
+- **为番剧优化**：以「番剧 -> 剧集」为粒度组织内容，配合观看进度记录、继续看、Bangumi 番组信息，解决「我追到哪里了」这类核心需求。
 - **极致轻量**：前后端一体化编译为单个静态链接的可执行文件，常驻内存约 15 MB，空闲 CPU 近乎为 0，低配 VPS 也能流畅运行。
 - **零配置部署**：首次运行直接打开 WebUI 引导页，在线设置管理员账号与视频目录即可，无需编写配置文件或搭建 Web 服务。
 - **多端覆盖**：Web 端 + Android App 双端进度互通，手机看番不再依赖浏览器。
 
 ## 功能特性
 
-- **番剧管理**：浏览、添加、编辑、删除番剧，支持番剧库扫描
-- **自动扫描**：从视频根目录自动识别番剧、剧集与季号（支持 `[01]`、`[01v2]`、`EP01`、`第1集`、`S1E1` 等常见命名格式）
+- **番剧管理**：浏览、添加、编辑、删除番剧；Web 可重绑 Bangumi 元数据；手机管理员可扫描、添加、删除、单番重扫（重绑与编辑表单只在 Web）
+- **自动扫描**：全库扫描为后台作业（POST 启动 / GET 轮询），从视频根目录自动识别番剧、剧集与季号（支持 `[01]`、`[01v2]`、`EP01`、`第1集`、`S1E1` 等常见命名格式）；未识别结果持久保存
 - **在线播放**：浏览器直接播放本地视频（基于 ArtPlayer），支持 HEVC/mkv
 - **内封字幕**：Web 端通过纯 Go 解析 MKV 容器提取字幕轨道并转为 VTT，默认显示字幕且可切换；移动端通过 libmpv 原生支持内封字幕
-- **观看进度**：自动记录每位用户的观看进度，续播提醒，观看状态不可逆（已看不会降级）
+- **观看进度**：自动记录每位用户的观看进度，观看状态不可逆（已看不会降级）；App 列表顶「继续看」（先进行中再第一集未看，全看完不出现），Web 首页仍展示最近入库
 - **番组信息**：集成 Bangumi 搜索与番剧详情
+- **Bangumi 进度同步**：用个人 Access Token（在 https://next.bgm.tv/demo/access-token 签发）只同步「看过」布尔，不同步秒数
 - **用户系统**：JWT 认证、登录限流，管理员可管理用户
 - **零配置初始化**：首次运行自动进入 WebUI 引导页，在线设置管理员与视频目录，自动生成配置
 - **单文件部署**：前端资源嵌入后端二进制，无需 nginx
 - **低资源占用**：常驻内存约 15 MB，空闲 CPU 近乎为 0，可在低配 VPS 运行
-- **Android App**：Flutter 原生应用，支持 HEVC 硬解、手势控制、断点续播、离线进度保存、断网会话保留
+- **Android App**：Flutter 原生应用，支持 HEVC 硬解、手势控制、断点续播、离线进度保存、断网会话保留；v1.4 起管理员可在手机管库
 
 ## 技术栈
 
@@ -64,7 +65,7 @@ fan-web 诞生于对现有自托管方案的不满。此前我使用 Alist 管�
 │   │   ├── api/           # API 客户端（dio）
 │   │   ├── models/        # 数据模型
 │   │   ├── providers/     # Riverpod 状态管理
-│   │   ├── screens/       # 页面（登录/列表/详情/播放器）
+│   │   ├── screens/       # 页面（登录/列表/添加/详情/播放器）
 │   │   ├── services/      # 进度 outbox 等服务
 │   │   ├── widgets/       # 可复用组件
 │   │   └── utils/         # 工具函数
@@ -199,14 +200,21 @@ video:
 | GET | `/api/animes` `/api/animes/:id` | 登录用户读取番剧 |
 | POST/PUT/DELETE | `/api/animes` `/api/animes/:id` | 管理员增删改番剧 |
 | GET | `/api/animes/:id/cover` | 番剧封面代理（解决移动端无法直连 Bangumi CDN） |
-| POST | `/api/animes/:id/scan` | 扫描番剧剧集 |
+| POST | `/api/animes/:id/scan` | 扫描番剧剧集（同步；有剧集才按目录清未识别） |
+| POST | `/api/animes/:id/rebind` | 管理员重绑 Bangumi 元数据（仅 Web 提供表单） |
 | GET | `/api/animes/:id/episodes` | 番剧剧集列表 |
 | POST | `/api/episodes/:id/media-token` | 签发当前集的 12 小时媒体票据 |
 | GET | `/api/episodes/:id/stream` | 视频流（媒体票据鉴权，支持 HTTP Range） |
 | GET | `/api/episodes/:id/subtitles` | 媒体票据鉴权的字幕轨道列表 / VTT 内容 |
+| GET | `/api/progress/continue` | 继续看（登录；App 列表顶使用） |
 | GET/POST | `/api/progress/:episode_id` | 获取/上报观看进度 |
-| POST | `/api/library/scan` | 管理员扫描视频目录入库 |
+| POST | `/api/library/scan` | 管理员启动全库扫描作业（立即返回，禁止当同步 600s） |
+| GET | `/api/library/scan` | 管理员轮询全库扫描作业 |
+| GET | `/api/library/unidentified` | 管理员读取持久化未识别列表 |
+| GET | `/api/library/dirs` | 管理员列出一层子目录（手机添加页点选） |
 | GET | `/api/bangumi/search` `/api/bangumi/subject/:id` | 管理员使用的 Bangumi 搜索/详情 |
+| GET/PUT/DELETE | `/api/me/bangumi` | 绑定/查询/解除个人 Bangumi PAT |
+| POST | `/api/me/bangumi/sync` | 入站同步看过（客户端超时 120s） |
 | GET/POST/DELETE | `/api/admin/users` | 用户管理（仅管理员） |
 
 ## 下载

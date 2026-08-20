@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/anime.dart';
 import '../providers/anime_provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anime_card.dart';
@@ -29,6 +30,10 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
   String? _refreshError;
   bool _isLoading = true;
   bool _summaryExpanded = false;
+  bool _scanning = false;
+  bool _deleting = false;
+  String? _scanMessage;
+  String? _scanError;
 
   @override
   void initState() {
@@ -116,9 +121,92 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     }
   }
 
+  Future<void> _rescan() async {
+    if (_scanning) {
+      return;
+    }
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+      _scanMessage = null;
+    });
+    try {
+      final result = await ref.read(animeApiProvider).scanAnime(widget.animeId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _episodes = result.episodes;
+        _scanning = false;
+        _scanMessage = '扫描完成，共识别 ${result.scanned} 集';
+      });
+      await _refreshProgress();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _scanning = false;
+        _scanError = apiErrorMessage(error);
+      });
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    if (_deleting) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('删除番剧'),
+          content: const Text('确定删除这部番剧吗？关联的集数也会一并删除。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _deleting = true;
+    });
+    try {
+      await ref.read(animeApiProvider).delete(widget.animeId);
+      try {
+        await ref.read(animeListProvider.notifier).refresh();
+      } catch (_) {}
+      if (!mounted) {
+        return;
+      }
+      context.goNamed('home');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _deleting = false;
+        _error = apiErrorMessage(error);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final anime = _anime;
+    final isAdmin = ref.watch(
+      authProvider.select((auth) => auth.user?.isAdmin == true),
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -126,16 +214,30 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          if (isAdmin) ...[
+            IconButton(
+              tooltip: '扫描文件',
+              onPressed: _scanning ? null : () => unawaited(_rescan()),
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: '删除番剧',
+              onPressed: _deleting ? null : () => unawaited(_confirmDelete()),
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ],
+        ],
       ),
       body: _isLoading && anime == null
           ? const Center(child: CircularProgressIndicator())
           : _error != null && anime == null
           ? ErrorStateView(message: _error!, onRetry: _load)
-          : _buildContent(anime!),
+          : _buildContent(anime!, isAdmin: isAdmin),
     );
   }
 
-  Widget _buildContent(Anime anime) {
+  Widget _buildContent(Anime anime, {required bool isAdmin}) {
     final progressTotal = anime.epCount > 0 ? anime.epCount : _episodes.length;
     final watchedCount = _progressByEpisode.values
         .where((progress) => progress.watched)
@@ -167,6 +269,46 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           _buildSummary(anime),
           const SizedBox(height: 28),
           _buildEpisodes(),
+          if (isAdmin) ...[
+            const SizedBox(height: 28),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('anime-rescan'),
+                  onPressed: _scanning ? null : () => unawaited(_rescan()),
+                  icon: const Icon(Icons.refresh),
+                  label: Text(_scanning ? '扫描中...' : '扫描文件'),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('anime-delete'),
+                  onPressed: _deleting
+                      ? null
+                      : () => unawaited(_confirmDelete()),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('删除番剧'),
+                ),
+              ],
+            ),
+            if (_scanMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _scanMessage!,
+                style: const TextStyle(color: AppTheme.accent, fontSize: 13),
+              ),
+            ],
+            if (_scanError != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _scanError!,
+                style: const TextStyle(
+                  color: AppTheme.destructive,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
           if (_refreshError != null) ...[
             const SizedBox(height: 12),
             Text(

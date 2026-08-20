@@ -258,7 +258,7 @@ func TestNoBackupWhenNoPendingMigrations(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "stable.db")
 	backupPath := dbPath + preMigrationBackupSuffix
 
-	// 首次初始化应用迁移，会产生备份；随后删除，验证二次初始化（已 v2）不再产生。
+	// 首次初始化应用迁移，会产生备份；随后删除，验证二次初始化（已 v3）不再产生。
 	DB = nil
 	if err := Init(dbPath); err != nil {
 		t.Fatal(err)
@@ -339,7 +339,7 @@ func TestHasPendingMigrations(t *testing.T) {
 		t.Fatal("期望 v1 库仍有 v2 待应用")
 	}
 
-	// 补齐 v1+v2 后不再有待应用迁移。
+	// 补齐 v1+v2 后仍有 v3 待应用。
 	if _, err := db.Exec(
 		"INSERT INTO schema_migrations (version, name) VALUES (2, 'unique_anime_episode_keys')",
 	); err != nil {
@@ -349,8 +349,22 @@ func TestHasPendingMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !pending {
+		t.Fatal("期望 v1+v2 库仍有 v3 待应用")
+	}
+
+	// 写入真实 v3 名称后才无 pending。
+	if _, err := db.Exec(
+		"INSERT INTO schema_migrations (version, name) VALUES (3, 'library_inbox_and_bangumi_sync')",
+	); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = HasPendingMigrations(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if pending {
-		t.Fatal("期望 v2 库无待应用迁移")
+		t.Fatal("期望 v3 库无待应用迁移")
 	}
 }
 

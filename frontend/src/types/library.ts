@@ -19,3 +19,20 @@ export interface LibraryScanResult {
   new_episodes: number
   unidentified: UnidentifiedFile[]
 }
+
+export type ScanJobState = 'idle' | 'running' | 'done' | 'error'
+
+export interface ScanJob {
+  state: ScanJobState
+  started_at?: string
+  finished_at?: string
+  error?: string
+  result?: LibraryScanResult
+}
+
+export interface PaginatedUnidentified {
+  items: UnidentifiedFile[]
+  total: number
+  page: number
+  page_size: number
+}

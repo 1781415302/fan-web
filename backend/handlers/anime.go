@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -401,6 +402,11 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "读取已保存集数失败")
 		return
+	}
+	if len(storedEpisodes) > 0 {
+		if err := database.DeleteUnidentifiedByDir(anime.FilePath); err != nil {
+			log.Printf("[Anime] 清除目录 %q 的未识别文件失败: %v", anime.FilePath, err)
+		}
 	}
 	utils.Success(c, gin.H{"scanned": len(storedEpisodes), "episodes": storedEpisodes})
 }

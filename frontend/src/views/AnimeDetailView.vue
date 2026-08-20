@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
-import { deleteAnime, getAnime, listEpisodes, scanAnime, updateAnime } from '../api/anime'
+import { deleteAnime, getAnime, listEpisodes, rebindAnime, scanAnime, updateAnime } from '../api/anime'
 import { getAnimeProgress } from '../api/progress'
 import { useAuthStore } from '../stores/auth'
 import type { Anime, Episode } from '../types/anime'
@@ -21,6 +21,8 @@ const error = ref('')
 const scanError = ref('')
 const scanMessage = ref('')
 const scanning = ref(false)
+const rebinding = ref(false)
+const rebindBangumiId = ref<number | ''>('')
 const saving = ref(false)
 const showEdit = ref(false)
 const coverFailed = ref(false)
@@ -56,6 +58,7 @@ async function load() {
     progressByEpisode.value = new Map(currentProgress.map((progress) => [progress.episode_id, progress]))
     coverFailed.value = false
     showFullSummary.value = false
+    rebindBangumiId.value = currentAnime.bangumi_id
   } catch (e: unknown) {
     error.value = e instanceof ApiError ? e.message : '加载番剧失败'
     anime.value = null
@@ -106,6 +109,28 @@ async function handleScan() {
     scanError.value = e instanceof ApiError ? e.message : '扫描失败'
   } finally {
     scanning.value = false
+  }
+}
+
+async function handleRebind() {
+  const bangumiId = rebindBangumiId.value === '' ? 0 : Number(rebindBangumiId.value)
+  if (!Number.isInteger(bangumiId) || bangumiId <= 0) {
+    error.value = 'bangumi_id 必须大于 0'
+    return
+  }
+  rebinding.value = true
+  error.value = ''
+  scanMessage.value = ''
+  try {
+    const updated = await rebindAnime(animeId.value, bangumiId)
+    anime.value = updated
+    coverFailed.value = false
+    rebindBangumiId.value = updated.bangumi_id
+    scanMessage.value = '重绑成功'
+  } catch (e: unknown) {
+    error.value = e instanceof ApiError ? e.message : '重绑失败'
+  } finally {
+    rebinding.value = false
   }
 }
 
@@ -244,6 +269,21 @@ watch(animeId, () => void load(), { immediate: true })
               <button type="button" class="action-btn danger" @click="handleDelete">删除番剧</button>
             </template>
           </div>
+          <form v-if="authStore.isAdmin" class="rebind-form" @submit.prevent="handleRebind">
+            <div class="form-field">
+              <label for="rebind-bangumi-id">重绑 Bangumi ID</label>
+              <input
+                id="rebind-bangumi-id"
+                v-model.number="rebindBangumiId"
+                type="number"
+                min="1"
+                required
+              />
+            </div>
+            <button type="submit" class="action-btn" :disabled="rebinding">
+              {{ rebinding ? '重绑中...' : '重绑' }}
+            </button>
+          </form>
           <p v-if="scanMessage" class="scan-msg" role="status">{{ scanMessage }}</p>
           <p v-if="scanError" class="error-msg" role="alert">{{ scanError }}</p>
         </div>
@@ -339,6 +379,8 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--border-color); }
 .progress-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent-color); transition: width 240ms ease-out; }
 .actions, .form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.rebind-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 14px; max-width: 420px; }
+.rebind-form .form-field { flex: 1 1 180px; }
 .scan-msg { margin-top: 12px; color: var(--success-color); font-size: 13px; }
 .detail-summary { padding: 32px 0; border-bottom: 1px solid var(--border-color); }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }

@@ -39,3 +39,27 @@ type WatchProgress struct {
 	Watched   bool      `json:"watched"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type MatchCandidate struct {
+	ID     int     `json:"id"`
+	Name   string  `json:"name"`
+	NameCn string  `json:"name_cn"`
+	Score  float64 `json:"score"`
+}
+
+type UnidentifiedFile struct {
+	ID         int64            `json:"id,omitempty"`
+	FileName   string           `json:"file_name"`
+	Reason     string           `json:"reason"`
+	FilePath   string           `json:"file_path"`
+	Candidates []MatchCandidate `json:"candidates"`
+	UpdatedAt  time.Time        `json:"updated_at,omitempty"`
+}
+
+type ContinueItem struct {
+	Anime     Anime     `json:"anime"`
+	Episode   Episode   `json:"episode"`
+	Position  int       `json:"position"`
+	Watched   bool      `json:"watched"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

@@ -466,3 +466,154 @@ func TestLegacyTokenQueryRejected(t *testing.T) {
 		t.Fatalf("expected message 未登录 for ?token= only, got %q", resp.Message)
 	}
 }
+
+func TestContinueWatchingAPI(t *testing.T) {
+	rootPath := t.TempDir()
+	databasePath := filepath.Join(t.TempDir(), "continue-api.db")
+	if err := database.Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if err := database.InitAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mustAnime := func(title string) (int64, []models.Episode) {
+		t.Helper()
+		anime, err := database.CreateAnime(&models.Anime{Title: title, EpCount: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.SyncEpisodes(anime.ID, []models.Episode{
+			{EpNumber: 1, FilePath: title + "/01.mp4"},
+			{EpNumber: 2, FilePath: title + "/02.mp4"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		eps, err := database.ListEpisodesByAnimeID(anime.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return anime.ID, eps
+	}
+	oldID, oldEps := mustAnime("Old")
+	newID, newEps := mustAnime("New")
+	doneID, doneEps := mustAnime("Done")
+
+	if err := database.UpsertProgress(user.ID, oldEps[1].ID, 30, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertProgress(user.ID, newEps[0].ID, 10, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertProgress(user.ID, doneEps[0].ID, 100, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertProgress(user.ID, doneEps[1].ID, 100, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE watch_progress SET updated_at = ? WHERE episode_id = ?`, "2026-01-01 00:00:00", oldEps[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE watch_progress SET updated_at = ? WHERE episode_id = ?`, "2026-03-01 00:00:00", newEps[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE watch_progress SET updated_at = ? WHERE episode_id IN (?, ?)`, "2026-02-01 00:00:00", doneEps[0].ID, doneEps[1].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	auth := services.NewAuthService("continue-test-secret", 24*60*60*1e9)
+	token, _, err := auth.IssueToken(*user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewEpisodeHandler(auth, services.NewScannerService(rootPath))
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	// continue 必须写在 /progress/:episode_id 之前，否则 "continue" 会被当成 episode_id。
+	router.GET("/api/progress/continue", middleware.JWTAuth(auth), handler.Continue)
+	router.GET("/api/progress/:episode_id", middleware.JWTAuth(auth), handler.GetProgress)
+
+	getContinue := func(limit string, withAuth bool) (int, struct {
+		Code int `json:"code"`
+		Data struct {
+			Items []models.ContinueItem `json:"items"`
+		} `json:"data"`
+	}) {
+		t.Helper()
+		path := "/api/progress/continue"
+		if limit != "" {
+			path += "?limit=" + limit
+		}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		if withAuth {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected HTTP 200, got %d body=%s", recorder.Code, recorder.Body.String())
+		}
+		var resp struct {
+			Code int `json:"code"`
+			Data struct {
+				Items []models.ContinueItem `json:"items"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		return recorder.Code, resp
+	}
+
+	_, unauth := getContinue("", false)
+	if unauth.Code != 2001 {
+		t.Fatalf("expected unauthenticated code 2001, got %d", unauth.Code)
+	}
+
+	_, listed := getContinue("", true)
+	if listed.Code != 0 {
+		t.Fatalf("expected code 0, got %d", listed.Code)
+	}
+	if len(listed.Data.Items) != 2 {
+		t.Fatalf("expected 2 in-progress animes, got %d items=%#v", len(listed.Data.Items), listed.Data.Items)
+	}
+	if listed.Data.Items[0].Anime.ID != newID || listed.Data.Items[1].Anime.ID != oldID {
+		t.Fatalf("should order by recent updated_at: got %d,%d want new=%d old=%d (done=%d)",
+			listed.Data.Items[0].Anime.ID, listed.Data.Items[1].Anime.ID, newID, oldID, doneID)
+	}
+	for _, item := range listed.Data.Items {
+		if item.Anime.ID == doneID {
+			t.Fatalf("fully watched anime must not appear: %#v", item)
+		}
+	}
+	if listed.Data.Items[0].Episode.ID != newEps[0].ID || listed.Data.Items[0].Position != 10 || listed.Data.Items[0].Watched {
+		t.Fatalf("New should continue ep1 pos=10: %#v", listed.Data.Items[0])
+	}
+	if listed.Data.Items[1].Episode.ID != oldEps[1].ID || listed.Data.Items[1].Position != 30 || listed.Data.Items[1].Watched {
+		t.Fatalf("Old should continue ep2 pos=30: %#v", listed.Data.Items[1])
+	}
+
+	_, limited := getContinue("1", true)
+	if limited.Code != 0 || len(limited.Data.Items) != 1 || limited.Data.Items[0].Anime.ID != newID {
+		t.Fatalf("limit=1 should keep the most recent item, got %#v", limited.Data.Items)
+	}
+
+	_, zero := getContinue("0", true)
+	if zero.Code != 0 || len(zero.Data.Items) != 2 {
+		t.Fatalf("limit=0 should default to 20, got %d items", len(zero.Data.Items))
+	}
+
+	_, clamped := getContinue("100", true)
+	if clamped.Code != 0 || len(clamped.Data.Items) != 2 {
+		t.Fatalf("limit=100 should clamp to 50 and return 2 items, got %d", len(clamped.Data.Items))
+	}
+}
