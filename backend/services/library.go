@@ -62,6 +62,11 @@ func (s *LibraryService) RootPath() string {
 	return s.rootPath
 }
 
+type realEp1Key struct {
+	relDir string
+	title  string
+}
+
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
@@ -73,8 +78,20 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	}
 	result.TotalFiles = len(allFiles)
 
-	groups := make(map[string][]parsedLibraryFile)
+	// 先解析每一个视频（含已关联），按 (relDir, Title) 标记真集号 1。
+	// 作用域不是整目录：根目录 Bocchi [01] 不得挤掉 Kaguya。
+	hasRealEp1 := make(map[realEp1Key]struct{})
+	parsedFiles := make([]parsedLibraryFile, 0, len(allFiles))
 	for _, file := range allFiles {
+		parsed := ParseFilename(file.fileName)
+		if parsed.EpisodeNum == 1 && parsed.Title != "" {
+			hasRealEp1[realEp1Key{relDir: file.relDir, title: parsed.Title}] = struct{}{}
+		}
+		parsedFiles = append(parsedFiles, parsedLibraryFile{libraryFile: file, parsed: parsed})
+	}
+
+	groups := make(map[string][]parsedLibraryFile)
+	for _, file := range parsedFiles {
 		associated, err := database.IsFileAssociated(file.fileName, file.relDir)
 		if err != nil {
 			log.Printf("[Library] 查询文件关联状态失败 %q: %v", file.fileName, err)
@@ -86,16 +103,21 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 			continue
 		}
 
-		parsed := ParseFilename(file.fileName)
-		if parsed.Title == "" {
+		if file.parsed.Title == "" {
 			addUnidentified(result, file.fileName, file.relDir, "无法解析文件名")
 			continue
 		}
-		if parsed.EpisodeNum == 0 {
-			addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
+		if file.parsed.EpisodeNum == 0 {
+			if _, marked := hasRealEp1[realEp1Key{relDir: file.relDir, title: file.parsed.Title}]; marked {
+				addUnidentified(result, file.fileName, file.relDir, "同目录已有第 1 集")
+				continue
+			}
+		}
+		if file.parsed.EpisodeNum > 0 || file.parsed.Kind == "movie" || isStrongTitle(file.parsed.Title) {
+			groups[file.parsed.Title] = append(groups[file.parsed.Title], file)
 			continue
 		}
-		groups[parsed.Title] = append(groups[parsed.Title], parsedLibraryFile{libraryFile: file, parsed: parsed})
+		addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
 	}
 
 	titles := make([]string, 0, len(groups))
@@ -161,10 +183,22 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		addGroupUnidentified(result, files, "Bangumi 服务不可用")
 		return
 	}
-	searchResults, err := s.bangumi.Search(title)
-	if err != nil {
-		addGroupUnidentified(result, files, "搜索失败: "+err.Error())
-		return
+
+	var searchResults []BangumiSearchItem
+	var err error
+	if year := groupASCIIYear(files); year != "" {
+		searchResults, err = s.bangumi.Search(title + " " + year)
+		if err != nil {
+			addGroupUnidentified(result, files, "搜索失败: "+err.Error())
+			return
+		}
+	}
+	if len(searchResults) == 0 {
+		searchResults, err = s.bangumi.Search(title)
+		if err != nil {
+			addGroupUnidentified(result, files, "搜索失败: "+err.Error())
+			return
+		}
 	}
 
 	// 渐进缩短搜索：完整标题无结果时，逐步去掉末尾单词重试
@@ -186,6 +220,22 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 	}
 
 	decision := DecideBangumiMatch(title, searchResults)
+	subjectCache := make(map[int]*BangumiSubjectInfo)
+
+	// 组内任一 EpisodeNum==0 且第一轮未 Accept 才走别名轮。纯编号 TV 组零次额外 GetSubject。
+	if (!decision.Accept || decision.Winner == nil) && groupHasNoEpisode(files) {
+		aliasesByID := make(map[int][]string, len(decision.Candidates))
+		for _, cand := range decision.Candidates {
+			subject, getErr := s.bangumi.GetSubject(cand.ID)
+			if getErr != nil {
+				continue
+			}
+			subjectCache[cand.ID] = subject
+			aliasesByID[cand.ID] = subject.Aliases
+		}
+		decision = DecideBangumiMatchWithAliases(title, searchResults, aliasesByID)
+	}
+
 	if !decision.Accept || decision.Winner == nil {
 		candidates := decision.Candidates
 		if candidates == nil {
@@ -203,16 +253,19 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 	}
 
 	winner := decision.Winner
-	subject, err := s.bangumi.GetSubject(winner.ID)
-	if err != nil {
-		log.Printf("[Library] 获取 Bangumi 详情失败 %d，使用搜索结果: %v", winner.ID, err)
-		subject = &BangumiSubjectInfo{
-			ID:            winner.ID,
-			Name:          winner.Name,
-			NameCn:        winner.NameCn,
-			Summary:       winner.Summary,
-			Cover:         winner.Cover,
-			TotalEpisodes: winner.EpsCount,
+	subject := subjectCache[winner.ID]
+	if subject == nil {
+		subject, err = s.bangumi.GetSubject(winner.ID)
+		if err != nil {
+			log.Printf("[Library] 获取 Bangumi 详情失败 %d，使用搜索结果: %v", winner.ID, err)
+			subject = &BangumiSubjectInfo{
+				ID:            winner.ID,
+				Name:          winner.Name,
+				NameCn:        winner.NameCn,
+				Summary:       winner.Summary,
+				Cover:         winner.Cover,
+				TotalEpisodes: winner.EpsCount,
+			}
 		}
 	}
 
@@ -226,6 +279,10 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		return
 	}
 	if anime == nil {
+		if !groupProducesAnyEpisode(files, subject) {
+			addGroupUnidentified(result, files, "无法识别集数")
+			return
+		}
 		anime, err = database.CreateAnime(&models.Anime{
 			Title:     subject.Name,
 			TitleCn:   subject.NameCn,
@@ -256,11 +313,20 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		existingByNumber[episode.EpNumber] = episode
 	}
 	for _, file := range files {
-		existing, exists := existingByNumber[file.parsed.EpisodeNum]
+		epNum := 0
+		if file.parsed.EpisodeNum > 0 {
+			epNum = file.parsed.EpisodeNum
+		} else if subjectAllowsEpisodeOne(subject, file.parsed) {
+			epNum = 1
+		} else {
+			addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
+			continue
+		}
+		existing, exists := existingByNumber[epNum]
 		if !exists {
 			err := database.CreateEpisode(&models.Episode{
 				AnimeID:  anime.ID,
-				EpNumber: file.parsed.EpisodeNum,
+				EpNumber: epNum,
 				FilePath: file.fileName,
 			})
 			if err != nil {
@@ -268,8 +334,8 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 				addUnidentified(result, file.fileName, file.relDir, "创建集数失败")
 				continue
 			}
-			existingByNumber[file.parsed.EpisodeNum] = models.Episode{
-				EpNumber: file.parsed.EpisodeNum,
+			existingByNumber[epNum] = models.Episode{
+				EpNumber: epNum,
 				FilePath: file.fileName,
 			}
 			result.NewEpisodes++
@@ -295,13 +361,49 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 			addUnidentified(result, file.fileName, file.relDir, "更新改名文件路径失败")
 			continue
 		}
-		existingByNumber[file.parsed.EpisodeNum] = models.Episode{
+		existingByNumber[epNum] = models.Episode{
 			ID:       existing.ID,
-			EpNumber: file.parsed.EpisodeNum,
+			EpNumber: epNum,
 			FilePath: file.fileName,
 		}
 		result.Skipped++
 	}
+}
+
+func groupHasNoEpisode(files []parsedLibraryFile) bool {
+	for _, file := range files {
+		if file.parsed.EpisodeNum == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func groupASCIIYear(files []parsedLibraryFile) string {
+	for _, file := range files {
+		if year := filenameASCIIYear(file.fileName); year != "" {
+			return year
+		}
+	}
+	return ""
+}
+
+func filenameASCIIYear(filename string) string {
+	for _, m := range bracketPattern.FindAllStringSubmatch(filename, -1) {
+		if yearBracketContentRe.MatchString(m[1]) {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+func groupProducesAnyEpisode(files []parsedLibraryFile, subject *BangumiSubjectInfo) bool {
+	for _, file := range files {
+		if file.parsed.EpisodeNum > 0 || subjectAllowsEpisodeOne(subject, file.parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 func addGroupUnidentified(result *LibraryScanResult, files []parsedLibraryFile, reason string) {

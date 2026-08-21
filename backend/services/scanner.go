@@ -19,6 +19,8 @@ var videoExts = map[string]bool{
 
 var epPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\[(\d{1,3})(?:v\d+)?\]`),
+	regexp.MustCompile(`\[[Ee](\d{1,3})(?:v\d+)?\]`),
+	regexp.MustCompile(`_(\d{1,3})_`),
 	regexp.MustCompile(`(?i)-\s*(\d{1,3})(?:v\d+)?\b`),
 	regexp.MustCompile(`(?i)ep\.?\s*(\d{1,3})(?:v\d+)?\b`),
 	regexp.MustCompile(`第\s*(\d{1,3})\s*[集話话]`),
@@ -78,8 +80,7 @@ func (s *ScannerService) Scan(dirPath string) ([]models.Episode, error) {
 		return nil, fmt.Errorf("读取目录失败: %w", err)
 	}
 
-	seen := make(map[int]bool)
-	episodes := make([]models.Episode, 0)
+	names := make([]string, 0)
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
@@ -92,13 +93,38 @@ func (s *ScannerService) Scan(dirPath string) ([]models.Episode, error) {
 		if !videoExts[ext] {
 			continue
 		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
 
-		epNumber := extractEpisodeNumber(name)
-		if epNumber <= 0 || seen[epNumber] {
+	type scannerFile struct {
+		name   string
+		parsed ParsedFilename
+	}
+	videos := make([]scannerFile, 0, len(names))
+	for _, name := range names {
+		videos = append(videos, scannerFile{name: name, parsed: ParseFilename(name)})
+	}
+
+	seen := make(map[int]bool)
+	episodes := make([]models.Episode, 0)
+	for _, video := range videos {
+		if video.parsed.EpisodeNum <= 0 || seen[video.parsed.EpisodeNum] {
+			continue
+		}
+		seen[video.parsed.EpisodeNum] = true
+		episodes = append(episodes, models.Episode{EpNumber: video.parsed.EpisodeNum, FilePath: video.name})
+	}
+	for _, video := range videos {
+		if video.parsed.Kind != "movie" {
+			continue
+		}
+		epNumber := libraryEpisodeNum(video.parsed)
+		if seen[epNumber] {
 			continue
 		}
 		seen[epNumber] = true
-		episodes = append(episodes, models.Episode{EpNumber: epNumber, FilePath: name})
+		episodes = append(episodes, models.Episode{EpNumber: epNumber, FilePath: video.name})
 	}
 
 	sort.Slice(episodes, func(i, j int) bool {
@@ -226,6 +252,7 @@ func (s *ScannerService) resolveDirectory(dirPath string) (string, error) {
 }
 
 func extractEpisodeNumber(filename string) int {
+	filename = normalizeFullwidthDigits(filename)
 	for _, pattern := range epPatterns {
 		match := pattern.FindStringSubmatch(filename)
 		if len(match) < 2 {

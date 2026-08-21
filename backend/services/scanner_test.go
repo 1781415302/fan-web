@@ -48,3 +48,103 @@ func TestScannerRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("expected ErrInvalidVideoPath, got %v", err)
 	}
 }
+
+func TestScannerMovieBecomesEpisodeOne(t *testing.T) {
+	root := t.TempDir()
+	name := "[Subs]某作品 剧场版 [1080p].mkv"
+	if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 {
+		t.Fatalf("expected 1 episode, got %d: %#v", len(episodes), episodes)
+	}
+	if episodes[0].EpNumber != 1 {
+		t.Fatalf("expected EpNumber 1, got %d", episodes[0].EpNumber)
+	}
+	if episodes[0].FilePath != name {
+		t.Fatalf("expected FilePath %q, got %q", name, episodes[0].FilePath)
+	}
+}
+
+func TestScannerKaguyaYearOnlyReturnsEmpty(t *testing.T) {
+	root := t.TempDir()
+	name := "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4"
+	if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 0 {
+		t.Fatalf("expected 0 episodes for Kaguya-only folder, got %d: %#v", len(episodes), episodes)
+	}
+}
+
+func TestScannerSkipsVersionOnlyFilename(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "v2.mkv"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 0 {
+		t.Fatalf("expected 0 episodes for v2.mkv, got %d: %#v", len(episodes), episodes)
+	}
+}
+
+func TestScannerRealEpisodeOneBeatsMovie(t *testing.T) {
+	root := t.TempDir()
+	real := "[TSDM][Cosmic Princess Kaguya][01][1080p].mkv"
+	movie := "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4"
+	for _, name := range []string{movie, real} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 {
+		t.Fatalf("expected only real ep1, got %d: %#v", len(episodes), episodes)
+	}
+	if episodes[0].EpNumber != 1 {
+		t.Fatalf("expected EpNumber 1, got %d", episodes[0].EpNumber)
+	}
+	if episodes[0].FilePath != real {
+		t.Fatalf("expected real ep file %q, got %q", real, episodes[0].FilePath)
+	}
+}
+
+func TestScannerTwoMoviesKeepsFirstByFilename(t *testing.T) {
+	root := t.TempDir()
+	first := "[Fansub][Alpha Title] 剧场版 [1080p].mkv"
+	later := "[Fansub][Zeta Title] 剧场版 [1080p].mkv"
+	for _, name := range []string{later, first} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 {
+		t.Fatalf("expected 1 episode (second movie silent drop), got %d: %#v", len(episodes), episodes)
+	}
+	if episodes[0].EpNumber != 1 || episodes[0].FilePath != first {
+		t.Fatalf("expected first-by-filename movie as ep1, got %#v", episodes[0])
+	}
+}
