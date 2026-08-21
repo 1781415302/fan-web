@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 type ParsedFilename struct {
@@ -12,6 +13,7 @@ type ParsedFilename struct {
 	EpisodeNum int
 	Season     int // 0=unknown
 	FileName   string
+	Kind       string `json:"-"` // 只能是 "episode" 或 "movie"；禁止空串
 }
 
 // 匹配所有 [...] 方括号块
@@ -32,6 +34,13 @@ var metadataKeywords = []string{
 	"简繁", "简体", "繁体", "内封", "内嵌", "外挂", "中字",
 	"big5", "chs", "cht",
 }
+
+var latinMovieTokenRe = regexp.MustCompile(`(?i)(?:^|[^A-Za-z])(?:movie|film)(?:[^A-Za-z]|$)`)
+var yearBracketContentRe = regexp.MustCompile(`^(?:19|20)\d{2}$`)
+var weakTitleRe = regexp.MustCompile(`(?i)^v\d+$`)
+var movieDenyTokenRe = regexp.MustCompile(`(?i)(?:^|[^A-Za-z])(?:NCOP|NCED|SPECIAL|Trailer|Preview|Menu|OVA|OAD|OP|ED|PV|CM|SP)(?:[^A-Za-z]|$)`)
+var standaloneE02Re = regexp.MustCompile(`(?i)(?:^|[^A-Za-z])E\d{2}(?:[^A-Za-z]|$)`)
+var zerosBracketRe = regexp.MustCompile(`^0+$`)
 
 func ParseFilename(filename string) ParsedFilename {
 	parsed := ParsedFilename{
@@ -73,7 +82,94 @@ func ParseFilename(filename string) ParsedFilename {
 	}
 
 	parsed.Title = title
+	parsed.Kind = filenameKind(parsed)
 	return parsed
+}
+
+// filenameKind 在 Title/EpisodeNum/Season 填好之后按 T1a 判定。默认 episode。
+func filenameKind(p ParsedFilename) string {
+	if p.EpisodeNum > 0 {
+		return "episode"
+	}
+	if weakTitleRe.MatchString(p.Title) {
+		return "episode"
+	}
+	if movieDenied(p) {
+		return "episode"
+	}
+	hasMovie := hasMovieToken(p.FileName)
+	yearStrong := hasYearBracket(p.FileName) && isStrongTitle(p.Title)
+	if (hasMovie || yearStrong) && !movieOrFilmSoleTitleToken(p.Title) {
+		return "movie"
+	}
+	return "episode"
+}
+
+func hasMovieToken(filename string) bool {
+	if strings.Contains(filename, "剧场版") || strings.Contains(filename, "劇場版") {
+		return true
+	}
+	return latinMovieTokenRe.MatchString(filename)
+}
+
+func hasYearBracket(filename string) bool {
+	for _, m := range bracketPattern.FindAllStringSubmatch(filename, -1) {
+		if yearBracketContentRe.MatchString(m[1]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isStrongTitle(title string) bool {
+	if len(strings.Fields(title)) >= 2 {
+		return true
+	}
+	han := 0
+	for _, r := range title {
+		if unicode.Is(unicode.Han, r) {
+			han++
+			if han >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func movieOrFilmSoleTitleToken(title string) bool {
+	tokens := strings.Fields(title)
+	if len(tokens) != 1 {
+		return false
+	}
+	lower := strings.ToLower(tokens[0])
+	return lower == "movie" || lower == "film"
+}
+
+func movieDenied(p ParsedFilename) bool {
+	if p.Season > 0 {
+		return true
+	}
+	if hasDenyToken(p.Title) {
+		return true
+	}
+	if standaloneE02Re.MatchString(p.Title) {
+		return true
+	}
+	for _, m := range bracketPattern.FindAllStringSubmatch(p.FileName, -1) {
+		content := m[1]
+		if hasDenyToken(content) || zerosBracketRe.MatchString(content) || standaloneE02Re.MatchString(content) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDenyToken(s string) bool {
+	if strings.Contains(s, "特别篇") {
+		return true
+	}
+	return movieDenyTokenRe.MatchString(s)
 }
 
 // isMetadataBracket 判断方括号内容是否为元数据（编码、分辨率、集数、语言标签等）

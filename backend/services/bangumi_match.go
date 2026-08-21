@@ -37,6 +37,13 @@ var matchSxxEyyRe = regexp.MustCompile(`(?i)s(\d{1,2})e\d{1,3}`)
 // DecideBangumiMatch scores Bangumi search hits against the original title
 // (never a shortened query) and accepts only a clear unique winner.
 func DecideBangumiMatch(originalTitle string, items []BangumiSearchItem) BangumiMatchDecision {
+	return DecideBangumiMatchWithAliases(originalTitle, items, nil)
+}
+
+// DecideBangumiMatchWithAliases is DecideBangumiMatch plus optional aliases
+// per subject ID. Each item is scored as max(Name, NameCn, alias) dice, then
+// the same season gate as itemMatchScore. A nil map is identical to DecideBangumiMatch.
+func DecideBangumiMatchWithAliases(originalTitle string, items []BangumiSearchItem, aliasesByID map[int][]string) BangumiMatchDecision {
 	if strings.TrimSpace(originalTitle) == "" || len(items) == 0 {
 		return BangumiMatchDecision{Accept: false}
 	}
@@ -47,7 +54,7 @@ func DecideBangumiMatch(originalTitle string, items []BangumiSearchItem) Bangumi
 	for i, item := range items {
 		scored = append(scored, scoredItem{
 			idx:   i,
-			score: itemMatchScore(normOrig, querySeason, item),
+			score: itemMatchScoreWithAliases(normOrig, querySeason, item, aliasesByID[item.ID]),
 		})
 	}
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -94,11 +101,21 @@ type scoredItem struct {
 }
 
 func itemMatchScore(normOrig string, querySeason int, item BangumiSearchItem) float64 {
+	return itemMatchScoreWithAliases(normOrig, querySeason, item, nil)
+}
+
+func itemMatchScoreWithAliases(normOrig string, querySeason int, item BangumiSearchItem, aliases []string) float64 {
 	nameScore := diceBigram(normOrig, normalizeTitle(item.Name))
 	cnScore := diceBigram(normOrig, normalizeTitle(item.NameCn))
 	score := nameScore
 	if cnScore > nameScore {
 		score = cnScore
+	}
+	for _, alias := range aliases {
+		aliasScore := diceBigram(normOrig, normalizeTitle(alias))
+		if aliasScore > score {
+			score = aliasScore
+		}
 	}
 
 	candSeason, unnamed := candidateSeason(item)

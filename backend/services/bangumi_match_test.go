@@ -189,6 +189,13 @@ func TestDecideBangumiMatch(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got := DecideBangumiMatch(test.title, test.items)
+			gotNil := DecideBangumiMatchWithAliases(test.title, test.items, nil)
+			if got.Accept != gotNil.Accept || got.Winner != gotNil.Winner {
+				t.Fatalf("WithAliases(nil) must match DecideBangumiMatch: got Accept=%v Winner=%v, nil-aliases Accept=%v Winner=%v", got.Accept, got.Winner, gotNil.Accept, gotNil.Winner)
+			}
+			if !matchCandidatesEqual(got.Candidates, gotNil.Candidates) {
+				t.Fatalf("WithAliases(nil) Candidates = %#v, DecideBangumiMatch Candidates = %#v", gotNil.Candidates, got.Candidates)
+			}
 			if got.Accept != test.wantAccept {
 				t.Fatalf("Accept = %v, want %v (winner=%v cands=%v)", got.Accept, test.wantAccept, got.Winner, got.Candidates)
 			}
@@ -224,5 +231,66 @@ func TestDecideBangumiMatch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func matchCandidatesEqual(a, b []MatchCandidate) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDecideBangumiMatchWithAliasesKaguya(t *testing.T) {
+	items := []BangumiSearchItem{{
+		ID:     604826,
+		Name:   "超かぐや姫！",
+		NameCn: "超时空辉夜姬！",
+	}}
+	title := "Cosmic Princess Kaguya"
+
+	for _, aliases := range []map[int][]string{nil, {}, {604826: nil}, {604826: {}}} {
+		got := DecideBangumiMatchWithAliases(title, items, aliases)
+		if got.Accept {
+			t.Fatalf("aliases=%#v: Accept=true, want false", aliases)
+		}
+		found := false
+		for _, c := range got.Candidates {
+			if c.ID == 604826 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("aliases=%#v: candidates=%#v, want id 604826", aliases, got.Candidates)
+		}
+	}
+
+	got := DecideBangumiMatchWithAliases(title, items, map[int][]string{
+		604826: {"Cosmic Princess Kaguya!"},
+	})
+	if !got.Accept {
+		t.Fatalf("with alias: Accept=false, winner=%v cands=%#v", got.Winner, got.Candidates)
+	}
+	if got.Winner == nil || got.Winner.ID != 604826 {
+		t.Fatalf("Winner = %#v, want id 604826", got.Winner)
+	}
+	if got.Winner != &items[0] {
+		t.Fatal("Winner must be &items[0]")
+	}
+}
+
+func TestDecideBangumiMatchWithAliasesSeasonGate(t *testing.T) {
+	items := []BangumiSearchItem{{ID: 1, Name: "Some Show", NameCn: "某作品"}}
+	got := DecideBangumiMatchWithAliases("某作品 第2季", items, map[int][]string{
+		1: {"某作品 第2季"},
+	})
+	if got.Accept {
+		t.Fatal("season-mismatched alias must not bypass the 0.85 cap")
 	}
 }

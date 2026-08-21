@@ -36,12 +36,13 @@ type BangumiSearchItem struct {
 }
 
 type BangumiSubjectInfo struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	NameCn        string `json:"name_cn"`
-	Summary       string `json:"summary"`
-	Cover         string `json:"cover"`
-	TotalEpisodes int    `json:"total_episodes"`
+	ID            int      `json:"id"`
+	Name          string   `json:"name"`
+	NameCn        string   `json:"name_cn"`
+	Summary       string   `json:"summary"`
+	Cover         string   `json:"cover"`
+	TotalEpisodes int      `json:"total_episodes"`
+	Aliases       []string `json:"-"`
 }
 
 type bgmSearchResponse struct {
@@ -59,13 +60,14 @@ type bgmSearchRaw struct {
 }
 
 type bgmSubjectRaw struct {
-	ID            int       `json:"id"`
-	Name          string    `json:"name"`
-	NameCn        string    `json:"name_cn"`
-	Summary       string    `json:"summary"`
-	Images        bgmImages `json:"images"`
-	TotalEpisodes int       `json:"total_episodes"`
-	Eps           int       `json:"eps"`
+	ID            int             `json:"id"`
+	Name          string          `json:"name"`
+	NameCn        string          `json:"name_cn"`
+	Summary       string          `json:"summary"`
+	Images        bgmImages       `json:"images"`
+	TotalEpisodes int             `json:"total_episodes"`
+	Eps           int             `json:"eps"`
+	Infobox       json.RawMessage `json:"infobox"`
 }
 
 type bgmImages struct {
@@ -133,7 +135,70 @@ func (s *BangumiService) GetSubject(id int) (*BangumiSubjectInfo, error) {
 		Summary:       subject.Summary,
 		Cover:         toHTTPS(pickCover(subject.Images)),
 		TotalEpisodes: totalEpisodes,
+		Aliases:       parseInfoboxAliases(subject.Infobox),
 	}, nil
+}
+
+func parseInfoboxAliases(raw json.RawMessage) []string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	var entries []struct {
+		Key   string          `json:"key"`
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil
+	}
+	var aliases []string
+	for _, entry := range entries {
+		if entry.Key != "别名" {
+			continue
+		}
+		aliases = append(aliases, aliasesFromInfoboxValue(entry.Value)...)
+	}
+	return aliases
+}
+
+func aliasesFromInfoboxValue(raw json.RawMessage) []string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	switch raw[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil
+		}
+		return []string{s}
+	case '[':
+		var objs []struct {
+			V string `json:"v"`
+		}
+		if err := json.Unmarshal(raw, &objs); err != nil {
+			return nil
+		}
+		out := make([]string, 0, len(objs))
+		for _, obj := range objs {
+			v := strings.TrimSpace(obj.V)
+			if v == "" {
+				continue
+			}
+			out = append(out, v)
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 const (
