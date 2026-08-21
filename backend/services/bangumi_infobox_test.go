@@ -98,3 +98,37 @@ func bangumiServiceWithSubjectJSON(body string) *BangumiService {
 		}, nil
 	})}}
 }
+
+func TestGetSubjectPlatform(t *testing.T) {
+	field, ok := reflect.TypeOf(BangumiSubjectInfo{}).FieldByName("Platform")
+	if !ok {
+		t.Fatal("BangumiSubjectInfo.Platform missing")
+	}
+	if tag := field.Tag.Get("json"); tag != "-" {
+		t.Fatalf("Platform json tag = %q, want -", tag)
+	}
+
+	got, err := bangumiServiceWithSubjectJSON(`{"id":1,"name":"x","platform":"WEB","total_episodes":1}`).GetSubject(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Platform != "WEB" {
+		t.Fatalf("Platform = %q, want WEB", got.Platform)
+	}
+
+	missing, err := bangumiServiceWithSubjectJSON(`{"id":1,"name":"x"}`).GetSubject(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Platform != "" {
+		t.Fatalf("missing platform should be empty, got %q", missing.Platform)
+	}
+
+	raw, err := json.Marshal(BangumiSubjectInfo{ID: 1, Name: "x", Platform: "WEB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "WEB") || strings.Contains(string(raw), "platform") || strings.Contains(string(raw), "Platform") {
+		t.Fatalf("Platform leaked in JSON: %s", raw)
+	}
+}

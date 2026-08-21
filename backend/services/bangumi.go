@@ -43,6 +43,7 @@ type BangumiSubjectInfo struct {
 	Cover         string   `json:"cover"`
 	TotalEpisodes int      `json:"total_episodes"`
 	Aliases       []string `json:"-"`
+	Platform      string   `json:"-"`
 }
 
 type bgmSearchResponse struct {
@@ -68,6 +69,7 @@ type bgmSubjectRaw struct {
 	TotalEpisodes int             `json:"total_episodes"`
 	Eps           int             `json:"eps"`
 	Infobox       json.RawMessage `json:"infobox"`
+	Platform      string          `json:"platform"`
 }
 
 type bgmImages struct {
@@ -136,6 +138,7 @@ func (s *BangumiService) GetSubject(id int) (*BangumiSubjectInfo, error) {
 		Cover:         toHTTPS(pickCover(subject.Images)),
 		TotalEpisodes: totalEpisodes,
 		Aliases:       parseInfoboxAliases(subject.Infobox),
+		Platform:      subject.Platform,
 	}, nil
 }
 

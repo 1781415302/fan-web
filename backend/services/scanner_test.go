@@ -51,7 +51,7 @@ func TestScannerRejectsPathTraversal(t *testing.T) {
 
 func TestScannerMovieBecomesEpisodeOne(t *testing.T) {
 	root := t.TempDir()
-	name := "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4"
+	name := "[Subs]某作品 剧场版 [1080p].mkv"
 	if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +68,22 @@ func TestScannerMovieBecomesEpisodeOne(t *testing.T) {
 	}
 	if episodes[0].FilePath != name {
 		t.Fatalf("expected FilePath %q, got %q", name, episodes[0].FilePath)
+	}
+}
+
+func TestScannerKaguyaYearOnlyReturnsEmpty(t *testing.T) {
+	root := t.TempDir()
+	name := "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4"
+	if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	episodes, err := NewScannerService(root).Scan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 0 {
+		t.Fatalf("expected 0 episodes for Kaguya-only folder, got %d: %#v", len(episodes), episodes)
 	}
 }
 
@@ -113,8 +129,8 @@ func TestScannerRealEpisodeOneBeatsMovie(t *testing.T) {
 
 func TestScannerTwoMoviesKeepsFirstByFilename(t *testing.T) {
 	root := t.TempDir()
-	first := "[Fansub][Alpha Title][2026][1080p].mkv"
-	later := "[Fansub][Zeta Title][2026][1080p].mkv"
+	first := "[Fansub][Alpha Title] 剧场版 [1080p].mkv"
+	later := "[Fansub][Zeta Title] 剧场版 [1080p].mkv"
 	for _, name := range []string{later, first} {
 		if err := os.WriteFile(filepath.Join(root, name), nil, 0o644); err != nil {
 			t.Fatal(err)

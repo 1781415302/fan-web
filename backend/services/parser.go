@@ -48,8 +48,9 @@ func ParseFilename(filename string) ParsedFilename {
 		EpisodeNum: extractEpisodeNumber(filename),
 	}
 
-	// 1. 去除扩展名
+	// 1. 去除扩展名，并把全角数字规范成 ASCII，便于抽集数/剥标题。
 	title := strings.TrimSuffix(filename, filepath.Ext(filename))
+	title = normalizeFullwidthDigits(title)
 
 	// 2. 去除开头的方括号块（字幕组名）
 	title = firstBracketPattern.ReplaceAllString(title, "")
@@ -86,7 +87,8 @@ func ParseFilename(filename string) ParsedFilename {
 	return parsed
 }
 
-// filenameKind 在 Title/EpisodeNum/Season 填好之后按 T1a 判定。默认 episode。
+// filenameKind 在 Title/EpisodeNum/Season 填好之后判定。默认 episode。
+// Kind=movie 仅当无集号且文件名含电影标记词；年份不是电影门闩。
 func filenameKind(p ParsedFilename) string {
 	if p.EpisodeNum > 0 {
 		return "episode"
@@ -97,12 +99,19 @@ func filenameKind(p ParsedFilename) string {
 	if movieDenied(p) {
 		return "episode"
 	}
-	hasMovie := hasMovieToken(p.FileName)
-	yearStrong := hasYearBracket(p.FileName) && isStrongTitle(p.Title)
-	if (hasMovie || yearStrong) && !movieOrFilmSoleTitleToken(p.Title) {
+	if hasMovieToken(p.FileName) && !movieOrFilmSoleTitleToken(p.Title) {
 		return "movie"
 	}
 	return "episode"
+}
+
+func normalizeFullwidthDigits(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '０' && r <= '９' {
+			return r - '０' + '0'
+		}
+		return r
+	}, s)
 }
 
 func hasMovieToken(filename string) bool {
@@ -110,15 +119,6 @@ func hasMovieToken(filename string) bool {
 		return true
 	}
 	return latinMovieTokenRe.MatchString(filename)
-}
-
-func hasYearBracket(filename string) bool {
-	for _, m := range bracketPattern.FindAllStringSubmatch(filename, -1) {
-		if yearBracketContentRe.MatchString(m[1]) {
-			return true
-		}
-	}
-	return false
 }
 
 func isStrongTitle(title string) bool {
@@ -181,6 +181,12 @@ func isMetadataBracket(content string) bool {
 
 	// 纯数字或带修订号的集数编号（01、01v2）
 	matched, _ := regexp.MatchString(`(?i)^\d{1,4}(?:v\d+)?$`, lower)
+	if matched {
+		return true
+	}
+
+	// [E01] / [e01] / [E01v2] 是集数元数据，不得漏进 Title
+	matched, _ = regexp.MatchString(`(?i)^e\d{1,3}(?:v\d+)?$`, lower)
 	if matched {
 		return true
 	}

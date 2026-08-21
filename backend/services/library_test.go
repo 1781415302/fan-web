@@ -406,7 +406,7 @@ const kaguyaTriggerFile = "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-
 
 const kaguyaSearchJP = `{"list":[{"id":604826,"name":"超かぐや姫！","name_cn":"超时空辉夜姬！"}]}`
 
-const kaguyaSubjectAlias = `{"id":604826,"name":"超かぐや姫！","name_cn":"超时空辉夜姬！","summary":"s","total_episodes":1,"images":{"large":"https://example.com/c.jpg"},"infobox":[{"key":"别名","value":"Cosmic Princess Kaguya!"}]}`
+const kaguyaSubjectAlias = `{"id":604826,"name":"超かぐや姫！","name_cn":"超时空辉夜姬！","summary":"s","total_episodes":1,"platform":"WEB","images":{"large":"https://example.com/c.jpg"},"infobox":[{"key":"别名","value":"Cosmic Princess Kaguya!"}]}`
 
 const kaguyaSubjectNoInfobox = `{"id":604826,"name":"超かぐや姫！","name_cn":"超时空辉夜姬！","summary":"s","total_episodes":1,"images":{"large":"https://example.com/c.jpg"}}`
 
@@ -538,7 +538,6 @@ func TestLibraryScanCannotIdentifyEpisodeNumber(t *testing.T) {
 	files := []string{
 		"unknown.mkv",
 		"v2.mkv",
-		"[Fansub][Bocchi the Rock!][1080p].mkv",
 		"Arrival[2026].mkv",
 	}
 	for _, name := range files {
@@ -621,8 +620,8 @@ func TestLibraryScanRealEpisodeBeatsSameTitleMovie(t *testing.T) {
 	if movieParsed.Title != realParsed.Title || movieParsed.Title == "" {
 		t.Fatalf("Titles must match before asserting: movie=%#v real=%#v", movieParsed, realParsed)
 	}
-	if movieParsed.Kind != "movie" || realParsed.Kind != "episode" || realParsed.EpisodeNum != 1 {
-		t.Fatalf("unexpected kinds/ep: movie=%#v real=%#v", movieParsed, realParsed)
+	if movieParsed.Kind != "episode" || movieParsed.EpisodeNum != 0 || realParsed.Kind != "episode" || realParsed.EpisodeNum != 1 {
+		t.Fatalf("unexpected kinds/ep: no-ep=%#v real=%#v", movieParsed, realParsed)
 	}
 	for _, name := range []string{movie, real} {
 		if err := writeEmptyFile(filepath.Join(root, name)); err != nil {
@@ -647,8 +646,8 @@ func TestLibraryScanRealEpisodeBeatsSameTitleMovie(t *testing.T) {
 	if result.NewAnimes != 1 || result.NewEpisodes != 1 {
 		t.Fatalf("expected real ep1 created, got %#v", result)
 	}
-	if len(result.Unidentified) != 1 || result.Unidentified[0].FileName != movie || result.Unidentified[0].Reason != "无法识别集数" {
-		t.Fatalf("movie should be 无法识别集数, got %#v", result)
+	if len(result.Unidentified) != 1 || result.Unidentified[0].FileName != movie || result.Unidentified[0].Reason != "同目录已有第 1 集" {
+		t.Fatalf("no-ep file should be 同目录已有第 1 集, got %#v", result)
 	}
 
 	anime, err := database.GetAnimeByBangumiID(604826)
@@ -757,5 +756,75 @@ func TestLibraryScanOmitsKindFromJSON(t *testing.T) {
 	}
 	if strings.Contains(string(parsedRaw), "kind") || strings.Contains(string(parsedRaw), "Kind") {
 		t.Fatalf("ParsedFilename JSON must not contain kind: %s", parsedRaw)
+	}
+}
+
+func TestLibraryScanNoEpStrongTitleDoesNotCreateTV(t *testing.T) {
+	files := []string{
+		"[Fansub][Bocchi the Rock!][2022][1080p].mkv",
+		"[Fansub][Bocchi the Rock!][1080p].mkv",
+	}
+	for _, name := range files {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := writeEmptyFile(filepath.Join(root, name)); err != nil {
+				t.Fatal(err)
+			}
+			setupLibraryDB(t)
+
+			result, err := NewLibraryService(mockBangumiService(), root).Scan()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.NewAnimes != 0 || result.NewEpisodes != 0 || len(result.Unidentified) != 1 {
+				t.Fatalf("expected 0 animes and one unidentified, got %#v", result)
+			}
+			got := result.Unidentified[0]
+			if got.FileName != name || got.Reason != "无法识别集数" {
+				t.Fatalf("unexpected unidentified file: %#v", got)
+			}
+			anime, err := database.GetAnimeByBangumiID(1001)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if anime != nil {
+				t.Fatalf("must not create Bocchi from no-ep file, got %#v", anime)
+			}
+		})
+	}
+}
+
+func TestLibraryScanSearchesYearFirst(t *testing.T) {
+	root := t.TempDir()
+	if err := writeEmptyFile(filepath.Join(root, kaguyaTriggerFile)); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	var keywords []string
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			keyword := strings.TrimPrefix(request.URL.Path, "/search/subject/")
+			keywords = append(keywords, keyword)
+			if strings.Contains(keyword, "Cosmic Princess Kaguya") {
+				return kaguyaSearchJP
+			}
+			return `{"list":[]}`
+		}
+		if strings.HasPrefix(request.URL.Path, "/v0/subjects/") {
+			return kaguyaSubjectAlias
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 1 {
+		t.Fatalf("year-first search should still accept Kaguya, got %#v", result)
+	}
+	if len(keywords) == 0 || keywords[0] != "Cosmic Princess Kaguya 2026" {
+		t.Fatalf("first Search keyword = %#v, want Cosmic Princess Kaguya 2026 first", keywords)
 	}
 }

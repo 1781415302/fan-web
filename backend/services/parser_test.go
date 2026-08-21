@@ -34,14 +34,14 @@ func TestParseFilename(t *testing.T) {
 		{name: "Title-01v2.mkv", wantTitle: "Title", wantNumber: 1, wantKind: "episode"},
 		{name: "[Fansub][v2].mkv", wantTitle: "v2", wantNumber: 0, wantKind: "episode"},
 		{name: "v2.mkv", wantTitle: "v2", wantNumber: 0, wantKind: "episode"},
-		{name: "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4", wantTitle: "Cosmic Princess Kaguya", wantNumber: 0, wantKind: "movie"},
-		{name: "[Subs][宇宙公主辉夜][2026][1080p].mp4", wantTitle: "宇宙公主辉夜", wantNumber: 0, wantKind: "movie"},
+		{name: "[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4", wantTitle: "Cosmic Princess Kaguya", wantNumber: 0, wantKind: "episode"},
+		{name: "[Subs][宇宙公主辉夜][2026][1080p].mp4", wantTitle: "宇宙公主辉夜", wantNumber: 0, wantKind: "episode"},
 		{name: "[Subs]某作品 剧场版 [1080p].mkv", wantTitle: "某作品 剧场版", wantNumber: 0, wantKind: "movie"},
 		{name: "[Subs]某作品 劇場版 [1080p].mkv", wantTitle: "某作品 劇場版", wantNumber: 0, wantKind: "movie"},
 		{name: "Some Title the Movie [1080p].mkv", wantTitle: "Some Title the Movie", wantNumber: 0, wantKind: "movie"},
 		{name: "[Subs]某作品 剧场版 [12][1080p].mkv", wantTitle: "某作品 剧场版", wantNumber: 12, wantKind: "episode"},
 		{name: "[Fansub][Bocchi the Rock!][1080p].mkv", wantTitle: "Bocchi the Rock!", wantNumber: 0, wantKind: "episode"},
-		{name: "[Fansub][Bocchi the Rock!][2022][1080p].mkv", wantTitle: "Bocchi the Rock!", wantNumber: 0, wantKind: "movie"},
+		{name: "[Fansub][Bocchi the Rock!][2022][1080p].mkv", wantTitle: "Bocchi the Rock!", wantNumber: 0, wantKind: "episode"},
 		{name: "Arrival[2026].mkv", wantTitle: "Arrival", wantNumber: 0, wantKind: "episode"},
 		{name: "unknown.mkv", wantTitle: "unknown", wantNumber: 0, wantKind: "episode"},
 		{name: "[Fansub][Show Name][NCOP][1080p].mkv", wantTitle: "Show Name NCOP", wantNumber: 0, wantKind: "episode"},
@@ -54,9 +54,12 @@ func TestParseFilename(t *testing.T) {
 		{name: "Filmography of Someone [1080p].mkv", wantTitle: "Filmography of Someone", wantNumber: 0, wantKind: "episode"},
 		{name: "Movie.mkv", wantTitle: "Movie", wantNumber: 0, wantKind: "episode"},
 		{name: "Film.mkv", wantTitle: "Film", wantNumber: 0, wantKind: "episode"},
-		{name: "[TSDM][Show Name][E01][2026][NF_web-DL].mkv", wantTitle: "Show Name E01", wantNumber: 0, wantKind: "episode"},
+		{name: "[TSDM][Show Name][E01][2026][NF_web-DL].mkv", wantTitle: "Show Name", wantNumber: 1, wantKind: "episode"},
 		{name: "[TSDM][Show Name][00][2026][1080p].mkv", wantTitle: "Show Name", wantNumber: 0, wantKind: "episode"},
 		{name: "[TSDM][Show Name][000][2026][1080p].mkv", wantTitle: "Show Name", wantNumber: 0, wantKind: "episode"},
+		{name: "[Fansub] Show Name_01_[1080p].mkv", wantTitle: "Show Name", wantNumber: 1, wantKind: "episode"},
+		{name: "[Subs]某作品 第０１集 [1080p].mkv", wantTitle: "某作品", wantNumber: 1, wantKind: "episode"},
+		{name: "[Subs][某作品][０１][1080p].mkv", wantTitle: "某作品", wantNumber: 1, wantKind: "episode"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -70,8 +73,8 @@ func TestParseFilename(t *testing.T) {
 
 	t.Run("json omits kind", func(t *testing.T) {
 		parsed := ParseFilename("[TSDM][Cosmic Princess Kaguya][2026][NF_web-DL][HEVC-10bit 1080p AAC][CHS_JP].mp4")
-		if parsed.Kind != "movie" || parsed.EpisodeNum != 0 {
-			t.Fatalf("Kaguya Kind=%q EpisodeNum=%d, want movie/0", parsed.Kind, parsed.EpisodeNum)
+		if parsed.Kind != "episode" || parsed.EpisodeNum != 0 {
+			t.Fatalf("Kaguya Kind=%q EpisodeNum=%d, want episode/0", parsed.Kind, parsed.EpisodeNum)
 		}
 		raw, err := json.Marshal(parsed)
 		if err != nil {

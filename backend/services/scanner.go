@@ -19,6 +19,8 @@ var videoExts = map[string]bool{
 
 var epPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\[(\d{1,3})(?:v\d+)?\]`),
+	regexp.MustCompile(`\[[Ee](\d{1,3})(?:v\d+)?\]`),
+	regexp.MustCompile(`_(\d{1,3})_`),
 	regexp.MustCompile(`(?i)-\s*(\d{1,3})(?:v\d+)?\b`),
 	regexp.MustCompile(`(?i)ep\.?\s*(\d{1,3})(?:v\d+)?\b`),
 	regexp.MustCompile(`第\s*(\d{1,3})\s*[集話话]`),
@@ -250,6 +252,7 @@ func (s *ScannerService) resolveDirectory(dirPath string) (string, error) {
 }
 
 func extractEpisodeNumber(filename string) int {
+	filename = normalizeFullwidthDigits(filename)
 	for _, pattern := range epPatterns {
 		match := pattern.FindStringSubmatch(filename)
 		if len(match) < 2 {
