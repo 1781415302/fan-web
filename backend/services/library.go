@@ -62,9 +62,48 @@ func (s *LibraryService) RootPath() string {
 	return s.rootPath
 }
 
-type realEp1Key struct {
+// groupKey 是扫描分组键：同目录同有效标题为一组。
+type groupKey struct {
 	relDir string
-	title  string
+	title  string // effectiveTitle（含季号合成后缀 "第N季"）
+}
+
+// scanContext 单次扫描的共享状态。processGroup 串行调用（Scan 持 scanMu），无需锁。
+type scanContext struct {
+	episodesBySubject map[int]subjectEpisodesResult // subjectID → 本篇剧集（记忆化）
+}
+
+type subjectEpisodesResult struct {
+	episodes []BangumiEpisode
+	err      error // 失败也缓存：同次扫描不重复打失败 API
+}
+
+// boundTitleMinScore 快通道标题冲突闸，对所有组统一适用。
+const boundTitleMinScore = 0.5
+
+func effectiveTitle(parsed ParsedFilename, relDir string) string {
+	effTitle := parsed.Title
+	if effTitle != "" {
+		return effTitle
+	}
+	hint := DeriveDirTitle(relDir)
+	if hint.Title == "" {
+		return ""
+	}
+	season := parsed.Season
+	if season == 0 {
+		season = hint.Season
+	}
+	if season > 0 {
+		return fmt.Sprintf("%s 第%d季", hint.Title, season)
+	}
+	return hint.Title
+}
+
+func stripSeasonSuffix(title string) string {
+	t := stripAll(title, matchSeasonRe)
+	t = strings.Join(strings.Fields(t), " ")
+	return strings.Trim(t, " -")
 }
 
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
@@ -78,19 +117,19 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	}
 	result.TotalFiles = len(allFiles)
 
-	// 先解析每一个视频（含已关联），按 (relDir, Title) 标记真集号 1。
-	// 作用域不是整目录：根目录 Bocchi [01] 不得挤掉 Kaguya。
-	hasRealEp1 := make(map[realEp1Key]struct{})
+	// 先解析每一个视频（含已关联），按 (relDir, effectiveTitle) 标记真集号 1。
+	hasRealEp1 := make(map[groupKey]struct{})
 	parsedFiles := make([]parsedLibraryFile, 0, len(allFiles))
 	for _, file := range allFiles {
 		parsed := ParseFilename(file.fileName)
-		if parsed.EpisodeNum == 1 && parsed.Title != "" {
-			hasRealEp1[realEp1Key{relDir: file.relDir, title: parsed.Title}] = struct{}{}
+		eff := effectiveTitle(parsed, file.relDir)
+		if parsed.EpisodeNum == 1 && eff != "" {
+			hasRealEp1[groupKey{relDir: file.relDir, title: eff}] = struct{}{}
 		}
 		parsedFiles = append(parsedFiles, parsedLibraryFile{libraryFile: file, parsed: parsed})
 	}
 
-	groups := make(map[string][]parsedLibraryFile)
+	groups := make(map[groupKey][]parsedLibraryFile)
 	for _, file := range parsedFiles {
 		associated, err := database.IsFileAssociated(file.fileName, file.relDir)
 		if err != nil {
@@ -103,30 +142,38 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 			continue
 		}
 
-		if file.parsed.Title == "" {
+		eff := effectiveTitle(file.parsed, file.relDir)
+		if eff == "" {
 			addUnidentified(result, file.fileName, file.relDir, "无法解析文件名")
 			continue
 		}
 		if file.parsed.EpisodeNum == 0 {
-			if _, marked := hasRealEp1[realEp1Key{relDir: file.relDir, title: file.parsed.Title}]; marked {
+			if _, marked := hasRealEp1[groupKey{relDir: file.relDir, title: eff}]; marked {
 				addUnidentified(result, file.fileName, file.relDir, "同目录已有第 1 集")
 				continue
 			}
 		}
-		if file.parsed.EpisodeNum > 0 || file.parsed.Kind == "movie" || isStrongTitle(file.parsed.Title) {
-			groups[file.parsed.Title] = append(groups[file.parsed.Title], file)
+		if file.parsed.EpisodeNum > 0 || file.parsed.Kind == "movie" || isStrongTitle(eff) {
+			key := groupKey{relDir: file.relDir, title: eff}
+			groups[key] = append(groups[key], file)
 			continue
 		}
 		addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
 	}
 
-	titles := make([]string, 0, len(groups))
-	for title := range groups {
-		titles = append(titles, title)
+	keys := make([]groupKey, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
 	}
-	sort.Strings(titles)
-	for _, title := range titles {
-		s.processGroup(title, groups[title], result)
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].relDir != keys[j].relDir {
+			return keys[i].relDir < keys[j].relDir
+		}
+		return keys[i].title < keys[j].title
+	})
+	ctx := &scanContext{episodesBySubject: make(map[int]subjectEpisodesResult)}
+	for _, key := range keys {
+		s.processGroup(key, groups[key], ctx, result)
 	}
 	return result, nil
 }
@@ -167,14 +214,122 @@ func (s *LibraryService) collectFiles() ([]libraryFile, error) {
 	return files, nil
 }
 
-func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, result *LibraryScanResult) {
+func (s *LibraryService) subjectEpisodes(ctx *scanContext, subjectID int) ([]BangumiEpisode, error) {
+	if ctx != nil {
+		if cached, ok := ctx.episodesBySubject[subjectID]; ok {
+			return cached.episodes, cached.err
+		}
+	}
+	var episodes []BangumiEpisode
+	var err error
+	if s.bangumi == nil {
+		err = fmt.Errorf("Bangumi 服务不可用")
+	} else {
+		episodes, err = s.bangumi.ListPublicSubjectEpisodes(subjectID)
+	}
+	if ctx != nil {
+		if ctx.episodesBySubject == nil {
+			ctx.episodesBySubject = make(map[int]subjectEpisodesResult)
+		}
+		ctx.episodesBySubject[subjectID] = subjectEpisodesResult{episodes: episodes, err: err}
+	}
+	return episodes, err
+}
+
+func groupMaxEpNumber(files []parsedLibraryFile, subject *BangumiSubjectInfo) int {
+	maxEp := 0
+	for _, file := range files {
+		ep := 0
+		if file.parsed.EpisodeNum > 0 {
+			ep = file.parsed.EpisodeNum
+		} else if subjectAllowsEpisodeOne(subject, file.parsed) {
+			ep = 1
+		}
+		if ep > maxEp {
+			maxEp = ep
+		}
+	}
+	return maxEp
+}
+
+func (s *LibraryService) resolveCeiling(ctx *scanContext, subject *BangumiSubjectInfo, files []parsedLibraryFile) int {
+	maxEp := groupMaxEpNumber(files, subject)
+	if maxEp == 0 {
+		return 0
+	}
+	base := 0
+	if subject != nil {
+		base = subject.TotalEpisodes
+	}
+	if maxEp <= base {
+		return base
+	}
+	if subject == nil {
+		log.Printf("[Library] 无法拉取剧集上限：条目为空")
+		return 0
+	}
+	episodes, err := s.subjectEpisodes(ctx, subject.ID)
+	if err != nil {
+		log.Printf("[Library] 获取条目 %d 剧集失败，越界校验放行: %v", subject.ID, err)
+		return 0
+	}
+	return episodeCeiling(subject, episodes)
+}
+
+func groupAllProducibleOverflow(files []parsedLibraryFile, subject *BangumiSubjectInfo, ceiling int) bool {
+	if ceiling <= 0 {
+		return false
+	}
+	saw := false
+	for _, file := range files {
+		ep := 0
+		if file.parsed.EpisodeNum > 0 {
+			ep = file.parsed.EpisodeNum
+		} else if subjectAllowsEpisodeOne(subject, file.parsed) {
+			ep = 1
+		} else {
+			continue
+		}
+		saw = true
+		if ep <= ceiling {
+			return false
+		}
+	}
+	return saw
+}
+
+func boundTitleScore(title string, anime *models.Anime) float64 {
+	norm := normalizeTitle(title)
+	score := diceBigram(norm, normalizeTitle(anime.Title))
+	if cn := diceBigram(norm, normalizeTitle(anime.TitleCn)); cn > score {
+		score = cn
+	}
+	return score
+}
+
+func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, ctx *scanContext, result *LibraryScanResult) {
 	if len(files) == 0 {
 		return
 	}
-	groupDir := files[0].relDir
-	for _, file := range files[1:] {
-		if file.relDir != groupDir {
-			addGroupUnidentified(result, files, "同一标题的文件位于不同目录")
+	groupDir := key.relDir
+	title := key.title
+
+	// 快通道：先于 bangumi==nil（离线可用）。
+	boundAnimes, listErr := database.ListAnimesByFilePath(groupDir)
+	if listErr != nil {
+		log.Printf("[Library] 按目录查询番剧失败 %q: %v", groupDir, listErr)
+	} else if len(boundAnimes) == 1 && boundAnimes[0].BangumiID > 0 {
+		anime := boundAnimes[0]
+		t := stripSeasonSuffix(title)
+		if boundTitleScore(t, &anime) >= boundTitleMinScore {
+			subject := &BangumiSubjectInfo{
+				ID:            anime.BangumiID,
+				Name:          anime.Title,
+				NameCn:        anime.TitleCn,
+				TotalEpisodes: anime.EpCount,
+			}
+			ceiling := s.resolveCeiling(ctx, subject, files)
+			s.persistGroupEpisodes(&anime, files, subject, ceiling, result)
 			return
 		}
 	}
@@ -278,31 +433,43 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 		addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
 		return
 	}
-	if anime == nil {
-		if !groupProducesAnyEpisode(files, subject) {
-			addGroupUnidentified(result, files, "无法识别集数")
-			return
-		}
-		anime, err = database.CreateAnime(&models.Anime{
-			Title:     subject.Name,
-			TitleCn:   subject.NameCn,
-			BangumiID: subject.ID,
-			Cover:     subject.Cover,
-			Summary:   subject.Summary,
-			EpCount:   subject.TotalEpisodes,
-			FilePath:  groupDir,
-		})
-		if err != nil {
-			addGroupUnidentified(result, files, "创建番剧失败")
-			return
-		}
-		if anime.FilePath != groupDir {
-			addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
-			return
-		}
-		result.NewAnimes++
+	if anime != nil {
+		ceiling := s.resolveCeiling(ctx, subject, files)
+		s.persistGroupEpisodes(anime, files, subject, ceiling, result)
+		return
 	}
 
+	ceiling := s.resolveCeiling(ctx, subject, files)
+	if ceiling > 0 && groupMaxEpNumber(files, subject) > 0 && groupAllProducibleOverflow(files, subject, ceiling) {
+		addGroupUnidentified(result, files, fmt.Sprintf("全部文件集数超出条目范围（上限 %d），疑似匹配错误", ceiling))
+		return
+	}
+	if !groupProducesAnyEpisode(files, subject) {
+		addGroupUnidentified(result, files, "无法识别集数")
+		return
+	}
+	anime, err = database.CreateAnime(&models.Anime{
+		Title:     subject.Name,
+		TitleCn:   subject.NameCn,
+		BangumiID: subject.ID,
+		Cover:     subject.Cover,
+		Summary:   subject.Summary,
+		EpCount:   subject.TotalEpisodes,
+		FilePath:  groupDir,
+	})
+	if err != nil {
+		addGroupUnidentified(result, files, "创建番剧失败")
+		return
+	}
+	if anime.FilePath != groupDir {
+		addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
+		return
+	}
+	result.NewAnimes++
+	s.persistGroupEpisodes(anime, files, subject, ceiling, result)
+}
+
+func (s *LibraryService) persistGroupEpisodes(anime *models.Anime, files []parsedLibraryFile, subject *BangumiSubjectInfo, ceiling int, result *LibraryScanResult) {
 	existingEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
 	if err != nil {
 		addGroupUnidentified(result, files, "查询已有集数失败")
@@ -320,6 +487,10 @@ func (s *LibraryService) processGroup(title string, files []parsedLibraryFile, r
 			epNum = 1
 		} else {
 			addUnidentified(result, file.fileName, file.relDir, "无法识别集数")
+			continue
+		}
+		if ceiling > 0 && epNum > ceiling {
+			addUnidentified(result, file.fileName, file.relDir, fmt.Sprintf("集数超出条目范围（第 %d 集 / 上限 %d）", epNum, ceiling))
 			continue
 		}
 		existing, exists := existingByNumber[epNum]

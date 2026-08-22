@@ -269,6 +269,29 @@ func (s *BangumiService) ListSubjectEpisodes(token string, subjectID int) ([]Ban
 	return all, nil
 }
 
+// ListPublicSubjectEpisodes 拉取条目本篇剧集列表（/v0/episodes?type=0，分页 limit=200），
+// 无认证（请求不得带 Authorization 头）。端点为 OptionalHTTPBearer：
+// NSFW 条目无 token 会 404（ErrBangumiNotFound），调用方按 P3 降级放行。
+// 分页取尽（与 ListSubjectEpisodes 同策略）。
+func (s *BangumiService) ListPublicSubjectEpisodes(subjectID int) ([]BangumiEpisode, error) {
+	all := make([]BangumiEpisode, 0)
+	offset := 0
+	for {
+		path := fmt.Sprintf("/v0/episodes?subject_id=%d&type=0&limit=%d&offset=%d",
+			subjectID, subjectEpisodePageLimit, offset)
+		var page bgmEpisodePage
+		if err := s.doRequest(s.endpoint(path), &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Data...)
+		if len(page.Data) < subjectEpisodePageLimit {
+			break
+		}
+		offset += len(page.Data)
+	}
+	return all, nil
+}
+
 func (s *BangumiService) EnsureCollection(token string, subjectID int) error {
 	path := fmt.Sprintf("/v0/users/-/collections/%d", subjectID)
 	err := s.doAuthRequest(http.MethodGet, path, token, nil, &struct{}{})

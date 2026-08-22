@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -79,12 +80,27 @@ func ParseFilename(filename string) ParsedFilename {
 		title = stripAll(title, matchSeasonRe)
 		title = strings.Join(strings.Fields(title), " ")
 		title = strings.Trim(title, " -")
-		title = fmt.Sprintf("%s 第%d季", title, parsed.Season)
+		if title != "" {
+			title = fmt.Sprintf("%s 第%d季", title, parsed.Season)
+		}
 	}
 
 	parsed.Title = title
+	// 纯编号文件名（01.mkv）剥集数后标题仍是数字本身，置空好让目录兜底接管。
+	// 「86」当作品名且集号不是 86 时不置空。
+	if parsed.EpisodeNum > 0 && isEpisodeOnlyTitle(title, parsed.EpisodeNum) {
+		parsed.Title = ""
+	}
 	parsed.Kind = filenameKind(parsed)
 	return parsed
+}
+
+func isEpisodeOnlyTitle(title string, ep int) bool {
+	if title == "" || ep <= 0 {
+		return false
+	}
+	n, err := strconv.Atoi(title)
+	return err == nil && n == ep
 }
 
 // filenameKind 在 Title/EpisodeNum/Season 填好之后判定。默认 episode。

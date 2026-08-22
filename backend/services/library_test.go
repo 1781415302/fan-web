@@ -291,14 +291,13 @@ func TestLibraryScanMixedDirUsesEachFileRelDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.NewAnimes != 0 || len(result.Unidentified) != 2 {
-		t.Fatalf("mixed-dir group should be unidentified, got %#v", result)
+		t.Fatalf("each mixed-dir group should search independently and fail low-confidence, got %#v", result)
 	}
 	byName := map[string]UnidentifiedFile{}
 	for _, file := range result.Unidentified {
-		if file.Reason != "同一标题的文件位于不同目录" {
+		if file.Reason != "匹配置信度不足" {
 			t.Fatalf("unexpected reason %q on %#v", file.Reason, file)
 		}
-		assertUnidentifiedPathAndEmptyCandidates(t, file, file.FilePath)
 		byName[file.FileName] = file
 	}
 	if byName["Show Name - 01.mkv"].FilePath != "dirA" {
@@ -826,5 +825,351 @@ func TestLibraryScanSearchesYearFirst(t *testing.T) {
 	}
 	if len(keywords) == 0 || keywords[0] != "Cosmic Princess Kaguya 2026" {
 		t.Fatalf("first Search keyword = %#v, want Cosmic Princess Kaguya 2026 first", keywords)
+	}
+}
+
+func mockFrierenBangumi() *BangumiService {
+	return mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			return `{"list":[{"id":2001,"name":"芙莉莲","name_cn":"芙莉莲","eps_count":12,"images":{"large":"https://example.com/c.jpg"}}]}`
+		}
+		if request.URL.Path == "/v0/subjects/2001" {
+			return `{"id":2001,"name":"芙莉莲","name_cn":"芙莉莲","summary":"s","total_episodes":12,"images":{"large":"https://example.com/c.jpg"}}`
+		}
+		return `{}`
+	})
+}
+
+func TestLibraryScanDirFallbackCreatesAnime(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "02.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	result, err := NewLibraryService(mockFrierenBangumi(), root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 2 || len(result.Unidentified) != 0 {
+		t.Fatalf("dir fallback should create anime from 01.mkv, got %#v", result)
+	}
+	anime, err := database.GetAnimeByBangumiID(2001)
+	if err != nil || anime == nil {
+		t.Fatalf("expected anime 2001, err=%v anime=%v", err, anime)
+	}
+	if anime.FilePath != "芙莉莲" {
+		t.Fatalf("file_path = %q, want 芙莉莲", anime.FilePath)
+	}
+}
+
+func TestLibraryScanSeasonDirComposesSeasonTitle(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "葬送的芙莉莲", "Season 2")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "S02E01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	var keywords []string
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			keyword := strings.TrimPrefix(request.URL.Path, "/search/subject/")
+			keywords = append(keywords, keyword)
+			return `{"list":[{"id":2002,"name":"葬送的芙莉莲 第2季","name_cn":"葬送的芙莉莲 第2季","eps_count":12}]}`
+		}
+		if request.URL.Path == "/v0/subjects/2002" {
+			return `{"id":2002,"name":"葬送的芙莉莲 第2季","name_cn":"葬送的芙莉莲 第2季","summary":"s","total_episodes":12,"images":{}}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 1 {
+		t.Fatalf("season dir should create S2 anime, got %#v keywords=%v", result, keywords)
+	}
+	found := false
+	for _, kw := range keywords {
+		if strings.Contains(kw, "第2季") || strings.Contains(kw, "%E7%AC%AC2%E5%AD%A3") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected search keyword to contain 第2季, got %#v", keywords)
+	}
+	anime, err := database.GetAnimeByBangumiID(2002)
+	if err != nil || anime == nil {
+		t.Fatalf("expected anime 2002, err=%v", err)
+	}
+}
+
+func TestLibraryScanFastPathBoundDirNoSearch(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "[02].mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+	if _, err := database.CreateAnime(&models.Anime{
+		Title: "Sousou no Frieren", TitleCn: "芙莉莲", BangumiID: 2001, EpCount: 12, FilePath: "芙莉莲",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var searches atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			searches.Add(1)
+			return `{"list":[]}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searches.Load() != 0 {
+		t.Fatalf("fast path must not Search, got %d searches", searches.Load())
+	}
+	if result.NewAnimes != 0 || result.NewEpisodes != 1 || len(result.Unidentified) != 0 {
+		t.Fatalf("fast path should append episode, got %#v", result)
+	}
+}
+
+func TestLibraryScanBoundDirConflictFallsBackToSearch(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "海贼王 - 01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+	if _, err := database.CreateAnime(&models.Anime{
+		Title: "Sousou no Frieren", TitleCn: "芙莉莲", BangumiID: 2001, EpCount: 12, FilePath: "芙莉莲",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var searches atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			searches.Add(1)
+			return `{"list":[{"id":3001,"name":"ONE PIECE","name_cn":"海贼王","eps_count":12}]}`
+		}
+		if request.URL.Path == "/v0/subjects/3001" {
+			return `{"id":3001,"name":"ONE PIECE","name_cn":"海贼王","summary":"s","total_episodes":12,"images":{}}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searches.Load() == 0 {
+		t.Fatal("conflict should fall back to Search")
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 1 {
+		t.Fatalf("conflict fallback should create 海贼王, got %#v", result)
+	}
+	anime, err := database.GetAnimeByBangumiID(3001)
+	if err != nil || anime == nil {
+		t.Fatalf("expected 海贼王 created, err=%v", err)
+	}
+}
+
+func mockOverflowSubject(searchHits, episodeHits *atomic.Int32, episodeStatus int, episodeBody string) *BangumiService {
+	return &BangumiService{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		status := http.StatusOK
+		body := `{}`
+		switch {
+		case strings.HasPrefix(request.URL.Path, "/search/subject/"):
+			if searchHits != nil {
+				searchHits.Add(1)
+			}
+			body = `{"list":[{"id":4001,"name":"某番","name_cn":"某番","eps_count":12}]}`
+		case request.URL.Path == "/v0/subjects/4001":
+			body = `{"id":4001,"name":"某番","name_cn":"某番","summary":"s","total_episodes":12,"images":{}}`
+		case request.URL.Path == "/v0/episodes":
+			if episodeHits != nil {
+				episodeHits.Add(1)
+			}
+			status = episodeStatus
+			body = episodeBody
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}}
+}
+
+func TestLibraryScanNewAnimeWholeGroupOverflowReject(t *testing.T) {
+	root := t.TempDir()
+	if err := writeEmptyFile(filepath.Join(root, "某番 - 13.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	result, err := NewLibraryService(mockOverflowSubject(nil, nil, http.StatusOK, `{"data":[{"id":1,"ep":12,"sort":12}]}`), root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 0 || result.NewEpisodes != 0 || len(result.Unidentified) != 1 {
+		t.Fatalf("whole-group overflow should reject, got %#v", result)
+	}
+	if result.Unidentified[0].Reason != "全部文件集数超出条目范围（上限 12），疑似匹配错误" {
+		t.Fatalf("unexpected reason: %#v", result.Unidentified[0])
+	}
+	assertUnidentifiedPathAndEmptyCandidates(t, result.Unidentified[0], "")
+	anime, err := database.GetAnimeByBangumiID(4001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anime != nil {
+		t.Fatalf("must not CreateAnime on overflow, got %#v", anime)
+	}
+}
+
+func TestLibraryScanExistingAnimeSingleFileOverflow(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "某番")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "[13].mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+	if _, err := database.CreateAnime(&models.Anime{
+		Title: "某番", TitleCn: "某番", BangumiID: 4001, EpCount: 12, FilePath: "某番",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var searches atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			searches.Add(1)
+			return `{"list":[]}`
+		}
+		if request.URL.Path == "/v0/episodes" {
+			return `{"data":[{"id":1,"ep":12,"sort":12}]}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 0 || result.NewEpisodes != 0 {
+		t.Fatalf("existing anime overflow must not create, got %#v", result)
+	}
+	if len(result.Unidentified) != 1 || result.Unidentified[0].Reason != "集数超出条目范围（第 13 集 / 上限 12）" {
+		t.Fatalf("single-file overflow, got %#v", result)
+	}
+	assertUnidentifiedPathAndEmptyCandidates(t, result.Unidentified[0], "某番")
+}
+
+func TestLibraryScanEpisodesAPIFailureAllows(t *testing.T) {
+	root := t.TempDir()
+	if err := writeEmptyFile(filepath.Join(root, "某番 - 13.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	result, err := NewLibraryService(mockOverflowSubject(nil, nil, http.StatusNotFound, `{}`), root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 1 || len(result.Unidentified) != 0 {
+		t.Fatalf("episodes API failure should allow, got %#v", result)
+	}
+	anime, err := database.GetAnimeByBangumiID(4001)
+	if err != nil || anime == nil {
+		t.Fatalf("expected CreateAnime after P3 allow, err=%v", err)
+	}
+}
+
+func TestLibraryScanNoProducibleEpisodeSkipsOverflow(t *testing.T) {
+	root := t.TempDir()
+	if err := writeEmptyFile(filepath.Join(root, "[Fansub][Bocchi the Rock!][2022][1080p].mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	var episodeHits atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			return `{"list":[{"id":1001,"name":"Bocchi the Rock!","name_cn":"孤独摇滚！","eps_count":12}]}`
+		}
+		if request.URL.Path == "/v0/subjects/1001" {
+			return `{"id":1001,"name":"Bocchi the Rock!","name_cn":"孤独摇滚！","summary":"s","total_episodes":12,"images":{}}`
+		}
+		if request.URL.Path == "/v0/episodes" {
+			episodeHits.Add(1)
+			return `{"data":[{"id":1,"ep":12,"sort":12}]}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if episodeHits.Load() != 0 {
+		t.Fatalf("no-producible group must not fetch episodes, hits=%d", episodeHits.Load())
+	}
+	if result.NewAnimes != 0 || len(result.Unidentified) != 1 || result.Unidentified[0].Reason != "无法识别集数" {
+		t.Fatalf("expected 无法识别集数, got %#v", result)
+	}
+}
+
+func TestLibraryScanDirFallbackEp1MarksHasRealEp1(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "[01].mkv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "[Fansub][芙莉莲][2022][1080p].mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+
+	result, err := NewLibraryService(mockFrierenBangumi(), root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewAnimes != 1 || result.NewEpisodes != 1 {
+		t.Fatalf("numbered ep1 should create, got %#v", result)
+	}
+	found := false
+	for _, file := range result.Unidentified {
+		if file.FileName == "[Fansub][芙莉莲][2022][1080p].mkv" && file.Reason == "同目录已有第 1 集" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no-ep strong title should be 同目录已有第 1 集, got %#v", result)
 	}
 }

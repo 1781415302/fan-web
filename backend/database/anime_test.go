@@ -421,3 +421,69 @@ func TestEnqueueWatchedForUserDoesNotDuplicate(t *testing.T) {
 		t.Fatalf("DeleteBangumiOutboxByUser 只清该用户，got %#v", items)
 	}
 }
+
+func TestListAnimesByFilePath(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "list-by-path.db")
+	if err := Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if DB != nil {
+			_ = DB.Close()
+			DB = nil
+		}
+	})
+
+	empty, err := ListAnimesByFilePath("missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("empty result must be empty slice + nil error, got %#v", empty)
+	}
+
+	single, err := CreateAnime(&models.Anime{Title: "Only", FilePath: "only-dir", BangumiID: 11})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ListAnimesByFilePath("only-dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != single.ID || got[0].FilePath != "only-dir" {
+		t.Fatalf("single row: %#v", got)
+	}
+
+	first, err := CreateAnime(&models.Anime{Title: "DupA", FilePath: "same-dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := CreateAnime(&models.Anime{Title: "DupB", FilePath: "same-dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dups, err := ListAnimesByFilePath("same-dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dups) != 2 || dups[0].ID != first.ID || dups[1].ID != second.ID {
+		t.Fatalf("expected id ascending %d then %d, got %#v", first.ID, second.ID, dups)
+	}
+	if dups[0].ID >= dups[1].ID {
+		t.Fatalf("ids must be ascending: %d >= %d", dups[0].ID, dups[1].ID)
+	}
+
+	if _, err := CreateAnime(&models.Anime{Title: "Parent", FilePath: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateAnime(&models.Anime{Title: "Child", FilePath: "a/b"}); err != nil {
+		t.Fatal(err)
+	}
+	exact, err := ListAnimesByFilePath("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exact) != 1 || exact[0].FilePath != "a" {
+		t.Fatalf("query a must not match a/b, got %#v", exact)
+	}
+}
