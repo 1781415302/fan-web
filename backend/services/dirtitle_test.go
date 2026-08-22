@@ -43,6 +43,22 @@ func TestDeriveDirTitle(t *testing.T) {
 			relDir:    filepath.Join("2024", "芙莉莲"),
 			wantTitle: "芙莉莲",
 		},
+
+		{
+			name:      "title then remux",
+			relDir:    filepath.Join("芙莉莲", "Remux"),
+			wantTitle: "芙莉莲",
+		},
+		{
+			name:      "title then 高清",
+			relDir:    filepath.Join("芙莉莲", "高清"),
+			wantTitle: "芙莉莲",
+		},
+		{
+			name:      "title then SP",
+			relDir:    filepath.Join("芙莉莲", "SP"),
+			wantTitle: "芙莉莲",
+		},
 	}
 
 	for _, test := range tests {

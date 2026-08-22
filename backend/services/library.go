@@ -320,17 +320,20 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 		log.Printf("[Library] 按目录查询番剧失败 %q: %v", groupDir, listErr)
 	} else if len(boundAnimes) == 1 && boundAnimes[0].BangumiID > 0 {
 		anime := boundAnimes[0]
-		t := stripSeasonSuffix(title)
-		if boundTitleScore(t, &anime) >= boundTitleMinScore {
-			subject := &BangumiSubjectInfo{
-				ID:            anime.BangumiID,
-				Name:          anime.Title,
-				NameCn:        anime.TitleCn,
-				TotalEpisodes: anime.EpCount,
+		// 组标题带季号时不剥季硬绑，避免 S02 写进已绑定的 S1。
+		if extractSeason(title) == 0 {
+			t := stripSeasonSuffix(title)
+			if boundTitleScore(t, &anime) >= boundTitleMinScore {
+				subject := &BangumiSubjectInfo{
+					ID:            anime.BangumiID,
+					Name:          anime.Title,
+					NameCn:        anime.TitleCn,
+					TotalEpisodes: anime.EpCount,
+				}
+				ceiling := s.resolveCeiling(ctx, subject, files)
+				s.persistGroupEpisodes(&anime, files, subject, ceiling, result)
+				return
 			}
-			ceiling := s.resolveCeiling(ctx, subject, files)
-			s.persistGroupEpisodes(&anime, files, subject, ceiling, result)
-			return
 		}
 	}
 

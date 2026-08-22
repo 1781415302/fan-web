@@ -951,6 +951,53 @@ func TestLibraryScanFastPathBoundDirNoSearch(t *testing.T) {
 	}
 }
 
+
+func TestLibraryScanFastPathSkipsWhenGroupHasSeason(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "S02E01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+	if _, err := database.CreateAnime(&models.Anime{
+		Title: "Sousou no Frieren", TitleCn: "芙莉莲", BangumiID: 2001, EpCount: 28, FilePath: "芙莉莲",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var searches atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			searches.Add(1)
+			return `{"list":[{"id":2002,"name":"Sousou no Frieren Season 2","name_cn":"葬送的芙莉莲 第2季","eps_count":12}]}`
+		}
+		if request.URL.Path == "/v0/subjects/2002" {
+			return `{"id":2002,"name":"Sousou no Frieren Season 2","name_cn":"葬送的芙莉莲 第2季","summary":"s","total_episodes":12,"images":{}}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searches.Load() == 0 {
+		t.Fatal("seasoned group must not fast-path bind to S1")
+	}
+	if result.NewEpisodes != 0 {
+		t.Fatalf("must not write S02 into bound S1, got %#v", result)
+	}
+	eps, err := database.ListEpisodesByAnimeID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 0 {
+		t.Fatalf("bound S1 gained episodes: %#v", eps)
+	}
+}
+
 func TestLibraryScanBoundDirConflictFallsBackToSearch(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "芙莉莲")
