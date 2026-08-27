@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { useThemeStore } from './theme'
+import { useThemeStore, UI_ACCENT, type UiStyle } from './theme'
 
 const STORAGE_KEY = 'fan_web_ui'
 
@@ -43,5 +43,22 @@ describe('theme store', () => {
     expect(store.ui).toBe('apple')
     expect(document.documentElement.dataset.ui).toBe('apple')
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('apple')
+  })
+
+  it('exposes accentColor from UI_ACCENT for the current ui', () => {
+    const store = newStore()
+    store.setUi('glass')
+    expect(store.accentColor).toBe(UI_ACCENT.glass)
+    store.setUi('apple')
+    expect(store.accentColor).toBe(UI_ACCENT.apple)
+  })
+
+  it('ignores invalid ui style in setUi', () => {
+    const store = newStore()
+    store.setUi('cinema')
+    expect(store.ui).toBe('cinema')
+    store.setUi('bogus-style' as unknown as UiStyle)
+    expect(store.ui).toBe('cinema')
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('cinema')
   })
 })

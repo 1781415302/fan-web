@@ -115,18 +115,10 @@ class ApiClient {
   }
 
   void _onError(DioException error, ErrorInterceptorHandler handler) {
-    final response = error.response;
-    if (response?.statusCode == 401 ||
-        _isUnauthorizedEnvelope(response?.data)) {
-      _notifyUnauthorized();
-    }
+    // 仅处理无响应的网络错误。401 / 业务码 2001 已在 _onResponse 中统一
+    // 触发 onUnauthorized；reject 会再次进入此处，若重复通知会导致一次未
+    // 授权响应触发两次回调（如重复弹窗/重复 push 登录路由）。此处不再重复。
     handler.next(error);
-  }
-
-  bool _isUnauthorizedEnvelope(Object? data) {
-    return data is Map &&
-        data['code'] is num &&
-        (data['code'] as num).toInt() == 2001;
   }
 
   DioException _errorFor(Response<dynamic> response, ApiException exception) {

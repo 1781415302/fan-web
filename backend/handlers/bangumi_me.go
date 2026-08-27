@@ -90,7 +90,10 @@ func (h *BangumiMeHandler) Put(c *gin.Context) {
 	}
 	utils.Success(c, bangumiLinkStatus(token, true))
 	if h.sync != nil {
-		go h.sync.Drain()
+		go func() {
+			defer func() { recover() }()
+			h.sync.Drain()
+		}()
 	}
 }
 
@@ -124,6 +127,10 @@ func (h *BangumiMeHandler) Sync(c *gin.Context) {
 	}
 	if !linked {
 		utils.Error(c, utils.CodeInvalidParams, "未绑定 Bangumi")
+		return
+	}
+	if h.sync == nil {
+		utils.Error(c, utils.CodeInternal, "同步服务未初始化")
 		return
 	}
 	result, err := h.sync.SyncInbound(userID)

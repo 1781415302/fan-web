@@ -63,9 +63,17 @@ func (j *LibraryJob) Start() ScanJob {
 }
 
 func (j *LibraryJob) run() {
+	completed := false
 	defer func() {
 		if rec := recover(); rec != nil {
 			j.fail(fmt.Sprint(rec))
+			return
+		}
+		// 正常路径会在末尾置 completed=true。若函数因 panic(nil) 等异常提前
+		// 返回而 current 仍停在 running，则强制进入 error，避免唯一扫描槽被
+		// 永久卡死（panic(nil) 时 recover()==nil，无法被上面的分支捕获）。
+		if !completed && j.current.State == ScanJobRunning {
+			j.fail("scan aborted unexpectedly")
 		}
 	}()
 
@@ -85,6 +93,7 @@ func (j *LibraryJob) run() {
 		return
 	}
 	j.succeed(result)
+	completed = true
 }
 
 func (j *LibraryJob) fail(message string) {

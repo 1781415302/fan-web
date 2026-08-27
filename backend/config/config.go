@@ -110,6 +110,14 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, err
 	}
+	// 空文件（0 字节）时 yaml.Unmarshal 不报错且返回零值配置，与“未初始化”无法区分；
+	// 若下游据此跳过初始化，可能出现“看似已配置但缺失 JWT 密钥等关键项”的状态。
+	// 将空内容视为未配置，触发初始化流程。
+	if len(data) == 0 {
+		cfg := Default()
+		cfg.Configured = false
+		return cfg, nil
+	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
@@ -192,6 +200,12 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("替换配置文件失败: %w", err)
 	}
 	cleanup = false
+	// 强持久性：rename 后对父目录 fsync，确保目录项元数据在极端掉电下不丢失。
+	// 忽略错误（部分平台不支持对目录 Sync），属于性能与持久性的权衡。
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
 	return nil
 }
 

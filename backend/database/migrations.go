@@ -141,16 +141,23 @@ func applyMigration(db *sql.DB, m migration) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
 
 	if err := m.run(tx); err != nil {
+		_ = tx.Rollback()
 		return err
 	}
 	if _, err := tx.Exec(
 		"INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
 		m.version, m.name,
 	); err != nil {
+		_ = tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	// 不再依赖 defer 的 Rollback：commit 失败后多数驱动已回滚，再 Rollback 多为
+	// no-op；这里显式在失败路径回滚并返回 commit 错误，错误语义更清晰。
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return nil
 }

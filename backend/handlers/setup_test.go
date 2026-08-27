@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -153,7 +154,7 @@ func TestSetupSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("expected config permissions 0600, got %v", info.Mode().Perm())
 	}
 	if config.IsInsecureJWTSecret(cfg.JWT.Secret) {

@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 
 	"github.com/gin-gonic/gin"
 
@@ -37,7 +38,8 @@ func (h *AnimeHandler) Rebind(c *gin.Context) {
 
 	subject, err := h.bangumi.GetSubject(request.BangumiID)
 	if err != nil {
-		utils.Error(c, utils.CodeInternal, "获取 Bangumi 数据失败: "+err.Error())
+		log.Printf("[Anime] 重新绑定番剧 %d 到 Bangumi 条目 %d 失败: %v", id, request.BangumiID, err)
+		utils.Error(c, utils.CodeInternal, "获取 Bangumi 数据失败")
 		return
 	}
 

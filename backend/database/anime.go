@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"fan-web/models"
+	"modernc.org/sqlite"
 )
 
 const animeSelect = `
@@ -30,16 +31,39 @@ func ListAnimes(page, pageSize int, keyword string, userID int64) ([]AnimeListIt
 	var total int
 	var rows *sql.Rows
 	var err error
-	if page < 1 || pageSize < 1 {
-		return []AnimeListItem{}, 0, nil
+
+	// 与 ListUnidentified 保持一致：非法分页先夹到有效范围，溢出/非法分页仍返回
+	// 真实 total 而非 0，避免前端误判为“0 页/无结果”。
+	if page < 1 {
+		page = 1
 	}
+	if pageSize < 1 {
+		pageSize = 50
+	} else if pageSize > 100 {
+		pageSize = 100
+	}
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		if err := DB.QueryRow(
+			"SELECT COUNT(*) FROM animes WHERE title LIKE ? OR title_cn LIKE ?",
+			like, like,
+		).Scan(&total); err != nil {
+			return nil, 0, err
+		}
+	} else {
+		if err := DB.QueryRow("SELECT COUNT(*) FROM animes").Scan(&total); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	// 防御 page 无上限时的整数溢出：handlers 只限制 pageSize<=100，page 无上限，
 	// (page-1)*pageSize 溢出回绕既可能为负，也可能为 0 或正数（如 (2^60)*16=2^64≡0），
 	// 仅判断 offset<0 无法覆盖全部情形；SQLite 将负 OFFSET 与 OFFSET 0 都按第一页
 	// 处理，导致越界页错误返回第一页数据。故在乘法前用除法形式检查上限，
-	// 越界页统一按空页返回。
+	// 越界页统一按空页返回（total 仍为真实值）。
 	if page-1 > math.MaxInt/pageSize {
-		return []AnimeListItem{}, 0, nil
+		return []AnimeListItem{}, total, nil
 	}
 	offset := (page - 1) * pageSize
 	selectSQL := `
@@ -52,20 +76,11 @@ func ListAnimes(page, pageSize int, keyword string, userID int64) ([]AnimeListIt
 
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		if err := DB.QueryRow(
-			"SELECT COUNT(*) FROM animes WHERE title LIKE ? OR title_cn LIKE ?",
-			like, like,
-		).Scan(&total); err != nil {
-			return nil, 0, err
-		}
 		rows, err = DB.Query(
 			selectSQL+" WHERE a.title LIKE ? OR a.title_cn LIKE ? ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?",
 			userID, like, like, pageSize, offset,
 		)
 	} else {
-		if err := DB.QueryRow("SELECT COUNT(*) FROM animes").Scan(&total); err != nil {
-			return nil, 0, err
-		}
 		rows, err = DB.Query(
 			selectSQL+" ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?",
 			userID, pageSize, offset,
@@ -128,7 +143,7 @@ func CreateAnime(anime *models.Anime) (*models.Anime, error) {
 	if err != nil {
 		// 命中 animes(bangumi_id) 唯一索引（部分索引，bangumi_id > 0）时，
 		// 回退到按 bangumi_id 返回已有记录，使写入幂等。
-		if anime.BangumiID > 0 && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if anime.BangumiID > 0 && isUniqueConstraint(err) {
 			existing, queryErr := GetAnimeByBangumiID(anime.BangumiID)
 			if queryErr != nil {
 				return nil, queryErr
@@ -350,6 +365,22 @@ func scanEpisode(row scanner) (*models.Episode, error) {
 
 var ErrBangumiBound = errors.New("bangumi already bound")
 
+// isUniqueConstraint 用类型化错误判断 SQLite 唯一约束冲突，
+// 取代对英文驱动错误文本（"UNIQUE constraint failed"）的子串匹配，
+// 对驱动版本/本地化变化更稳健，也避免把其他 UNIQUE 失败误判为 Bangumi 绑定冲突。
+// modernc.org/sqlite 默认开启扩展结果码（extendedResultCodes(true)），
+// 唯一约束冲突返回 SQLITE_CONSTRAINT_UNIQUE(2067)。
+func isUniqueConstraint(err error) bool {
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		return se.Code() == sqliteConstraintUnique
+	}
+	return false
+}
+
+// sqliteConstraintUnique 即 SQLite 扩展结果码 SQLITE_CONSTRAINT_UNIQUE（2067）。
+const sqliteConstraintUnique = 2067
+
 // UpdateAnimeBangumi 写入 Bangumi 元数据（bangumi_id/title/title_cn/cover/summary/ep_count），
 // 不改 file_path。命中 bangumi_id 唯一索引时返回 ErrBangumiBound。
 func UpdateAnimeBangumi(id int64, meta *models.Anime) error {
@@ -361,7 +392,7 @@ func UpdateAnimeBangumi(id int64, meta *models.Anime) error {
 		meta.BangumiID, meta.Title, meta.TitleCn, meta.Cover, meta.Summary, meta.EpCount, id,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if isUniqueConstraint(err) {
 			return ErrBangumiBound
 		}
 		return err

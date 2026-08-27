@@ -1,4 +1,4 @@
-import api, { type ApiResponse, unwrap } from '.'
+import api, { type ApiResponse, unwrap } from './index'
 import type { LoginData } from '../types/auth'
 
 export interface SetupSubmitData {

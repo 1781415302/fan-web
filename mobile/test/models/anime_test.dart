@@ -131,4 +131,53 @@ void main() {
     expect(parseContinueItems({'items': []}), isEmpty);
     expect(parseContinueItems({'items': null}), isEmpty);
   });
+
+  Episode _ep(int id) =>
+      Episode(id: id, animeId: 1, epNumber: id, title: '$id', filePath: '$id', duration: 1);
+
+  EpisodeProgress _prog(int id, {required int position, required bool watched}) =>
+      EpisodeProgress(
+        episodeId: id,
+        position: position,
+        watched: watched,
+        updatedAt: '',
+      );
+
+  test('pickContinueEpisode prefers in-progress over unwatched', () {
+    final episodes = [_ep(1), _ep(2), _ep(3)];
+    final progress = {
+      1: _prog(1, position: 100, watched: true),
+      2: _prog(2, position: 50, watched: false),
+      3: _prog(3, position: 0, watched: false),
+    };
+    // 进行中的 ep2 优先于未看的 ep3。
+    expect(pickContinueEpisode(episodes, progress), _ep(2));
+  });
+
+  test('pickContinueEpisode returns first unwatched when none in progress', () {
+    final episodes = [_ep(1), _ep(2)];
+    final progress = {
+      1: _prog(1, position: 0, watched: true),
+      2: _prog(2, position: 0, watched: false),
+    };
+    expect(pickContinueEpisode(episodes, progress), _ep(2));
+  });
+
+  test('pickContinueEpisode returns null when all watched', () {
+    final episodes = [_ep(1), _ep(2)];
+    final progress = {
+      1: _prog(1, position: 0, watched: true),
+      2: _prog(2, position: 10, watched: true),
+    };
+    expect(pickContinueEpisode(episodes, progress), isNull);
+  });
+
+  test('pickContinueEpisode treats missing progress as unwatched', () {
+    final episodes = [_ep(1), _ep(2)];
+    final progress = {
+      1: _prog(1, position: 0, watched: true),
+    };
+    // ep2 进度为空视为未看，无进行中时应返回它。
+    expect(pickContinueEpisode(episodes, progress), _ep(2));
+  });
 }

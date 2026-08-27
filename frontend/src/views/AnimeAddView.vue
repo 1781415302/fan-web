@@ -43,8 +43,16 @@ async function handleCreate() {
   if (!selected.value) return
   creating.value = true
   createError.value = ''
+  const rawPath = filePath.value.trim()
+  // 纵深防御：拒绝绝对路径与越界路径（含 /、\、..），与界面提示保持一致；
+  // 即使后端校验缺失，也不会把非法路径入库。
+  if (rawPath && (/[/\\]/.test(rawPath) || rawPath.includes('..'))) {
+    createError.value = '文件目录名不能包含路径分隔符或 ..'
+    creating.value = false
+    return
+  }
   try {
-    const anime = await createAnime(selected.value.id, filePath.value.trim())
+    const anime = await createAnime(selected.value.id, rawPath)
     await router.replace({ name: 'anime-detail', params: { id: anime.id } })
   } catch (e: unknown) {
     createError.value = e instanceof ApiError ? e.message : '添加失败'

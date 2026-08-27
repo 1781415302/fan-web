@@ -41,14 +41,19 @@ class AuthApi {
           receiveTimeout: const Duration(seconds: 10),
         ),
       );
-      final response = await dio.get<dynamic>('health');
-      final data = response.data;
-      return response.statusCode == 200 &&
-          data is Map &&
-          data['code'] is num &&
-          (data['code'] as num).toInt() == 0 &&
-          data['data'] is Map &&
-          data['data']['status'] == 'ok';
+      try {
+        final response = await dio.get<dynamic>('health');
+        final data = response.data;
+        return response.statusCode == 200 &&
+            data is Map &&
+            data['code'] is num &&
+            (data['code'] as num).toInt() == 0 &&
+            data['data'] is Map &&
+            data['data']['status'] == 'ok';
+      } finally {
+        // 一次性请求结束后关闭 Dio，避免连接/定时器资源泄漏积累。
+        dio.close();
+      }
     } catch (_) {
       return false;
     }

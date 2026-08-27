@@ -53,7 +53,7 @@ func TestLoginRateLimiterIntegrationCountsFailuresAndResetsOnSuccess(t *testing.
 	}
 }
 
-func TestLoginDatabaseErrorResetsRateLimit(t *testing.T) {
+func TestLoginDatabaseErrorStillRateLimited(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	if err := database.Init(filepath.Join(t.TempDir(), "login-db-error.db")); err != nil {
 		t.Fatal(err)
@@ -70,7 +70,8 @@ func TestLoginDatabaseErrorResetsRateLimit(t *testing.T) {
 	router := gin.New()
 	router.POST("/api/auth/login", limiter.Middleware(), handler.Login)
 
-	for i := 0; i < 6; i++ {
+	// DB 错误不再解除限流：前 5 次失败计数累计（返回 9999），第 6 次触发限流（1003）。
+	for i := 0; i < 5; i++ {
 		code, message := loginResponse(t, router, "alice", "correct-password")
 		if code != 9999 {
 			t.Fatalf("closed-DB login %d should be 9999, got %d %q", i+1, code, message)
@@ -78,6 +79,10 @@ func TestLoginDatabaseErrorResetsRateLimit(t *testing.T) {
 		if message != "查询用户失败" {
 			t.Fatalf("closed-DB login should say 查询用户失败, got %q", message)
 		}
+	}
+	code, message := loginResponse(t, router, "alice", "correct-password")
+	if code != 1003 {
+		t.Fatalf("closed-DB login 6 should be rate limited 1003, got %d %q", code, message)
 	}
 }
 

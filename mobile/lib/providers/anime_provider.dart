@@ -96,7 +96,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
     final serverUrl = auth.serverUrl ?? '';
     final userId = auth.user?.id ?? 0;
     final encoded = base64Url.encode(utf8.encode(serverUrl));
-    return '${_cacheKeyPrefix}_$encoded _$userId';
+    return '${_cacheKeyPrefix}_${encoded}_$userId';
   }
 
   /// 清除当前用户的缓存（登出时调用）
@@ -109,10 +109,26 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
 
   @override
   AnimeListState build() {
-    // 监听用户身份和服务器变化（不只看 token 字符串）
-    ref.watch(authProvider.select((s) => (s.serverUrl, s.user?.id)));
+    // 监听用户身份和服务器变化（不只看 token 字符串）。
+    // 身份变化后 build 会重新执行：复用新身份的本地缓存避免白屏，并主动触发首屏加载，
+    // 避免“重置为空白列表却无自动重载”导致的白屏/闪烁（P4）。
+    final identity = ref.watch(
+      authProvider.select((s) => (s.serverUrl, s.user?.id)),
+    );
     _animeApi = ref.watch(animeApiProvider);
-    return const AnimeListState();
+    final cached = _loadFromCache();
+    final initial = cached != null && cached.items.isNotEmpty
+        ? AnimeListState(
+            items: cached.items,
+            total: cached.total,
+            currentPage: cached.page,
+            pageSize: cached.pageSize == 0 ? 20 : cached.pageSize,
+          )
+        : const AnimeListState();
+    if (identity.$2 != null) {
+      unawaited(_fetchFirstPage());
+    }
+    return initial;
   }
 
   Future<void> loadFirstPage() async {
@@ -175,6 +191,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
     }
   }
 
+  // 仅持久化第 1 页用于首屏秒开;翻页结果不写缓存,故离线重启后仅可见首页(P6)。
   void _saveToCache(PaginatedAnimes result) {
     try {
       final prefs = ref.read(sharedPreferencesProvider);

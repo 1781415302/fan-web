@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,8 @@ func TestSaveWrites0600AndLoadsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	// Windows 下 os.Chmod(0o600) 不改变报告权限位（恒为 0666），权限断言仅在 POSIX 有效。
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("expected 0600 permissions, got %v", info.Mode().Perm())
 	}
 

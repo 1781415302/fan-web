@@ -13,12 +13,14 @@ import (
 type LibraryHandler struct {
 	library *services.LibraryService
 	job     *services.LibraryJob
+	scanner *services.ScannerService
 }
 
 func NewLibraryHandler(library *services.LibraryService) *LibraryHandler {
 	return &LibraryHandler{
 		library: library,
 		job:     services.NewLibraryJob(library),
+		scanner: services.NewScannerService(library.RootPath()),
 	}
 }
 
@@ -34,18 +36,13 @@ func (h *LibraryHandler) Unidentified(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("page_size"))
 	items, total, err := database.ListUnidentified(page, pageSize)
+
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "查询未识别文件失败")
 		return
 	}
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 50
-	} else if pageSize > 100 {
-		pageSize = 100
-	}
+	// 分页的下限/上限裁剪已统一收敛到 database.ListUnidentified，
+	// handler 不再重复裁剪，避免两层策略漂移；此处原样回显请求的分页参数。
 	utils.Success(c, gin.H{
 		"items":     items,
 		"total":     total,
@@ -55,7 +52,9 @@ func (h *LibraryHandler) Unidentified(c *gin.Context) {
 }
 
 func (h *LibraryHandler) Dirs(c *gin.Context) {
-	items, err := services.NewScannerService(h.library.RootPath()).ListSubDirs()
+	// 复用缓存的 ScannerService，避免每次请求新建；同步最新根目录以反映初始化后的变更。
+	h.scanner.SetRootPath(h.library.RootPath())
+	items, err := h.scanner.ListSubDirs()
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "读取目录失败")
 		return

@@ -7,6 +7,33 @@ import { createAppRouter, getSafeRedirect } from './index'
 import { useAuthStore } from '../stores/auth'
 import { TOKEN_STORAGE_KEY } from '../api'
 
+vi.mock('../api', () => {
+  class ApiError extends Error {
+    readonly code: number
+    constructor(code: number, message: string) {
+      super(message)
+      this.code = code
+    }
+  }
+  return {
+    TOKEN_STORAGE_KEY: 'fan_web_token',
+    ApiError,
+    unwrap: (response: { data: { code: number; message: string; data: unknown } }) => {
+      if (response.data.code !== 0) throw new ApiError(response.data.code, response.data.message)
+      return response.data.data
+    },
+    default: {
+      get: vi.fn(),
+      post: vi.fn(),
+    },
+  }
+})
+
+import api from '../api'
+
+const mockedGet = vi.mocked(api.get)
+const mockedPost = vi.mocked(api.post)
+
 async function go(router: import('vue-router').Router, path: string) {
   await router.push(path)
   await router.isReady()
@@ -21,6 +48,9 @@ describe('router guards', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     window.localStorage.clear()
+    // 密闭化：用 mock 精确控制 /auth/me 行为，避免依赖真实网络（CI 偶发红）。
+    mockedGet.mockRejectedValue(new Error('network down'))
+    mockedPost.mockReset()
   })
 
   it('redirects to /setup when not initialized', async () => {

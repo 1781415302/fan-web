@@ -191,14 +191,15 @@ func listenWithFallback(startPort, maxAttempts int) (net.Listener, int, error) {
 }
 
 func isAddrInUse(err error) bool {
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		var sysErr *os.SyscallError
-		if errors.As(opErr.Err, &sysErr) {
-			return sysErr.Err == syscall.EADDRINUSE
-		}
+	// 跨平台识别“地址已被占用”：
+	// Linux 下底层为 syscall.EADDRINUSE；Windows 下为 windows.Errno(10048/WSAEADDRINUSE)，
+	// 二者类型不同导致 errors.Is 无法直接匹配，故再以错误信息兜底。
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
 	}
-	return false
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "only one usage of each socket address")
 }
 
 // serveFrontend 托管嵌入的前端静态资源，并为单页应用做 index.html 回退。

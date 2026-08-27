@@ -13,8 +13,8 @@ vi.mock('../api', () => ({
       this.code = code
     }
   },
-  unwrap: (response: { data: { code: number; data: unknown } }) => {
-    if (response.data.code !== 0) throw new Error(response.data as unknown as string)
+  unwrap: (response: { data: { code: number; message: string; data: unknown } }) => {
+    if (response.data.code !== 0) throw new ApiError(response.data.code, response.data.message)
     return response.data.data
   },
   default: {

@@ -15,6 +15,12 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const initialized = ref(false)
   let initializePromise: Promise<void> | null = null
+  // 后端不可达（网络错误/超时）时，避免每次客户端路由切换都重新发起 /auth/me
+  // （默认 10s 超时），导致导航被阻塞。记录最近一次网络错误时间，冷却期内直接复用
+  // “未初始化”状态；路由守卫的 `token && !initialized` 分支会放行，待冷却期过后
+  // 下一次导航再尝试恢复会话。
+  let lastNetworkErrorAt = 0
+  const INIT_RETRY_COOLDOWN_MS = 10_000
 
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
   const isAdmin = computed(() => Boolean(user.value?.is_admin))
@@ -25,6 +31,9 @@ export const useAuthStore = defineStore('auth', () => {
     }
     if (initializePromise) {
       return initializePromise
+    }
+    if (lastNetworkErrorAt && Date.now() - lastNetworkErrorAt < INIT_RETRY_COOLDOWN_MS) {
+      return
     }
 
     initializePromise = (async () => {
@@ -45,6 +54,9 @@ export const useAuthStore = defineStore('auth', () => {
         if (isAuthFailure(error)) {
           clearSession()
           initialized.value = true
+        } else {
+          // 网络错误 / 超时：保留会话并保持未初始化，记录冷却期避免重复请求。
+          lastNetworkErrorAt = Date.now()
         }
       }
     })()

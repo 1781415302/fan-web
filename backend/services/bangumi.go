@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -92,8 +93,8 @@ func NewBangumiService() *BangumiService {
 }
 
 func (s *BangumiService) Search(keyword string) ([]BangumiSearchItem, error) {
-	apiURL := fmt.Sprintf("%s/search/subject/%s?type=2&responseGroup=small",
-		bangumiBaseURL, url.PathEscape(strings.TrimSpace(keyword)))
+	apiURL := s.endpoint(fmt.Sprintf("/search/subject/%s?type=2&responseGroup=small",
+		url.PathEscape(strings.TrimSpace(keyword))))
 
 	var response bgmSearchResponse
 	if err := s.doRequest(apiURL, &response); err != nil {
@@ -119,7 +120,7 @@ func (s *BangumiService) Search(keyword string) ([]BangumiSearchItem, error) {
 }
 
 func (s *BangumiService) GetSubject(id int) (*BangumiSubjectInfo, error) {
-	apiURL := fmt.Sprintf("%s/v0/subjects/%d", bangumiBaseURL, id)
+	apiURL := s.endpoint(fmt.Sprintf("/v0/subjects/%d", id))
 
 	var subject bgmSubjectRaw
 	if err := s.doRequest(apiURL, &subject); err != nil {
@@ -207,6 +208,8 @@ func aliasesFromInfoboxValue(raw json.RawMessage) []string {
 const (
 	subjectEpisodePageLimit    = 200
 	episodeCollectionPageLimit = 1000
+	// maxBangumiPages 限制单次分页拉取的最大页数，防止上游持续返回满页时无限循环/无界分配切片。
+	maxBangumiPages = 100
 )
 
 // BangumiEpisode 是上游章节（本篇 type=0）的映射字段。
@@ -253,7 +256,8 @@ func (s *BangumiService) GetMe(token string) error {
 func (s *BangumiService) ListSubjectEpisodes(token string, subjectID int) ([]BangumiEpisode, error) {
 	all := make([]BangumiEpisode, 0)
 	offset := 0
-	for {
+	fullToCap := true
+	for fetchPage := 0; fetchPage < maxBangumiPages; fetchPage++ {
 		path := fmt.Sprintf("/v0/episodes?subject_id=%d&type=0&limit=%d&offset=%d",
 			subjectID, subjectEpisodePageLimit, offset)
 		var page bgmEpisodePage
@@ -262,9 +266,13 @@ func (s *BangumiService) ListSubjectEpisodes(token string, subjectID int) ([]Ban
 		}
 		all = append(all, page.Data...)
 		if len(page.Data) < subjectEpisodePageLimit {
+			fullToCap = false
 			break
 		}
 		offset += len(page.Data)
+	}
+	if fullToCap {
+		log.Printf("[Bangumi] subject %d 剧集分页持续满页，已在 %d 页上限停止拉取", subjectID, maxBangumiPages)
 	}
 	return all, nil
 }
@@ -276,7 +284,8 @@ func (s *BangumiService) ListSubjectEpisodes(token string, subjectID int) ([]Ban
 func (s *BangumiService) ListPublicSubjectEpisodes(subjectID int) ([]BangumiEpisode, error) {
 	all := make([]BangumiEpisode, 0)
 	offset := 0
-	for {
+	fullToCap := true
+	for fetchPage := 0; fetchPage < maxBangumiPages; fetchPage++ {
 		path := fmt.Sprintf("/v0/episodes?subject_id=%d&type=0&limit=%d&offset=%d",
 			subjectID, subjectEpisodePageLimit, offset)
 		var page bgmEpisodePage
@@ -285,9 +294,13 @@ func (s *BangumiService) ListPublicSubjectEpisodes(subjectID int) ([]BangumiEpis
 		}
 		all = append(all, page.Data...)
 		if len(page.Data) < subjectEpisodePageLimit {
+			fullToCap = false
 			break
 		}
 		offset += len(page.Data)
+	}
+	if fullToCap {
+		log.Printf("[Bangumi] subject %d 公开剧集分页持续满页，已在 %d 页上限停止拉取", subjectID, maxBangumiPages)
 	}
 	return all, nil
 }
@@ -320,7 +333,8 @@ func (s *BangumiService) PatchEpisodeCollection(token string, subjectID int, epi
 func (s *BangumiService) ListEpisodeCollection(token string, subjectID int) ([]BangumiEpisodeCollection, error) {
 	all := make([]BangumiEpisodeCollection, 0)
 	offset := 0
-	for {
+	fullToCap := true
+	for fetchPage := 0; fetchPage < maxBangumiPages; fetchPage++ {
 		path := fmt.Sprintf("/v0/users/-/collections/%d/episodes?episode_type=0&limit=%d&offset=%d",
 			subjectID, episodeCollectionPageLimit, offset)
 		var page bgmEpisodeCollectionPage
@@ -329,9 +343,13 @@ func (s *BangumiService) ListEpisodeCollection(token string, subjectID int) ([]B
 		}
 		all = append(all, page.Data...)
 		if len(page.Data) < episodeCollectionPageLimit {
+			fullToCap = false
 			break
 		}
 		offset += len(page.Data)
+	}
+	if fullToCap {
+		log.Printf("[Bangumi] subject %d 收藏剧集分页持续满页，已在 %d 页上限停止拉取", subjectID, maxBangumiPages)
 	}
 	return all, nil
 }

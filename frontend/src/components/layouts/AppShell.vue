@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 
 import { useShell } from '../../composables/useShell'
 import { useThemeStore } from '../../stores/theme'
@@ -51,6 +51,22 @@ const contentClass = computed(() => {
     default:
       return 'content'
   }
+})
+
+// Bangumi 弹窗 ESC 关闭：监听挂在 document 上，即使焦点位于遮罩层等非可聚焦子元素也生效。
+function handleBangumiKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && bangumiPanelOpen.value) {
+    event.preventDefault()
+    closeBangumiPanel()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleBangumiKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleBangumiKeydown)
 })
 </script>
 
@@ -216,6 +232,7 @@ const contentClass = computed(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="bangumi-panel-title"
+        tabindex="-1"
         @keydown.esc="closeBangumiPanel"
       >
         <header class="bangumi-panel-head">

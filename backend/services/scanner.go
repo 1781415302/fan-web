@@ -115,6 +115,8 @@ func (s *ScannerService) Scan(dirPath string) ([]models.Episode, error) {
 		seen[video.parsed.EpisodeNum] = true
 		episodes = append(episodes, models.Episode{EpNumber: video.parsed.EpisodeNum, FilePath: video.name})
 	}
+	// 第二遍仅处理电影：电影默认映射到第 1 集，但仅在其目标集号未被第一遍的
+	// 真实剧集占用时才落库。这样“真实集优先”不依赖 videos 的文件名排序结果。
 	for _, video := range videos {
 		if video.parsed.Kind != "movie" {
 			continue
@@ -210,6 +212,10 @@ func (s *ScannerService) ResolveFilePath(dirPath, fileName string) (string, erro
 	}
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("视频文件无效")
+	}
+	// 仅允许受支持的视频扩展名，避免流出字幕（.srt/.ass）、元数据（.nfo）等非媒体文件。
+	if !videoExts[strings.ToLower(filepath.Ext(resolved))] {
+		return "", fmt.Errorf("不支持的视频文件类型")
 	}
 	return resolved, nil
 }

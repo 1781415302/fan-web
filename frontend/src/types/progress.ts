@@ -21,5 +21,5 @@ export interface AnimeWithProgress {
   ep_count: number
   file_path: string
   created_at: string
-  watched_count: number
+  watched_count?: number
 }

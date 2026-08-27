@@ -53,12 +53,18 @@ func NewLibraryService(bangumi *BangumiService, rootPath string) *LibraryService
 }
 
 // SetRootPath 更新视频根目录，初始化完成时调用。
+// 与 Scan 读取 rootPath 共用 scanMu，避免与正在进行的扫描发生数据竞争。
 func (s *LibraryService) SetRootPath(rootPath string) {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
 	s.rootPath = rootPath
 }
 
 // RootPath 返回当前视频根目录，供 handler 接线 ListSubDirs。
+// 与 Scan 读取 rootPath 共用 scanMu，避免与扫描发生数据竞争。
 func (s *LibraryService) RootPath() string {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
 	return s.rootPath
 }
 
@@ -184,6 +190,9 @@ func (s *LibraryService) collectFiles() ([]libraryFile, error) {
 		if walkErr != nil {
 			return walkErr
 		}
+		// 跳过目录与符号链接。符号链接一并跳过既是防止目录穿越（逃逸 rootPath）
+		// 的安全护栏，也意味着指向视频文件的软链不会被扫描入库；当前取舍为
+		// 优先安全、不支持软链视频，后续如需支持须对软链目标做在 rootPath 内校验。
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}

@@ -17,6 +17,9 @@ const userSelect = `
 	FROM users
 `
 
+// 注意：本文件中的用户查询函数都要求 database.Init 已完成数据库连接初始化；在 Init
+// 之前调用会因包级 DB 为 nil 而 panic。InitAdmin 已内置 nil 守卫返回明确错误，其余函数
+// 遵循“必须先 Init”的契约，不再重复守卫，以保持调用路径简洁。
 func GetUserByID(id int64) (*models.User, error) {
 	row := DB.QueryRow(userSelect+" WHERE id = ?", id)
 	return scanUser(row)
@@ -49,12 +52,9 @@ func ListUsers() ([]models.User, error) {
 }
 
 func CreateUser(username, password string, isAdmin bool) (*models.User, error) {
-	if _, err := GetUserByUsername(username); err == nil {
-		return nil, ErrUsernameExists
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
+	// 不再先 SELECT 探测：用户名唯一性由 users.username 的 UNIQUE 约束兜底，冲突时
+	// 下方 INSERT 的 “UNIQUE constraint failed” 已转换为 ErrUsernameExists。省去一次
+	// 往返，在 MaxOpenConns=1 的单连接下更明显。
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("生成用户密码哈希失败: %w", err)

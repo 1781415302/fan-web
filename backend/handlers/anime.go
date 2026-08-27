@@ -281,7 +281,8 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 
 	subject, err := h.bangumi.GetSubject(request.BangumiID)
 	if err != nil {
-		utils.Error(c, utils.CodeInternal, "获取 Bangumi 数据失败: "+err.Error())
+		log.Printf("[Anime] 获取 Bangumi 条目 %d 失败: %v", request.BangumiID, err)
+		utils.Error(c, utils.CodeInternal, "获取 Bangumi 数据失败")
 		return
 	}
 	anime, err := database.CreateAnime(&models.Anime{
@@ -297,6 +298,8 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 		utils.Error(c, utils.CodeInternal, "创建番剧失败")
 		return
 	}
+	// 仅在并发 TOCTOU 竞态时触发：并发请求于两次查询之间插入了相同 bangumi_id
+	// 但不同路径的记录，CreateAnime 的唯一索引回退返回既有行；正常流程不可达。
 	if anime.FilePath != request.FilePath {
 		utils.Error(c, utils.CodeInvalidParams, "番剧已存在但目录不同")
 		return
@@ -380,7 +383,8 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 	}
 	episodes, err := h.scanner.Scan(anime.FilePath)
 	if err != nil {
-		utils.Error(c, utils.CodeInternal, err.Error())
+		log.Printf("[Anime] 扫描目录 %q 失败: %v", anime.FilePath, err)
+		utils.Error(c, utils.CodeInternal, "扫描番剧目录失败")
 		return
 	}
 
@@ -395,7 +399,8 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 	}
 
 	if err := database.SyncEpisodes(id, episodes); err != nil {
-		utils.Error(c, utils.CodeInternal, "保存集数失败: "+err.Error())
+		log.Printf("[Anime] 保存番剧 %d 集数失败: %v", id, err)
+		utils.Error(c, utils.CodeInternal, "保存集数失败")
 		return
 	}
 	storedEpisodes, err := database.ListEpisodesByAnimeID(id)

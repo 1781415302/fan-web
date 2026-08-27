@@ -144,7 +144,9 @@ func findServerAsset(assets []githubAsset) *githubAsset {
 func findSHA256Asset(assets []githubAsset) *githubAsset {
 	for i := range assets {
 		n := strings.ToLower(assets[i].Name)
-		if n == "sha256sums.txt" || n == "sha256sums" || strings.HasPrefix(n, "sha256") {
+		// 仅精确匹配校验和文件名，避免 sha256-evil.txt 之类宽松前缀命中错误/恶意文件。
+		// 内容仍来自 GitHub 且随后做 SHA 比对，影响有限，但收紧匹配更稳妥。
+		if n == "sha256sums.txt" || n == "sha256sums" {
 			return &assets[i]
 		}
 	}
@@ -291,6 +293,10 @@ func PerformUpdate(currentVersion string) error {
 	// .old 回滚副本在此刻意保留：新版尚未启动，删除它会丧失回滚能力。
 	// 由新版本成功启动（绑定端口）后通过 CleanupUpdateBackup 清理。
 
+	// 自重启：替换二进制后给进程发 SIGINT/SIGKILL 并退出。
+	// 前置条件：部署需配合进程监管（systemd / 容器 restart=always 等），
+	// 否则新二进制不会被自动拉起，服务将下线。若优雅关闭未能在 1.3s 内完成，
+	// 仍强制 Kill+Exit，可能中断在途请求/写盘，属有意为之的兜底。
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		p, _ := os.FindProcess(os.Getpid())

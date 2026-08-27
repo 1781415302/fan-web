@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -101,10 +102,31 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	info, err := os.Stat(request.VideoRootPath)
+	// 先解析符号链接得到真实路径，避免 os.Stat 直接跟随 symlink 把指向敏感目录的
+	// 符号链接当作视频根接受；再校验真实路径存在且为目录，并禁止其指向配置目录或程序所在目录。
+	realPath, err := filepath.EvalSymlinks(request.VideoRootPath)
+	if err != nil {
+		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
+		return
+	}
+	info, err := os.Stat(realPath)
 	if err != nil || !info.IsDir() {
 		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
 		return
+	}
+	if cfgDir, err := filepath.Abs(filepath.Dir(h.configPath)); err == nil {
+		if isSameOrDescendant(realPath, cfgDir) {
+			utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向配置目录")
+			return
+		}
+	}
+	if exePath, err := os.Executable(); err == nil {
+		if exeDir, err := filepath.Abs(filepath.Dir(exePath)); err == nil {
+			if isSameOrDescendant(realPath, exeDir) {
+				utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向程序目录")
+				return
+			}
+		}
 	}
 
 	// 校验完成后，在提交任何修改前再做一次配置写入可用性预检，
@@ -200,4 +222,13 @@ func deleteCreatedUser(userID int64) error {
 		return nil
 	}
 	return database.DeleteUser(userID)
+}
+
+// isSameOrDescendant 报告 path 是否等于 dir 或为其后代目录（用于禁止视频根指向敏感目录）。
+func isSameOrDescendant(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || !strings.HasPrefix(rel, "..")
 }

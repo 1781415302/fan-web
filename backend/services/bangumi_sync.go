@@ -90,39 +90,56 @@ func (s *BangumiSync) Drain() {
 	}
 
 	unauthorized := make(map[int64]bool)
+	// tokenCache 按 userID 缓存令牌，避免同一用户多行 outbox 重复查库读取。
+	tokenCache := make(map[int64]string)
 	first := true
 	for _, row := range rows {
 		if unauthorized[row.UserID] {
 			continue
 		}
-		token, ok, err := database.GetBangumiToken(row.UserID)
-		if err != nil {
-			log.Printf("[BangumiSync] 读取令牌失败: %v", err)
-			continue
-		}
-		if !ok || token == "" {
-			if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
-				log.Printf("[BangumiSync] 清除无令牌 outbox 失败: %v", delErr)
+		token, ok := tokenCache[row.UserID]
+		if !ok {
+			tok, tokOk, tokErr := database.GetBangumiToken(row.UserID)
+			if tokErr != nil {
+				log.Printf("[BangumiSync] 读取令牌失败: %v", tokErr)
+				continue
 			}
-			unauthorized[row.UserID] = true
-			continue
+			if !tokOk || tok == "" {
+				if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
+					log.Printf("[BangumiSync] 清除无令牌 outbox 失败: %v", delErr)
+				}
+				unauthorized[row.UserID] = true
+				continue
+			}
+			token = tok
+			tokenCache[row.UserID] = token
 		}
 		if !first {
 			s.sleep()
 		}
 		first = false
-		if err := s.drainRow(row, token); err != nil {
-			if errors.Is(err, ErrBangumiUnauthorized) {
+		// 释放 drainMu 后再做 Bangumi 网络 I/O，避免持锁跨越 GetMe/ListSubjectEpisodes/
+		// EnsureCollection/PatchEpisodeCollection 等 HTTP 调用而长时间阻塞其它调用方；
+		// 瞬时错误（非 401）保留行并让出时间片，避免上游故障期被持续触发的高频请求打爆 Bangumi。
+		s.drainMu.Unlock()
+		drainErr := s.drainRow(row, token)
+		if drainErr != nil && !errors.Is(drainErr, ErrBangumiUnauthorized) {
+			s.sleep()
+		}
+		s.drainMu.Lock()
+		if drainErr != nil {
+			if errors.Is(drainErr, ErrBangumiUnauthorized) {
 				if delErr := database.DeleteBangumiToken(row.UserID); delErr != nil {
 					log.Printf("[BangumiSync] 清除令牌失败: %v", delErr)
 				}
 				if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
 					log.Printf("[BangumiSync] 清除 outbox 失败: %v", delErr)
 				}
+				delete(tokenCache, row.UserID)
 				unauthorized[row.UserID] = true
 				continue
 			}
-			log.Printf("[BangumiSync] 出站同步失败: %v", err)
+			log.Printf("[BangumiSync] 出站同步失败: %v", drainErr)
 		}
 	}
 }

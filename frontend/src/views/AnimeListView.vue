@@ -43,9 +43,9 @@ function wait(ms: number) {
 
 const totalPages = () => Math.max(1, Math.ceil(total.value / pageSize))
 
-async function load() {
+async function load(silent = false) {
   const serial = ++loadSerial
-  loading.value = true
+  if (!silent) loading.value = true
   error.value = ''
   try {
     const data = await listAnimes(page.value, pageSize, keyword.value.trim())
@@ -57,7 +57,7 @@ async function load() {
     if (serial !== loadSerial) return
     error.value = e instanceof ApiError ? e.message : '加载番剧失败'
   } finally {
-    if (serial === loadSerial) loading.value = false
+    if (!silent && serial === loadSerial) loading.value = false
   }
 }
 
@@ -112,7 +112,7 @@ async function loadInbox() {
 async function applyScanResult(result: LibraryScanResult) {
   await loadInbox()
   scanResult.value = { ...result, unidentified: inboxItems.value }
-  await load()
+  await load(true)
 }
 
 async function handleLibraryScan() {

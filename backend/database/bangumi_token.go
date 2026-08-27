@@ -7,6 +7,12 @@ type OutboxRow struct {
 	EpisodeID int64
 }
 
+// SaveBangumiToken 保存（或更新）用户的 Bangumi 访问令牌。
+//
+// 安全说明：令牌当前以明文存储于 user_bangumi_tokens.access_token。数据库文件在 POSIX
+// 下为 0600，但备份/导出/泄露时令牌直接暴露，且此类令牌通常长期有效。正式的静态加密需
+// 从 JWT 密钥派生密钥并对令牌加密存储（同时迁移既有明文令牌），涉及密钥管理与包级初始化
+// 改造，超出本分组文件范围，暂以明文存储并标注风险，待后续统一加固（见审查报告问题 4）。
 func SaveBangumiToken(userID int64, token string) error {
 	_, err := DB.Exec(`
 		INSERT INTO user_bangumi_tokens (user_id, access_token, updated_at)
@@ -65,6 +71,11 @@ func EnqueueWatchedForUser(userID int64) error {
 }
 
 func ListBangumiOutbox(limit int) ([]OutboxRow, error) {
+	// 卫语句：limit<=0 时 SQLite 视为无限制（全表扫描）或返回空结果，统一下限为 1，
+	// 避免误用导致全表扫描。
+	if limit < 1 {
+		limit = 1
+	}
 	rows, err := DB.Query(`
 		SELECT user_id, episode_id
 		FROM bangumi_sync_outbox

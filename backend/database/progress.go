@@ -111,28 +111,34 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 	}
 
 	rows, err := DB.Query(`
-		SELECT a.id, MAX(wp.updated_at)
+		SELECT a.id, a.title, a.title_cn, a.bangumi_id, a.cover, a.summary, a.ep_count, a.file_path, a.created_at,
+			MAX(wp.updated_at)
 		FROM animes a
 		JOIN episodes e ON e.anime_id = a.id
 		JOIN watch_progress wp ON wp.episode_id = e.id
 		WHERE wp.user_id = ?
 		GROUP BY a.id
 		ORDER BY MAX(wp.updated_at) DESC, a.id DESC
-	`, userID)
+		LIMIT ?
+	`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	type animeActivity struct {
-		id        int64
+		anime     models.Anime
 		updatedAt time.Time
 	}
 	activities := make([]animeActivity, 0)
 	for rows.Next() {
 		var item animeActivity
 		var raw sql.NullString
-		if err := rows.Scan(&item.id, &raw); err != nil {
+		if err := rows.Scan(
+			&item.anime.ID, &item.anime.Title, &item.anime.TitleCn, &item.anime.BangumiID,
+			&item.anime.Cover, &item.anime.Summary, &item.anime.EpCount, &item.anime.FilePath, &item.anime.CreatedAt,
+			&raw,
+		); err != nil {
 			return nil, err
 		}
 		if raw.Valid {
@@ -153,21 +159,17 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 		if len(items) >= limit {
 			break
 		}
-		episodes, err := ListEpisodesByAnimeID(activity.id)
+		episodes, err := ListEpisodesByAnimeID(activity.anime.ID)
 		if err != nil {
 			return nil, err
 		}
-		progressList, err := ListProgressByAnime(userID, activity.id)
+		progressList, err := ListProgressByAnime(userID, activity.anime.ID)
 		if err != nil {
 			return nil, err
 		}
 		picked := PickContinueEpisode(episodes, progressList)
 		if picked == nil {
 			continue
-		}
-		anime, err := GetAnimeByID(activity.id)
-		if err != nil {
-			return nil, err
 		}
 		position := 0
 		watched := false
@@ -179,7 +181,7 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 			}
 		}
 		items = append(items, models.ContinueItem{
-			Anime:     *anime,
+			Anime:     activity.anime,
 			Episode:   *picked,
 			Position:  position,
 			Watched:   watched,

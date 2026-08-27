@@ -82,10 +82,12 @@ function openEdit() {
 async function saveEdit() {
   saving.value = true
   error.value = ''
+  // ep_count 允许为 '' 或小数输入，提交前统一归一化为非负整数（后端字段为 int）。
+  const epCount = Math.max(0, Math.floor(Number(editForm.ep_count) || 0))
   try {
     await updateAnime(animeId.value, {
       ...editForm,
-      ep_count: editForm.ep_count === '' ? 0 : editForm.ep_count,
+      ep_count: epCount,
     })
     showEdit.value = false
     await load()

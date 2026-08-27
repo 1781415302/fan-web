@@ -66,6 +66,9 @@ class _AnimeAddScreenState extends ConsumerState<AnimeAddScreen> {
   }
 
   Future<void> _search() async {
+    if (_searching) {
+      return;
+    }
     final keyword = _keywordController.text.trim();
     if (keyword.isEmpty) {
       return;
@@ -246,28 +249,32 @@ class _AnimeAddScreenState extends ConsumerState<AnimeAddScreen> {
                   fontSize: 12,
                 ),
               ),
-              RadioGroup<String>(
-                groupValue: _filePath,
-                onChanged: (value) {
-                  setState(() {
-                    _filePath = value ?? '';
-                  });
-                },
-                child: Column(
-                  children: [
-                    const RadioListTile<String>(
-                      key: Key('dir-root'),
-                      title: Text('视频根目录'),
-                      value: '',
+              Column(
+                children: [
+                  RadioListTile<String>(
+                    key: const Key('dir-root'),
+                    title: const Text('视频根目录'),
+                    value: '',
+                    groupValue: _filePath,
+                    onChanged: (value) {
+                      setState(() {
+                        _filePath = value ?? '';
+                      });
+                    },
+                  ),
+                  for (final dir in _dirs)
+                    RadioListTile<String>(
+                      key: Key('dir-$dir'),
+                      title: Text(dir),
+                      value: dir,
+                      groupValue: _filePath,
+                      onChanged: (value) {
+                        setState(() {
+                          _filePath = value ?? '';
+                        });
+                      },
                     ),
-                    for (final dir in _dirs)
-                      RadioListTile<String>(
-                        key: Key('dir-$dir'),
-                        title: Text(dir),
-                        value: dir,
-                      ),
-                  ],
-                ),
+                ],
               ),
               if (_dirsError != null)
                 Text(

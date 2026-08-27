@@ -3,21 +3,23 @@
 # 注意：/tmp/fan-web-node/bin、/tmp/fan-web-go/bin 等旧路径已失效，
 # Go/Node 直接使用系统 PATH（同 AGENTS.md 的 WSL 工具链说明）。
 
-# 用法: ./dev.sh backend | frontend
-set -e
-cd "$(dirname "$0")"
+# 用法: ./dev.sh backend [args...] | frontend [args...]
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
 
-case "$1" in
+case "${1:-}" in
   backend)
-    cd backend
-    exec go run .
+    cd "$ROOT/backend"
+    shift
+    exec go run . "$@"
     ;;
   frontend)
-    cd frontend
-    exec npm run dev
+    cd "$ROOT/frontend"
+    shift
+    exec npm run dev -- "$@"
     ;;
   *)
-    echo "用法: ./dev.sh backend | frontend"
+    echo "用法: ./dev.sh backend [args...] | frontend [args...]"
     exit 1
     ;;
 esac
