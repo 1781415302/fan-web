@@ -113,6 +113,12 @@ func Load(path string) (*Config, error) {
 	// 空文件（0 字节）时 yaml.Unmarshal 不报错且返回零值配置，与“未初始化”无法区分；
 	// 若下游据此跳过初始化，可能出现“看似已配置但缺失 JWT 密钥等关键项”的状态。
 	// 将空内容视为未配置，触发初始化流程。
+	//
+	// 注意：这里不能只返回“未配置”就结束。已部署实例的配置被截空时，数据库里
+	// 通常已有管理员，IsConfigured() 仍为 true，/api/setup 进不去，而本函数返回的
+	// 配置不含 JWT 密钥，登录也发不出票据——实例会彻底不可用。
+	// 因此空文件与文件缺失一样，由 prepareConfiguredInstance 结合管理员数量
+	// 决定是首次运行还是必须拒绝启动并提示恢复配置。
 	if len(data) == 0 {
 		cfg := Default()
 		cfg.Configured = false

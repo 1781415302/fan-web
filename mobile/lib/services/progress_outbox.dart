@@ -137,10 +137,9 @@ class ProgressOutbox {
   /// 故障时对剩余记录发起无意义的请求风暴。
   Future<void> syncAll(String serverUrl, int userId, String token) =>
       _enqueueSync(() async {
-        // 将本次传入的有效 token 应用到全局 ApiClient，确保即便全局 token
-        // 已被清除（如 onUnauthorized 触发后）也能用有效 token 上报，避免
-        // 鉴权失败；调用方仍应照常先 setToken 再调用，此处作为兜底。
-        _ref.read(apiClientProvider).setToken(token);
+        // 本次上报只用传入的 token 走单次请求，绝不写回全局 ApiClient：
+        // 登出或 2001 清掉全局 token 后，排队中的本轮仍持有旧票，若写回
+        // 全局就会把失效票据装回去，切账号时还会盖掉新用户的 token。
         final pending = await getPending(serverUrl, userId);
         for (final record in pending) {
           try {
@@ -148,6 +147,7 @@ class ProgressOutbox {
               record.episodeId,
               record.position,
               record.watched,
+              token: token,
             );
             await removeIfMatched(record);
           } catch (error) {

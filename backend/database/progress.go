@@ -103,6 +103,10 @@ func scanProgress(row scanner, progress *models.WatchProgress) error {
 // ListContinueWatching 返回有进度的番剧，按该番 max(wp.updated_at) 降序。
 // 每番用 PickContinueEpisode 选继续播放的集；全看完（nil）则跳过。
 // limit 夹紧为 1..50，非法默认 20。
+//
+// SQL 不下推 LIMIT：全看完但仍有 watch_progress 的番同样会占用配额，
+// 若在 SQL 里先截断，最近 N 部都看完、更早还有在看的就会返回空列表。
+// 因此先按活跃度取全量候选，在 Go 里过滤掉全看完的，凑满 limit 才停止。
 func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error) {
 	if limit < 1 {
 		limit = 20
@@ -119,8 +123,7 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 		WHERE wp.user_id = ?
 		GROUP BY a.id
 		ORDER BY MAX(wp.updated_at) DESC, a.id DESC
-		LIMIT ?
-	`, userID, limit)
+	`, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -76,11 +76,20 @@ func (s *BangumiSync) EnqueueWatched(userID, episodeID int64) {
 	s.Drain()
 }
 
+// Drain 处理 outbox 中的待同步行。
+// 全进程单槽：已有 Drain 在进行就直接返回（EnqueueWatched 与 bangumi_me 都会
+// 触发 Drain），避免第二趟在 HTTP 窗口内抢到锁重复处理同一行。
+// drainMu 由本 goroutine 全程持有、只在函数返回时解锁一次：既保证互斥，
+// 也不会出现手动 Unlock 后 panic 导致 unlock of unlocked mutex。
+// 取行在持锁下完成，之后的 Bangumi 网络 I/O 与 DB 提交不再触碰这把锁，
+// 且因单槽保证期间不会有第二趟介入，提交仍然安全。
 func (s *BangumiSync) Drain() {
 	if s == nil {
 		return
 	}
-	s.drainMu.Lock()
+	if !s.drainMu.TryLock() {
+		return
+	}
 	defer s.drainMu.Unlock()
 
 	rows, err := database.ListBangumiOutbox(500)
@@ -88,7 +97,11 @@ func (s *BangumiSync) Drain() {
 		log.Printf("[BangumiSync] 读取 outbox 失败: %v", err)
 		return
 	}
+	s.drainRows(rows)
+}
 
+// drainRows 在 Drain 持有 drainMu 期间被调用，内部不得触碰 drainMu。
+func (s *BangumiSync) drainRows(rows []database.OutboxRow) {
 	unauthorized := make(map[int64]bool)
 	// tokenCache 按 userID 缓存令牌，避免同一用户多行 outbox 重复查库读取。
 	tokenCache := make(map[int64]string)
@@ -118,15 +131,12 @@ func (s *BangumiSync) Drain() {
 			s.sleep()
 		}
 		first = false
-		// 释放 drainMu 后再做 Bangumi 网络 I/O，避免持锁跨越 GetMe/ListSubjectEpisodes/
-		// EnsureCollection/PatchEpisodeCollection 等 HTTP 调用而长时间阻塞其它调用方；
-		// 瞬时错误（非 401）保留行并让出时间片，避免上游故障期被持续触发的高频请求打爆 Bangumi。
-		s.drainMu.Unlock()
+		// 瞬时错误（非 401）保留行并额外让出时间片，避免上游故障期被持续
+		// 触发的高频请求打爆 Bangumi。
 		drainErr := s.drainRow(row, token)
 		if drainErr != nil && !errors.Is(drainErr, ErrBangumiUnauthorized) {
 			s.sleep()
 		}
-		s.drainMu.Lock()
 		if drainErr != nil {
 			if errors.Is(drainErr, ErrBangumiUnauthorized) {
 				if delErr := database.DeleteBangumiToken(row.UserID); delErr != nil {

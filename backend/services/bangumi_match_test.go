@@ -31,7 +31,18 @@ func TestExtractSeason(t *testing.T) {
 		{in: "葬送的芙莉莲 第2季", want: 2},
 		{in: "Title S01E05", want: 1},
 		{in: "Bocchi the Rock!", want: 0},
+		// 中文季号 1–99：parseChineseNum 从“只认 1–10”扩到 1–99 后，
+		// 这些值会进分组键、快通道门闩、目录兜底与 movieDenied，逐档锁定。
+		{in: "番剧 第九季", want: 9},
+		{in: "番剧 第十季", want: 10},
 		{in: "番剧 第十一季", want: 11},
+		{in: "番剧 第十四季", want: 14},
+		{in: "番剧 第二十季", want: 20},
+		{in: "番剧 第二十一季", want: 21},
+		{in: "番剧 第九十九季", want: 99},
+		// 含“百”超出 1–99 范围，保持 0（不猜测）。
+		{in: "番剧 第一百季", want: 0},
+		{in: "番剧 百季", want: 0},
 	}
 	for _, test := range tests {
 		if got := extractSeason(test.in); got != test.want {

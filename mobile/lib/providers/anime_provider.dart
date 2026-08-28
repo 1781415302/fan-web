@@ -90,6 +90,15 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
 
   late AnimeApi _animeApi;
 
+  /// 身份代号：每次 build 因 (serverUrl, userId) 变化重新执行时递增。
+  /// 在飞请求在 await 之后要核对它，对不上说明期间身份已切换或已登出，
+  /// 必须丢弃结果——否则 A 的列表会写进 B 的 state，并按"当时"的 auth
+  /// 把缓存写到错误的 key 上。
+  int _generation = 0;
+
+  bool _isCurrentGeneration(int? generation) =>
+      generation == null || generation == _generation;
+
   /// 构建按服务器和用户隔离的缓存键（使用 base64 避免碰撞）
   String _cacheKey() {
     final auth = ref.read(authProvider);
@@ -116,6 +125,8 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       authProvider.select((s) => (s.serverUrl, s.user?.id)),
     );
     _animeApi = ref.watch(animeApiProvider);
+    // 身份变化即作废旧请求：本次 build 发起/保留的加载都带上新代号。
+    final generation = ++_generation;
     final cached = _loadFromCache();
     final initial = cached != null && cached.items.isNotEmpty
         ? AnimeListState(
@@ -126,7 +137,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
           )
         : const AnimeListState();
     if (identity.$2 != null) {
-      unawaited(_fetchFirstPage());
+      unawaited(_fetchFirstPage(generation: generation));
     }
     return initial;
   }
@@ -136,6 +147,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
+    final generation = _generation;
     final cached = _loadFromCache();
     if (cached != null && cached.items.isNotEmpty) {
       state = state.copyWith(
@@ -148,7 +160,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         clearError: true,
         clearRefreshError: true,
       );
-      unawaited(_fetchFirstPage());
+      unawaited(_fetchFirstPage(generation: generation));
       return;
     }
 
@@ -160,12 +172,14 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       clearRefreshError: true,
       clearLoadMoreError: true,
     );
-    await _fetchFirstPage();
+    await _fetchFirstPage(generation: generation);
   }
 
-  Future<void> _fetchFirstPage() async {
+  Future<void> _fetchFirstPage({int? generation}) async {
     try {
       final result = await _animeApi.list(page: 1, pageSize: state.pageSize);
+      // await 期间身份可能已切换或已登出：丢弃过期响应，避免串号写入。
+      if (!_isCurrentGeneration(generation)) return;
       state = state.copyWith(
         items: result.items,
         total: result.total,
@@ -178,6 +192,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       );
       _saveToCache(result);
     } catch (error) {
+      if (!_isCurrentGeneration(generation)) return;
       final msg = describeApiError(error);
       if (state.items.isEmpty) {
         state = state.copyWith(
@@ -222,12 +237,14 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
+    final generation = _generation;
     state = state.copyWith(
       isRefreshing: true,
       clearRefreshError: true,
     );
     try {
       final result = await _animeApi.list(page: 1, pageSize: state.pageSize);
+      if (!_isCurrentGeneration(generation)) return;
       state = state.copyWith(
         items: result.items,
         total: result.total,
@@ -239,6 +256,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       );
       _saveToCache(result);
     } catch (error) {
+      if (!_isCurrentGeneration(generation)) return;
       state = state.copyWith(
         isRefreshing: false,
         refreshError: describeApiError(error),
@@ -254,6 +272,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
       return;
     }
 
+    final generation = _generation;
     final nextPage = state.currentPage + 1;
     state = state.copyWith(isLoadingMore: true, clearLoadMoreError: true);
     try {
@@ -261,6 +280,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         page: nextPage,
         pageSize: state.pageSize,
       );
+      if (!_isCurrentGeneration(generation)) return;
       state = state.copyWith(
         items: [...state.items, ...result.items],
         total: result.total,
@@ -270,6 +290,7 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
         clearLoadMoreError: true,
       );
     } catch (error) {
+      if (!_isCurrentGeneration(generation)) return;
       state = state.copyWith(
         isLoadingMore: false,
         loadMoreError: describeApiError(error),

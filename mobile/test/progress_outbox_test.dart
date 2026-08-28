@@ -470,7 +470,12 @@ class _RecordingProgressApi extends ProgressApi {
   }
 
   @override
-  Future<void> reportProgress(int episodeId, int position, bool watched) async {
+  Future<void> reportProgress(
+    int episodeId,
+    int position,
+    bool watched, {
+    String? token,
+  }) async {
     reportedEpisodeIds.add(episodeId);
     activeReports++;
     if (activeReports > maxConcurrentReports) {

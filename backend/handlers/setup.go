@@ -103,7 +103,7 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 	}
 
 	// 先解析符号链接得到真实路径，避免 os.Stat 直接跟随 symlink 把指向敏感目录的
-	// 符号链接当作视频根接受；再校验真实路径存在且为目录，并禁止其指向配置目录或程序所在目录。
+	// 符号链接当作视频根接受；再校验真实路径存在且为目录，并禁止其等于配置目录或程序所在目录。
 	realPath, err := filepath.EvalSymlinks(request.VideoRootPath)
 	if err != nil {
 		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
@@ -114,18 +114,14 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
 		return
 	}
-	if cfgDir, err := filepath.Abs(filepath.Dir(h.configPath)); err == nil {
-		if isSameOrDescendant(realPath, cfgDir) {
-			utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向配置目录")
-			return
-		}
+	if isSameDir(realPath, filepath.Dir(h.configPath)) {
+		utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向配置目录")
+		return
 	}
 	if exePath, err := os.Executable(); err == nil {
-		if exeDir, err := filepath.Abs(filepath.Dir(exePath)); err == nil {
-			if isSameOrDescendant(realPath, exeDir) {
-				utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向程序目录")
-				return
-			}
+		if isSameDir(realPath, filepath.Dir(exePath)) {
+			utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向程序目录")
+			return
 		}
 	}
 
@@ -224,11 +220,19 @@ func deleteCreatedUser(userID int64) error {
 	return database.DeleteUser(userID)
 }
 
-// isSameOrDescendant 报告 path 是否等于 dir 或为其后代目录（用于禁止视频根指向敏感目录）。
-func isSameOrDescendant(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
+// isSameDir 报告 path 与 dir 是否为同一目录（用于禁止视频根指向配置/程序目录）。
+// 只判断相等，不拒绝 dir 的子目录：官方与常见部署把视频根放在程序目录下的
+// videos/（如 /opt/fan-web + /opt/fan-web/videos），按后代判断会误伤。
+// 两边都先 Abs 再比较：config.yaml 用相对路径时 cfgDir 是进程 cwd，
+// 且 filepath.Rel 在两边一个绝对一个相对时会失败，失败不得当作"安全"放行。
+func isSameDir(path, dir string) bool {
+	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
-	return rel == "." || !strings.HasPrefix(rel, "..")
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(absPath) == filepath.Clean(absDir)
 }

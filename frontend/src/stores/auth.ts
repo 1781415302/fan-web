@@ -6,6 +6,7 @@ import api, {
   ApiError,
   TOKEN_STORAGE_KEY,
   type ApiResponse,
+  resetLoginRedirect,
   unwrap,
 } from '../api'
 import type { LoginData, User } from '../types/auth'
@@ -78,6 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.user
     localStorage.setItem(TOKEN_STORAGE_KEY, data.token)
     initialized.value = true
+    resetLoginRedirect()
   }
 
   function setSession(newToken: string, newUser: User) {
@@ -85,6 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = newUser
     localStorage.setItem(TOKEN_STORAGE_KEY, newToken)
     initialized.value = true
+    resetLoginRedirect()
   }
 
   async function logout() {

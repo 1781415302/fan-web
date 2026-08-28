@@ -21,17 +21,24 @@ func prepareConfiguredInstance(configPath string, cfg *config.Config) error {
 
 func prepareConfiguredInstanceWithDelete(configPath string, cfg *config.Config, deleteUser func(int64) error) error {
 	if !cfg.Configured {
-		// 配置文件存在时保持原有首次运行路径。文件缺失时必须再看数据库：
-		// 已有管理员说明这是已部署实例丢了 config.yaml，绝不能降级为未初始化。
-		if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+		// 配置未被标记已初始化时，文件缺失或为空（0 字节）都必须再看数据库：
+		// 已有管理员说明这是已部署实例的 config.yaml 丢了或被截空，
+		// 绝不能降级为未初始化，否则 /api/setup 会被抢注且登录也发不出票据。
+		empty, statErr := configIsEmpty(configPath)
+		missing := os.IsNotExist(statErr)
+		if missing || empty {
 			adminCount, countErr := database.CountAdmins()
 			if countErr != nil {
 				return fmt.Errorf("查询管理员数量失败: %w", countErr)
 			}
 			if adminCount > 0 {
+				if empty {
+					return fmt.Errorf("配置文件为空但数据库已有管理员，拒绝以未初始化状态启动，请恢复 config.yaml 内容后重启")
+				}
 				return fmt.Errorf("配置文件缺失但数据库已有管理员，拒绝以未初始化状态启动，请恢复 config.yaml")
 			}
 		}
+		// 文件存在且非空：保持原有首次运行路径。
 		return nil
 	}
 
@@ -115,6 +122,16 @@ func prepareConfiguredInstanceWithDelete(configPath string, cfg *config.Config, 
 	next.Admin.LegacyPassword = ""
 	*cfg = next
 	return nil
+}
+
+// configIsEmpty 报告配置文件是否为 0 字节。
+// 返回的错误直接来自 os.Stat，便于调用方用 os.IsNotExist 区分缺失与其它失败。
+func configIsEmpty(configPath string) (bool, error) {
+	info, err := os.Stat(configPath)
+	if err != nil {
+		return false, err
+	}
+	return info.Size() == 0, nil
 }
 
 // tightenConfigPermissions 将现有配置文件权限收紧为 0600。文件不存在时忽略。

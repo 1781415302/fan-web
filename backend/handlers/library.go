@@ -35,14 +35,15 @@ func (h *LibraryHandler) Status(c *gin.Context) {
 func (h *LibraryHandler) Unidentified(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("page_size"))
+	// 用夹紧后的分页参数查询并回显：请求里的 page=0 / page_size=999
+	// 会被夹到 1 / 100，响应必须回显实际生效的值，否则调用方按响应翻页会越界。
+	page, pageSize = database.NormalizePaging(page, pageSize)
 	items, total, err := database.ListUnidentified(page, pageSize)
 
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "查询未识别文件失败")
 		return
 	}
-	// 分页的下限/上限裁剪已统一收敛到 database.ListUnidentified，
-	// handler 不再重复裁剪，避免两层策略漂移；此处原样回显请求的分页参数。
 	utils.Success(c, gin.H{
 		"items":     items,
 		"total":     total,

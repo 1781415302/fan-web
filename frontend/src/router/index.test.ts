@@ -22,6 +22,7 @@ vi.mock('../api', () => {
       if (response.data.code !== 0) throw new ApiError(response.data.code, response.data.message)
       return response.data.data
     },
+    resetLoginRedirect: () => {},
     default: {
       get: vi.fn(),
       post: vi.fn(),

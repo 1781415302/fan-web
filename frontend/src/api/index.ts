@@ -91,13 +91,22 @@ function redirectToLogin() {
   if (redirectedToLogin) {
     return
   }
-  redirectedToLogin = true
+  // 已在登录页时不置位：否则带过期 token 打开 /login 触发一次 2001 就会把
+  // 闩锁永久锁上，之后再遇到 2001 都不再跳转。
   if (window.location.pathname === '/login') {
     return
   }
+  redirectedToLogin = true
   // 与路由守卫一致地携带 redirect 参数，登录后回到原页面。
   const redirect = window.location.pathname + window.location.search
   window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
+}
+
+// 登录成功后复位跳转闩锁。登录是 SPA 内跳转（auth.login + router.push），
+// 不会发生整页刷新，因此必须由调用方显式复位，否则本次会话后续再收到
+// 2001 时不会再跳转登录页，用户会卡在无响应的页面上。
+export function resetLoginRedirect() {
+  redirectedToLogin = false
 }
 
 export default api

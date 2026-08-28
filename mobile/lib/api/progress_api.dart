@@ -95,11 +95,25 @@ class ProgressApi {
     });
   }
 
-  Future<void> reportProgress(int episodeId, int position, bool watched) {
+  /// 上报观看进度。
+  ///
+  /// [token] 为本次上报单独使用的票据：传了就只用这一次请求，不写入全局
+  /// ApiClient（outbox 补报场景必须如此，见 ProgressOutbox.syncAll）。
+  /// 不传则沿用全局会话票据。
+  Future<void> reportProgress(
+    int episodeId,
+    int position,
+    bool watched, {
+    String? token,
+  }) {
     return _request(() async {
+      final headers = token == null || token.isEmpty
+          ? null
+          : <String, dynamic>{'Authorization': 'Bearer $token'};
       await _client.dio.post<dynamic>(
         'progress/$episodeId',
         data: <String, dynamic>{'position': position, 'watched': watched},
+        options: headers == null ? null : Options(headers: headers),
       );
     });
   }
