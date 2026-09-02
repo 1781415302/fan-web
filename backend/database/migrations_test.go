@@ -322,6 +322,12 @@ func TestMigrationsIdempotentOnReinit(t *testing.T) {
 	newTestDB(t)
 
 	dbPath := filepath.Join(t.TempDir(), "reinit.db")
+	// 关闭 newTestDB 创建的 migrate-test.db 连接，避免 Init 把包级 DB 重定向到
+	// reinit.db 后旧连接泄漏（Windows 下 TempDir 清理会因文件被占用而失败）。
+	if DB != nil {
+		_ = DB.Close()
+		DB = nil
+	}
 	if err := Init(dbPath); err != nil {
 		t.Fatal(err)
 	}

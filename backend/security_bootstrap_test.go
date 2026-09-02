@@ -302,6 +302,44 @@ func TestBootstrapMissingConfigCountAdminsFailure(t *testing.T) {
 	}
 }
 
+func TestBootstrapEmptyConfigWithAdminsRefusesStartup(t *testing.T) {
+	bootstrapTestDB(t)
+	if _, err := database.CreateUser("admin", "password", true); err != nil {
+		t.Fatal(err)
+	}
+	// 0 字节 config.yaml：Load 视为未配置且不填 JWT 密钥。文件还在，
+	// bootstrap 既不会中止也不会轮换密钥，若不拒绝启动就是死实例。
+	path := writeConfig(t, "")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Configured {
+		t.Fatal("empty config file must be treated as unconfigured")
+	}
+	err = prepareConfiguredInstance(path, cfg)
+	if err == nil {
+		t.Fatal("expected startup to be refused when config.yaml is empty but admins exist")
+	}
+	if !strings.Contains(err.Error(), "配置文件为空但数据库已有管理员") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBootstrapEmptyConfigWithoutAdminsIsFirstRun(t *testing.T) {
+	bootstrapTestDB(t)
+	path := writeConfig(t, "")
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareConfiguredInstance(path, cfg); err != nil {
+		t.Fatalf("empty config + 0 admins is first-run, got %v", err)
+	}
+}
+
 func TestBootstrapPresentFileUnchangedWhenConfiguredFalse(t *testing.T) {
 	bootstrapTestDB(t)
 	path := writeConfig(t, `

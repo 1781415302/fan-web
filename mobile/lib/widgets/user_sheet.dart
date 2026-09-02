@@ -71,11 +71,13 @@ class _UserSheetBodyState extends ConsumerState<_UserSheetBody> {
   String? _error;
   String? _message;
 
-  BangumiMeApi get _api => BangumiMeApi(ref.read(apiClientProvider));
+  late final BangumiMeApi _api;
 
   @override
   void initState() {
     super.initState();
+    // 缓存实例，避免每次访问 _api 都重新构造 BangumiMeApi。
+    _api = BangumiMeApi(ref.read(apiClientProvider));
     unawaited(_loadLink());
   }
 
@@ -89,6 +91,7 @@ class _UserSheetBodyState extends ConsumerState<_UserSheetBody> {
     setState(() {
       _loadingLink = true;
       _error = null;
+      _message = null;
     });
     try {
       final link = await _api.getLink();

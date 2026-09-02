@@ -75,6 +75,15 @@ class _ContinueBarState extends ConsumerState<ContinueBar> {
         unawaited(_load());
       }
     });
+    // 登录 / 登出 / Token 失效等鉴权变化未触发列表刷新时，手动重载“继续观看”。
+    ref.listen<String?>(authProvider.select((state) => state.token), (
+      previous,
+      next,
+    ) {
+      if (previous != next) {
+        unawaited(_load());
+      }
+    });
     if (_loading || _items.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -150,7 +159,7 @@ class _ContinueCard extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          key: Key('continue-item-${item.anime.id}'),
+          key: Key('continue-item-${item.anime.id}-${item.episode.id}'),
           onTap: onTap,
           child: SizedBox(
             width: 260,

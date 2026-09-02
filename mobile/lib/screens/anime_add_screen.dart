@@ -66,6 +66,9 @@ class _AnimeAddScreenState extends ConsumerState<AnimeAddScreen> {
   }
 
   Future<void> _search() async {
+    if (_searching) {
+      return;
+    }
     final keyword = _keywordController.text.trim();
     if (keyword.isEmpty) {
       return;

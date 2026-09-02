@@ -209,10 +209,14 @@ async function refreshMediaToken() {
     }
     if (subtitleTrack !== null) {
       const label = subtitleTracks.value.find((track) => track.track_number === subtitleTrack)?.label ?? ''
-      void instance.subtitle.switch(getSubtitleUrl(episode.id, subtitleTrack, media.token), {
-        name: label,
-        type: 'vtt',
-      })
+      void instance.subtitle
+        .switch(getSubtitleUrl(episode.id, subtitleTrack, media.token), {
+          name: label,
+          type: 'vtt',
+        })
+        .catch((e: unknown) => {
+          playerError.value = e instanceof ApiError ? e.message : '字幕切换失败'
+        })
     }
     playerError.value = ''
     statusMessage.value = '播放票据已续期'
@@ -238,7 +242,10 @@ function destroyPlayer() {
   const oldPlayer = player
   const currentTime = Number.isFinite(oldPlayer.currentTime) ? oldPlayer.currentTime : 0
   if (activeEpisode && currentTime >= 1) {
-    void queueProgressReport(oldPlayer, activeEpisode)
+    // 卸载时仅把最后播放位置上报服务端，不再回写响应式状态，避免组件卸载后的竞态写状态。
+    const duration = Number.isFinite(oldPlayer.duration) ? oldPlayer.duration : 0
+    const watched = duration > 0 && currentTime / duration >= 0.9
+    void reportProgress(activeEpisode.id, Math.max(0, Math.floor(currentTime)), watched).catch(() => undefined)
   }
   player = null
   activeEpisode = null

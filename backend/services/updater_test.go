@@ -55,11 +55,10 @@ func TestCheckWritableOnRunningExecutable(t *testing.T) {
 	}
 
 	// 目录不可写时应报错（真正限制替换的是目录权限，因为替换走 os.Rename）。
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chmod(dir, 0o700)
-	if err := checkWritable(path); err == nil {
+	// 用不存在的父目录触发，跨平台可控：避免依赖 os.Chmod 在非管理员/Windows
+	// 环境下不生效导致本用例误红。
+	unwritable := filepath.Join(dir, "does-not-exist", "fan-web-server")
+	if err := checkWritable(unwritable); err == nil {
 		t.Fatal("checkWritable should fail when directory is not writable")
 	}
 }

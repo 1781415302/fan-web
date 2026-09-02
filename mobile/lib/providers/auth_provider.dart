@@ -11,6 +11,10 @@ import '../models/user.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
 
+// 安全提示(P3):以下 Token 与用户快照以明文写入 SharedPreferences(默认非加密存储)。
+// 风险:root/备份/同设备其它有存储权限的应用可读到长期 Token 并冒用账号。
+// 完整迁移到 flutter_secure_storage 需改动同步读取路径(如降级会话),此处暂仅标注风险;
+// 登出/失效时已立即清除(见 _clearStoredToken / _clearUserSnapshot 各调用点)。
 const fanWebTokenKey = 'fan_web_token';
 const fanWebServerUrlKey = 'fan_web_server_url';
 const fanWebUserSnapshotKey = 'fan_web_user_snapshot';
@@ -144,9 +148,13 @@ class AuthNotifier extends Notifier<AuthState> {
       _syncOutbox(serverUrl, user.id, storedToken);
     } catch (error) {
       if (_isUnauthorizedError(error)) {
-        await _invalidateSession(storedServerUrl);
+        await _invalidateSession(ApiClient.normalizeServerUrl(storedServerUrl));
       } else {
-        _enterDegradedSession(serverUrl: storedServerUrl, token: storedToken);
+        // 降级会话同样使用规范化后的 serverUrl,与 _apiClient 配置及 outbox 键保持一致(P2)。
+        _enterDegradedSession(
+          serverUrl: ApiClient.normalizeServerUrl(storedServerUrl),
+          token: storedToken,
+        );
       }
     }
   }
@@ -226,7 +234,9 @@ class AuthNotifier extends Notifier<AuthState> {
       if (userId != null) {
         await _clearProgressOutbox(userId, serverUrl);
       }
-      // 清除番剧列表缓存
+      // 清除番剧列表缓存。注(P9):此处与 anime_provider 形成双向引用
+      // (auth 登出清其缓存,anime 在 build 内 watch auth)。保留此依赖是因为登出清缓存
+      // 需要登出前的 userId 才能命中原缓存键;当前可正常加载,故未移除。
       try {
         await ref.read(animeListProvider.notifier).clearCache();
       } catch (_) {}

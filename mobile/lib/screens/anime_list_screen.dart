@@ -208,6 +208,9 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
   }
 
   Future<void> _loadUnidentified() async {
+    if (_loadingUnidentified) {
+      return;
+    }
     setState(() {
       _loadingUnidentified = true;
       _unidentifiedError = null;

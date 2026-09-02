@@ -111,7 +111,7 @@ func (s *AuthService) ParseToken(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("不支持的 jwt 签名算法")
 		}
 		return secret, nil
-	}, jwt.WithIssuer(tokenIssuer))
+	}, jwt.WithIssuer(tokenIssuer), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, err
 	}

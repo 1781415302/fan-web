@@ -15,7 +15,11 @@ import (
 )
 
 type LibraryService struct {
-	bangumi  *BangumiService
+	bangumi *BangumiService
+	// rootMu 只保护 rootPath 的读写，与 scanMu 分离：
+	// 读根目录（GET /library/dirs）不该跟整次扫描（Walk + Bangumi HTTP）抢同一把锁，
+	// 否则扫描期间目录列表会一直堵到扫描结束。
+	rootMu   sync.RWMutex
 	rootPath string
 	// scanMu 串行化库扫描，防止两个并发 Scan 对同一分组"先查后插"交错写入，
 	// 与数据库唯一索引共同保证不产生重复番剧/剧集。
@@ -53,12 +57,18 @@ func NewLibraryService(bangumi *BangumiService, rootPath string) *LibraryService
 }
 
 // SetRootPath 更新视频根目录，初始化完成时调用。
+// 只持 rootMu：写入不需要等待正在进行的扫描。
 func (s *LibraryService) SetRootPath(rootPath string) {
+	s.rootMu.Lock()
+	defer s.rootMu.Unlock()
 	s.rootPath = rootPath
 }
 
 // RootPath 返回当前视频根目录，供 handler 接线 ListSubDirs。
+// 只持 rootMu 读锁，不与 scanMu 冲突：扫描期间仍能立即响应。
 func (s *LibraryService) RootPath() string {
+	s.rootMu.RLock()
+	defer s.rootMu.RUnlock()
 	return s.rootPath
 }
 
@@ -71,6 +81,9 @@ type groupKey struct {
 // scanContext 单次扫描的共享状态。processGroup 串行调用（Scan 持 scanMu），无需锁。
 type scanContext struct {
 	episodesBySubject map[int]subjectEpisodesResult // subjectID → 本篇剧集（记忆化）
+	// rootPath 是本次扫描启动时拷到的快照：扫描全程使用它，
+	// 期间根目录被改也不会让本次扫描的遍历与改名判定用上不一致的根。
+	rootPath string
 }
 
 type subjectEpisodesResult struct {
@@ -110,8 +123,13 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 
+	ctx := &scanContext{
+		episodesBySubject: make(map[int]subjectEpisodesResult),
+		rootPath:          s.RootPath(),
+	}
+
 	result := &LibraryScanResult{Unidentified: make([]UnidentifiedFile, 0)}
-	allFiles, err := s.collectFiles()
+	allFiles, err := s.collectFiles(ctx.rootPath)
 	if err != nil {
 		return nil, err
 	}
@@ -171,19 +189,21 @@ func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 		}
 		return keys[i].title < keys[j].title
 	})
-	ctx := &scanContext{episodesBySubject: make(map[int]subjectEpisodesResult)}
 	for _, key := range keys {
 		s.processGroup(key, groups[key], ctx, result)
 	}
 	return result, nil
 }
 
-func (s *LibraryService) collectFiles() ([]libraryFile, error) {
+func (s *LibraryService) collectFiles(rootPath string) ([]libraryFile, error) {
 	files := make([]libraryFile, 0)
-	err := filepath.WalkDir(s.rootPath, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(rootPath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
+		// 跳过目录与符号链接。符号链接一并跳过既是防止目录穿越（逃逸 rootPath）
+		// 的安全护栏，也意味着指向视频文件的软链不会被扫描入库；当前取舍为
+		// 优先安全、不支持软链视频，后续如需支持须对软链目标做在 rootPath 内校验。
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
@@ -191,7 +211,7 @@ func (s *LibraryService) collectFiles() ([]libraryFile, error) {
 		if strings.Contains(name, ":Zone.Identifier") || !videoExts[strings.ToLower(filepath.Ext(name))] {
 			return nil
 		}
-		relPath, err := filepath.Rel(s.rootPath, path)
+		relPath, err := filepath.Rel(rootPath, path)
 		if err != nil {
 			return err
 		}
@@ -331,7 +351,7 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 					TotalEpisodes: anime.EpCount,
 				}
 				ceiling := s.resolveCeiling(ctx, subject, files)
-				s.persistGroupEpisodes(&anime, files, subject, ceiling, result)
+				s.persistGroupEpisodes(&anime, files, subject, ceiling, ctx.rootPath, result)
 				return
 			}
 		}
@@ -438,7 +458,7 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 	}
 	if anime != nil {
 		ceiling := s.resolveCeiling(ctx, subject, files)
-		s.persistGroupEpisodes(anime, files, subject, ceiling, result)
+		s.persistGroupEpisodes(anime, files, subject, ceiling, ctx.rootPath, result)
 		return
 	}
 
@@ -469,10 +489,10 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 		return
 	}
 	result.NewAnimes++
-	s.persistGroupEpisodes(anime, files, subject, ceiling, result)
+	s.persistGroupEpisodes(anime, files, subject, ceiling, ctx.rootPath, result)
 }
 
-func (s *LibraryService) persistGroupEpisodes(anime *models.Anime, files []parsedLibraryFile, subject *BangumiSubjectInfo, ceiling int, result *LibraryScanResult) {
+func (s *LibraryService) persistGroupEpisodes(anime *models.Anime, files []parsedLibraryFile, subject *BangumiSubjectInfo, ceiling int, rootPath string, result *LibraryScanResult) {
 	existingEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
 	if err != nil {
 		addGroupUnidentified(result, files, "查询已有集数失败")
@@ -521,7 +541,7 @@ func (s *LibraryService) persistGroupEpisodes(anime *models.Anime, files []parse
 		}
 		// 集号已存在但文件名不一致：若旧文件仍在磁盘上，说明是同一集号的另一个文件，
 		// 无法自动判定，报告给用户；若旧文件已不存在，则视为文件改名，更新 file_path。
-		oldPath := filepath.Join(s.rootPath, anime.FilePath, existing.FilePath)
+		oldPath := filepath.Join(rootPath, anime.FilePath, existing.FilePath)
 		if _, statErr := os.Stat(oldPath); statErr == nil {
 			addUnidentified(result, file.fileName, file.relDir, "集数已存在（旧文件仍在磁盘上），无法自动关联")
 			continue

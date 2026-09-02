@@ -61,13 +61,14 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
     // 与项目其他 HTTP 入口（ApiClient、checkHealth）的超时口径一致。
     receiveTimeout: const Duration(seconds: 10),
   ));
-  final resp = await dio.get<dynamic>(
-    _githubApi,
-    options: Options(headers: {
-      'Accept': 'application/vnd.github+json',
-      'User-Agent': 'fan-web-app',
-    }),
-  );
+  try {
+    final resp = await dio.get<dynamic>(
+      _githubApi,
+      options: Options(headers: {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'fan-web-app',
+      }),
+    );
   final data = resp.data as Map<String, dynamic>;
   final tagName = (data['tag_name'] as String?) ?? '';
   final body = (data['body'] as String?) ?? '';
@@ -110,6 +111,10 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
     downloadSize: downloadSize,
     sha256sumsUrl: sha256sumsUrl,
   );
+  } finally {
+    // 一次性请求结束后关闭 Dio，避免连接/定时器资源泄漏积累。
+    dio.close();
+  }
 }
 
 /// 下载成功但系统安装器启动失败时抛出。
@@ -133,15 +138,24 @@ Future<String> downloadAndInstallApk(
 }) async {
   final dir = await getTemporaryDirectory();
   final filePath = '${dir.path}/fan-web-update.apk';
-  final dio = Dio();
-  await dio.download(
-    url,
-    filePath,
-    options: Options(headers: {'User-Agent': 'fan-web-app'}),
-    onReceiveProgress: onProgress,
-    cancelToken: cancelToken,
-    deleteOnError: true,
-  );
+  // 大文件下载设置整体超时，避免慢网或卡死连接下更新界面永久挂起且无法取消。
+  final dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 60),
+  ));
+  try {
+    await dio.download(
+      url,
+      filePath,
+      options: Options(headers: {'User-Agent': 'fan-web-app'}),
+      onReceiveProgress: onProgress,
+      cancelToken: cancelToken,
+      deleteOnError: true,
+    );
+  } finally {
+    // 一次性下载请求结束后关闭 Dio，避免连接/定时器资源泄漏积累。
+    dio.close();
+  }
   final file = File(filePath);
   if (!await file.exists()) throw const FileSystemException('下载文件不存在');
   // 交给系统安装器前先做完整性校验（GitHub 声明的 size + SHA256SUMS.txt），
@@ -223,26 +237,33 @@ Future<String?> _lookupApkSha256(String sha256sumsUrl, String downloadUrl) async
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
   ));
-  final resp = await dio.get<String>(
-    sha256sumsUrl,
-    options: Options(
-      headers: {'User-Agent': 'fan-web-app'},
-      // 校验和文件是纯文本，需按 plain 读取，避免 JSON 解析失败。
-      responseType: ResponseType.plain,
-    ),
-  );
-  final assetName = downloadUrl.split('/').last;
-  final content = resp.data ?? '';
-  if (assetName.isEmpty || content.isEmpty) return null;
-  for (final line in content.split('\n')) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) continue;
-    final parts = trimmed.split(RegExp(r'\s+'));
-    if (parts.length < 2) continue;
-    final entryName = parts.sublist(1).join(' ');
-    if (entryName == assetName || entryName.endsWith('/$assetName')) {
-      return parts[0];
+  try {
+    final resp = await dio.get<String>(
+      sha256sumsUrl,
+      options: Options(
+        headers: {'User-Agent': 'fan-web-app'},
+        // 校验和文件是纯文本，需按 plain 读取，避免 JSON 解析失败。
+        responseType: ResponseType.plain,
+      ),
+    );
+    final assetName = downloadUrl.split('/').last;
+    final content = resp.data ?? '';
+    if (assetName.isEmpty || content.isEmpty) return null;
+    for (final line in content.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      final parts = trimmed.split(RegExp(r'\s+'));
+      if (parts.length < 2) continue;
+      var entryName = parts.sublist(1).join(' ');
+      // 兼容 sha256sum -b 二进制模式产生的 `*` 前缀（与 backend updater.go 对齐）。
+      if (entryName.startsWith('*')) entryName = entryName.substring(1);
+      if (entryName == assetName || entryName.endsWith('/$assetName')) {
+        return parts[0];
+      }
     }
+    return null;
+  } finally {
+    // 一次性请求结束后关闭 Dio，避免连接/定时器资源泄漏积累。
+    dio.close();
   }
-  return null;
 }

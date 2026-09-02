@@ -42,22 +42,31 @@ api.interceptors.response.use(
         clearStoredToken()
         redirectToLogin()
       }
-      console.error(`API 请求失败（${error.response.status}）`, error.response.data)
+      // 不打印完整响应体，避免登录/setup 等接口的敏感字段泄露到控制台或日志。
+      console.error(`API 请求失败（${error.response.status}）`)
     }
     return Promise.reject(error)
   },
 )
 
 export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
-  const result = response.data
-  if (result.code !== 0) {
-    throw new ApiError(result.code, result.message)
+  const result = response.data as unknown
+  // 后端在 200 下可能返回非 ApiResponse（如反代 502 页面、静态错误页），
+  // 先校验结构，否则抛出更明确的“响应格式错误”，而非把整段 HTML 当错误信息。
+  if (typeof result !== 'object' || result === null || !('code' in result)) {
+    throw new ApiError(-1, '响应格式错误：未返回有效的 ApiResponse')
   }
-  return result.data
+  const apiResult = result as ApiResponse<T>
+  if (apiResult.code !== 0) {
+    throw new ApiError(apiResult.code, apiResult.message)
+  }
+  return apiResult.data
 }
 
 function handleUnauthorized(response: AxiosResponse<unknown>) {
-  if (response.status !== 401 && !isUnauthenticatedResponse(response.data)) {
+  // 成功拦截器只处理 2xx 响应（401 不会进入这里，由错误拦截器处理），
+  // 因此只需判断是否为“明确未认证”（code 2001）的响应。
+  if (!isUnauthenticatedResponse(response.data)) {
     return
   }
   clearStoredToken()
@@ -75,13 +84,29 @@ function clearStoredToken() {
   localStorage.removeItem(TOKEN_STORAGE_KEY)
 }
 
+// 同一会话内的未认证跳转只触发一次，避免后台轮询/进度上报在 2001 时反复触发整页刷新。
+let redirectedToLogin = false
+
 function redirectToLogin() {
+  if (redirectedToLogin) {
+    return
+  }
+  // 已在登录页时不置位：否则带过期 token 打开 /login 触发一次 2001 就会把
+  // 闩锁永久锁上，之后再遇到 2001 都不再跳转。
   if (window.location.pathname === '/login') {
     return
   }
+  redirectedToLogin = true
   // 与路由守卫一致地携带 redirect 参数，登录后回到原页面。
   const redirect = window.location.pathname + window.location.search
   window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
+}
+
+// 登录成功后复位跳转闩锁。登录是 SPA 内跳转（auth.login + router.push），
+// 不会发生整页刷新，因此必须由调用方显式复位，否则本次会话后续再收到
+// 2001 时不会再跳转登录页，用户会卡在无响应的页面上。
+export function resetLoginRedirect() {
+  redirectedToLogin = false
 }
 
 export default api

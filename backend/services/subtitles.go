@@ -309,7 +309,18 @@ func (c *subtitleDocumentCache) get(key subtitleCacheKey) (*subtitleDocument, bo
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	document, ok := c.entries[key]
-	return document, ok
+	if !ok {
+		return nil, false
+	}
+	// LRU：命中后把该键移到 order 末尾，使热点文件更不易被 FIFO 淘汰挤掉。
+	for i := range c.order {
+		if c.order[i] == key {
+			c.order = append(c.order[:i], c.order[i+1:]...)
+			c.order = append(c.order, key)
+			break
+		}
+	}
+	return document, true
 }
 
 func (c *subtitleDocumentCache) put(key subtitleCacheKey, document *subtitleDocument) {
@@ -449,14 +460,16 @@ func decodeASSDialogue(value string) string {
 	lower := strings.ToLower(line)
 	if strings.HasPrefix(lower, "dialogue:") {
 		rest := strings.TrimSpace(line[len("Dialogue:"):])
-		fields := strings.SplitN(rest, ",", 10)
+		// 按全部逗号切分后，第 10 段（索引 9）起整体作为字幕正文，用 Join 还原，
+		// 避免正文自身含逗号（如"他说，再见"）被固定的 N 截断丢失后续文本。
+		fields := strings.Split(rest, ",")
 		if len(fields) >= 10 {
-			text = fields[9]
+			text = strings.Join(fields[9:], ",")
 		}
 	} else {
-		fields := strings.SplitN(line, ",", 9)
+		fields := strings.Split(line, ",")
 		if len(fields) >= 9 {
-			text = fields[8]
+			text = strings.Join(fields[8:], ",")
 		}
 	}
 	text = strings.ReplaceAll(text, `\N`, "\n")
@@ -494,9 +507,19 @@ func renderWebVTT(cues []subtitleCue) []byte {
 		end := cue.end
 		if end <= cue.start {
 			if index+1 < len(cues) && cues[index+1].start > cue.start {
-				end = cues[index+1].start
+				// 收束到下一 cue 起始之前 1ms，避免与后续 cue 区间重叠。
+				end = cues[index+1].start - 1*time.Millisecond
 			} else {
 				end = cue.start + 5*time.Second
+			}
+		}
+		// 兜底：若下一 cue 更早（乱序/同刻），不强行 +5s 覆盖后续区间，
+		// 仅在 start 之后给一个极短区间，避免 WEBVTT 时间回退或重叠。
+		if index+1 < len(cues) && cues[index+1].start < end {
+			if cues[index+1].start <= cue.start {
+				end = cue.start + 1*time.Millisecond
+			} else {
+				end = cues[index+1].start - 1*time.Millisecond
 			}
 		}
 		if end <= cue.start {

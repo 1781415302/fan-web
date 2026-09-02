@@ -137,6 +137,9 @@ class ProgressOutbox {
   /// 故障时对剩余记录发起无意义的请求风暴。
   Future<void> syncAll(String serverUrl, int userId, String token) =>
       _enqueueSync(() async {
+        // 本次上报只用传入的 token 走单次请求，绝不写回全局 ApiClient：
+        // 登出或 2001 清掉全局 token 后，排队中的本轮仍持有旧票，若写回
+        // 全局就会把失效票据装回去，切账号时还会盖掉新用户的 token。
         final pending = await getPending(serverUrl, userId);
         for (final record in pending) {
           try {
@@ -144,6 +147,7 @@ class ProgressOutbox {
               record.episodeId,
               record.position,
               record.watched,
+              token: token,
             );
             await removeIfMatched(record);
           } catch (error) {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -56,15 +57,20 @@ func (h *UpdateHandler) Check(c *gin.Context) {
 	utils.Success(c, result)
 }
 
+// alreadyLatestMsg 与 services.PerformUpdate 返回的“已是最新版本”措辞保持一致。
+// 若将来 services 改为返回哨兵错误（如 services.ErrAlreadyLatest），
+// 此处应改用 errors.Is(err, services.ErrAlreadyLatest) 以彻底解耦，避免措辞漂移。
+const alreadyLatestMsg = "已是最新版本"
+
 func (h *UpdateHandler) Perform(c *gin.Context) {
 	cv := h.currentVersion()
 	if err := services.PerformUpdate(cv); err != nil {
-		msg := err.Error()
-		if msg == "已是最新版本" {
-			utils.Error(c, utils.CodeInvalidParams, msg)
+		msg := strings.TrimSpace(err.Error())
+		if msg == alreadyLatestMsg {
+			utils.Error(c, utils.CodeInvalidParams, err.Error())
 			return
 		}
-		utils.Error(c, utils.CodeInternal, msg)
+		utils.Error(c, utils.CodeInternal, err.Error())
 		return
 	}
 	utils.Success(c, gin.H{

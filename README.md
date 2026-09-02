@@ -98,7 +98,7 @@ fan-web 诞生于对现有自托管方案的不满。此前我使用 Alist 管�
 ./build.sh
 ```
 
-脚本依次执行：前端构建（`vue-tsc && vite build`）-> 拷贝到 `backend/web/dist` -> 后端交叉编译（`CGO_ENABLED=0`），最终产物为 `dist/fan-web-server`，已包含全部前端资源。
+脚本依次执行：前端构建（`vue-tsc && vite build`）-> 产物校验并拷贝到 `backend/web/dist` -> `go vet` + `go test` -> 后端交叉编译（`CGO_ENABLED=0`），默认产物为 `dist/fan-web-server`（版本取最近 tag；`DEV=1` 拼 `+dev`），已包含全部前端资源。
 
 > 构建会覆盖 `backend/web/dist/` 下由 git 跟踪的占位文件，`git status` 显示其 modified 属正常现象。
 

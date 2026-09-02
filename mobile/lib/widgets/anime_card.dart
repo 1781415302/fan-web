@@ -188,15 +188,25 @@ class AnimeCover extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final proxyUrl = _coverProxyUrl(authState);
     final imageUrl = proxyUrl ?? cover.trim();
-    final headers = authState.token == null || authState.token!.isEmpty
-        ? null
-        : <String, String>{'Authorization': 'Bearer ${authState.token}'};
+    // 仅当访问自建代理地址（同主机）或原始封面与本服务器同主机时才附带
+    // Bearer Token，避免把 Token 泄露给第三方图床。
+    final attachAuth =
+        proxyUrl != null || _isSameHost(imageUrl, authState.serverUrl);
+    final headers = attachAuth &&
+            authState.token != null &&
+            authState.token!.isNotEmpty
+        ? <String, String>{'Authorization': 'Bearer ${authState.token}'}
+        : null;
     final placeholder = _placeholder();
     final image = imageUrl.isEmpty
         ? placeholder
         : CachedNetworkImage(
             imageUrl: imageUrl,
             httpHeaders: headers,
+            // 纳入登录态因子，避免登出后缓存的鉴权封面短暂误显示。
+            cacheKey: authState.token != null && authState.token!.isNotEmpty
+                ? 'auth|$imageUrl'
+                : imageUrl,
             fit: BoxFit.cover,
             memCacheWidth: 300,
             placeholder: (context, url) => Stack(
@@ -234,6 +244,18 @@ class AnimeCover extends ConsumerWidget {
     }
     final normalized = serverUrl.replaceFirst(RegExp(r'/+$'), '');
     return '$normalized/api/animes/$animeId/cover';
+  }
+
+  /// 判断 [url] 是否与 [serverUrl] 同主机（用于决定是否附带鉴权头）。
+  bool _isSameHost(String url, String? serverUrl) {
+    if (url.isEmpty || serverUrl == null || serverUrl.isEmpty) {
+      return false;
+    }
+    final urlHost = Uri.tryParse(url)?.host;
+    final serverHost = Uri.tryParse(serverUrl)?.host;
+    return urlHost != null &&
+        urlHost.isNotEmpty &&
+        urlHost == serverHost;
   }
 
   Widget _placeholder() {

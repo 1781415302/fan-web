@@ -186,6 +186,8 @@ func (h *EpisodeHandler) authenticateMedia(
 			utils.Error(c, utils.CodeUnauthenticated, "媒体票据无效或已过期")
 			return 0, false
 		}
+		// 媒体票据虽经服务签字校验，但仍需确认用户仍存在：
+		// 已删除/注销用户的合法票据在过期前应立刻失效，不能继续拉流。
 		if _, err := database.GetUserByID(claims.UserID); err != nil {
 			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
 			return 0, false
@@ -259,8 +261,15 @@ func (h *EpisodeHandler) ReportProgress(c *gin.Context) {
 		return
 	}
 	utils.Success(c, nil)
-	if h.sync != nil && request.Watched {
-		go h.sync.EnqueueWatched(userID, episodeID)
+	if request.Watched {
+		// 派发前缓存本地指针，避免并发读 h.sync 产生数据竞态；
+		// goroutine 内 recover 防止未预期 panic 终止进程。
+		if sync := h.sync; sync != nil {
+			go func() {
+				defer func() { _ = recover() }()
+				sync.EnqueueWatched(userID, episodeID)
+			}()
+		}
 	}
 }
 

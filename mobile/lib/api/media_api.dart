@@ -61,6 +61,11 @@ class MediaTokenResult {
 /// 旧的登录 JWT 也接入到 apiClient；当前 client 内部已用 Bearer。
 /// 此处保留可测试的解析函数。
 String buildStreamUrlWithMediaToken(String serverUrl, int episodeId, String mediaToken) {
-  final normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+  var normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+  // 兜底补全协议头，避免传入无 scheme 的 serverUrl 时拼接出非法播放地址
+  // （与 ApiClient.normalizeServerUrl 的口径一致；正常调用方已传规范化 URL）。
+  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(normalized)) {
+    normalized = 'http://$normalized';
+  }
   return '$normalized/api/episodes/$episodeId/stream?media_token=${Uri.encodeComponent(mediaToken)}';
 }

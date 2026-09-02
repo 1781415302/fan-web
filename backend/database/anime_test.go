@@ -199,11 +199,6 @@ func TestSyncEpisodesRejectsDuplicateInput(t *testing.T) {
 	if len(after) != len(initial) {
 		t.Fatalf("database must be unchanged after failed sync, got %d episodes", len(after))
 	}
-	noProgress, err := GetProgress(1, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = noProgress
 }
 
 func TestSyncEpisodesRollsBackOnFailure(t *testing.T) {

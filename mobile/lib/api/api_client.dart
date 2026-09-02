@@ -67,7 +67,10 @@ class ApiClient {
   }
 
   void _onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    if (_token != null && _token!.isNotEmpty) {
+    // 请求级已带 Authorization 时不覆盖：outbox 补报会为单次上报传入
+    // 独立票据，不能让全局会话票据（可能已空）把它顶掉。
+    final existing = options.headers['Authorization'];
+    if (_token != null && _token!.isNotEmpty && existing == null) {
       options.headers['Authorization'] = 'Bearer $_token';
     }
     handler.next(options);
@@ -115,18 +118,31 @@ class ApiClient {
   }
 
   void _onError(DioException error, ErrorInterceptorHandler handler) {
+    // _onResponse 里 reject 的响应已经处理过未授权，且它的 error 一定是本类
+    // 构造的 ApiException；reject 后会再次进入此处，必须跳过，否则一次未授权
+    // 响应会触发两次回调（重复弹窗 / 重复 push 登录路由）。
+    if (error.error is ApiException) {
+      handler.next(error);
+      return;
+    }
+    // Dio 默认只放行 2xx：真 HTTP 401 不会进 _onResponse，只会到这里。
+    // 反代或旧服务返回的裸 401（以及 401 包着业务码 2001 的响应）同样必须
+    // 触发 onUnauthorized，否则用户会一直卡在已失效的会话里。
     final response = error.response;
-    if (response?.statusCode == 401 ||
-        _isUnauthorizedEnvelope(response?.data)) {
+    if (response?.statusCode == 401 || _isUnauthorizedEnvelope(response?.data)) {
       _notifyUnauthorized();
     }
     handler.next(error);
   }
 
-  bool _isUnauthorizedEnvelope(Object? data) {
-    return data is Map &&
-        data['code'] is num &&
-        (data['code'] as num).toInt() == 2001;
+  // 响应体仍是未展开的信封（code/message/data）时为 true，用于识别裸 401
+  // 上携带的业务码 2001。
+  static bool _isUnauthorizedEnvelope(Object? data) {
+    if (data is! Map) {
+      return false;
+    }
+    final code = data['code'];
+    return code is num && code.toInt() == 2001;
   }
 
   DioException _errorFor(Response<dynamic> response, ApiException exception) {

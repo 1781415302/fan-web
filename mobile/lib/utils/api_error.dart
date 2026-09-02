@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../api/api_client.dart';
+import '../api/media_api.dart';
 
 /// 统一的 API 错误文案映射。按错误类型给出用户可读的中文提示。
 String describeApiError(Object error) {
@@ -23,6 +24,9 @@ String describeApiError(Object error) {
   }
   if (error is FormatException) {
     return error.message;
+  }
+  if (error is MediaTokenUnsupported) {
+    return '当前服务器不支持媒体直链，请升级服务端';
   }
   return '加载失败，请稍后重试';
 }

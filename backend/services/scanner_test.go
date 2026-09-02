@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestScannerRecognizesSupportedEpisodeNames(t *testing.T) {
@@ -147,4 +149,60 @@ func TestScannerTwoMoviesKeepsFirstByFilename(t *testing.T) {
 	if episodes[0].EpNumber != 1 || episodes[0].FilePath != first {
 		t.Fatalf("expected first-by-filename movie as ep1, got %#v", episodes[0])
 	}
+}
+
+// TestScannerConcurrentSetRootPathAndReads 验证 rootPath 的无锁读写竞态修复：
+// 并发 SetRootPath 与 RootPath/ListSubDirs（Dirs 请求路径）交错时不允许
+// data race 或读到撕裂的中间值（go test -race 下验证）。
+func TestScannerConcurrentSetRootPathAndReads(t *testing.T) {
+	base := t.TempDir()
+	roots := []string{base, filepath.Join(base, "a"), filepath.Join(base, "b")}
+	for _, root := range roots {
+		if err := os.MkdirAll(filepath.Join(root, "show"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scanner := NewScannerService(roots[0])
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			scanner.SetRootPath(roots[i%len(roots)])
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			// 读路径可能被 SetRootPath 交错；必须总能看到某个完整 root（不允许
+			// 无同步读写 string 引发的撕裂/竞态，ListSubDirs 内部做 Abs+EvalSymlinks）。
+			_ = scanner.RootPath()
+			dirs, err := scanner.ListSubDirs()
+			if err != nil {
+				// 根目录被 SetRootPath 切走时目录可能不存在，允许 ErrInvalid/不存在。
+				if _, statErr := os.Stat(scanner.RootPath()); statErr != nil {
+					continue
+				}
+				t.Errorf("ListSubDirs unexpected error: %v", err)
+				return
+			}
+			_ = dirs
+		}
+	}()
+	// 跑一小段时间后停止。
+	time.Sleep(100 * time.Millisecond)
+	close(done)
+	wg.Wait()
 }

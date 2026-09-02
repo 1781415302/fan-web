@@ -35,6 +35,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with WidgetsBindingObserver {
   PlayerConfig? _config;
   PlayerNotifier? _notifier;
+  String? _boundServerUrl;
+  String? _boundToken;
   final GlobalKey<VideoState> _videoKey = GlobalKey<VideoState>();
   Timer? _controlsTimer;
   Timer? _hintTimer;
@@ -96,6 +98,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl;
     final token = authState.token;
+    _boundServerUrl = serverUrl;
+    _boundToken = token;
     if (serverUrl != null &&
         serverUrl.isNotEmpty &&
         token != null &&
@@ -124,7 +128,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       setState(() {
         _episodes = episodes;
       });
-    } catch (_) {
+    } catch (error) {
+      debugPrint('加载集数列表失败: $error');
       if (!mounted) {
         return;
       }
@@ -152,6 +157,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    if (authState.serverUrl != _boundServerUrl ||
+        authState.token != _boundToken) {
+      _bindConfig();
+    }
     final config = _config;
     if (config == null) {
       return const _PlayerUnavailableScreen();
@@ -670,23 +680,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           !_controlsVisible ||
           generation != _controlsHideGeneration ||
           shownAt != _controlsShownAt) {
-        return;
-      }
-      final elapsed = DateTime.now().difference(shownAt);
-      final remaining = _controlsAutoHideDelay - elapsed;
-      if (remaining > Duration.zero) {
-        _controlsTimer = Timer(remaining, () {
-          if (mounted &&
-              _controlsVisible &&
-              generation == _controlsHideGeneration &&
-              shownAt == _controlsShownAt) {
-            _controlsTimer = null;
-            _controlsShownAt = null;
-            setState(() {
-              _controlsVisible = false;
-            });
-          }
-        });
         return;
       }
       _controlsTimer = null;

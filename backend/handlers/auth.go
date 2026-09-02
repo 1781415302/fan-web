@@ -43,6 +43,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		utils.Error(c, utils.CodeInvalidParams, "用户名和密码不能为空")
 		return
 	}
+	// bcrypt 仅取密码前 72 字节且不报错；在 handler 层显式限制长度，避免超长用户名/密码被静默截断。
+	if len(request.Username) > 256 || len(request.Password) > 1024 {
+		utils.Error(c, utils.CodeInvalidParams, "用户名或密码长度超出限制")
+		return
+	}
 
 	// 本次尝试的额度已由限流中间件的 Allow 原子计入，失败时无需再重复计数。
 	user, err := database.GetUserByUsername(request.Username)
@@ -54,7 +59,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			utils.Error(c, utils.CodeLoginFailed, "用户名或密码错误")
 			return
 		}
-		h.rateLimiter.Reset(middleware.ClientIP(c))
+		// DB 错误属于服务端故障：不清空该 IP 的失败计数，
+		// 避免限流被完全解除而在数据库不可用时形同虚设；
+		// 失败尝试仍由限流中间件的 Allow 累计。
 		utils.Error(c, utils.CodeInternal, "查询用户失败")
 		return
 	}
@@ -97,6 +104,9 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	utils.Success(c, user)
 }
 
+// Logout 仅返回成功。JWT 为无状态令牌，服务端不维护会话，
+// 因此无法在此吊销已签发的 token：被盗 token 在过期前始终有效。
+// 更强保障需引入短期 access token + 刷新机制或登出黑名单（当前为已知设计取舍）。
 func (h *AuthHandler) Logout(c *gin.Context) {
 	utils.Success(c, nil)
 }

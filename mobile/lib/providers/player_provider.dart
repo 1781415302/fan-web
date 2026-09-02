@@ -40,13 +40,14 @@ class PlayerConfig {
   final String? animeTitle;
   final int? episodeNumber;
 
+  // 注意(P8):family 身份只由 animeId + episodeId + serverUrl 决定,
+  // token 为易变的一次性构造参数,不纳入 ==/hashCode,避免刷新后被误判为不同 provider 实例。
   @override
   bool operator ==(Object other) {
     return other is PlayerConfig &&
         other.animeId == animeId &&
         other.episodeId == episodeId &&
         other.serverUrl == serverUrl &&
-        other.token == token &&
         other.animeTitle == animeTitle &&
         other.episodeNumber == episodeNumber;
   }
@@ -56,7 +57,6 @@ class PlayerConfig {
     animeId,
     episodeId,
     serverUrl,
-    token,
     animeTitle,
     episodeNumber,
   );
@@ -184,7 +184,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
   bool _disposed = false;
   DateTime? _mediaExpiresAt;
   Timer? _mediaRefreshTimer;
+  Timer? _mediaRefreshGuardTimer;
   bool _mediaTokenRefreshInFlight = false;
+  bool _mediaRefreshAborted = false;
   bool _didNearExpiryReopen = false;
 
   @override
@@ -217,15 +219,18 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   Future<void> _initialize() async {
     // 先同步 outbox 中待上传的进度，确保服务端有最新位置后再查询断点
+    final authState = ref.read(authProvider);
+    final serverUrl = authState.serverUrl ?? config.serverUrl;
+    final userId = authState.user?.id ?? 0;
+    final token = authState.token ?? config.token;
+    // 未登录/无有效身份时不应以 userId=0 写入或上报进度（P11）。
+    if (userId <= 0 || token.isEmpty) {
+      _setState(state.copyWith(isLoading: false, error: '请先登录'));
+      return;
+    }
     try {
-      final authState = ref.read(authProvider);
-      final serverUrl = authState.serverUrl ?? config.serverUrl;
-      final userId = authState.user?.id ?? 0;
-      final token = authState.token ?? config.token;
-      if (userId > 0 && token.isNotEmpty) {
-        final outbox = ref.read(progressOutboxProvider);
-        await outbox.syncAll(serverUrl, userId, token);
-      }
+      final outbox = ref.read(progressOutboxProvider);
+      await outbox.syncAll(serverUrl, userId, token);
     } catch (_) {}
     if (_disposed || _disposing) {
       return;
@@ -271,23 +276,20 @@ class PlayerNotifier extends Notifier<PlayerState> {
     } catch (_) {
       if (_isWithin60sOfExpiry() && !_didNearExpiryReopen) {
         _didNearExpiryReopen = true;
-        try {
-          await _refreshMediaToken();
-          if (_disposed || _disposing) {
-            return;
-          }
-          _hasOpened = true;
-          _openCompleted = true;
-          _startProgressTimer();
-          final duration = await _waitForDuration();
-          await _restoreAndStart(duration);
+        // _refreshMediaToken 内部已捕获异常并设置错误态/复位标志,不会逃逸到 zone(P1)。
+        await _refreshMediaToken();
+        if (_disposed || _disposing) {
           return;
-        } on MediaTokenUnsupported {
-          _setState(
-            state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'),
-          );
+        }
+        if (!_hasOpened) {
+          // 临近过期重试刷新失败,错误态已由 _refreshMediaToken 设置。
           return;
-        } catch (_) {}
+        }
+        _openCompleted = true;
+        _startProgressTimer();
+        final duration = await _waitForDuration();
+        await _restoreAndStart(duration);
+        return;
       }
       _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       return;
@@ -321,7 +323,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
       delay = const Duration(minutes: 1);
     }
     _mediaRefreshTimer = Timer(delay, () {
-      unawaited(_refreshMediaToken());
+      // 临近过期前的主动续期:失败不弹错误(当前播放仍用旧票据),仅复位标志稍后重试(P1)。
+      unawaited(_refreshMediaToken(setErrorOnFailure: false));
     });
   }
 
@@ -335,14 +338,15 @@ class PlayerNotifier extends Notifier<PlayerState> {
     );
   }
 
-  Future<void> _refreshMediaToken() async {
+  Future<void> _refreshMediaToken({bool setErrorOnFailure = true}) async {
     if (_mediaTokenRefreshInFlight || _disposed || _disposing) {
       return;
     }
     _mediaTokenRefreshInFlight = true;
+    _mediaRefreshAborted = false;
     try {
       final media = await _buildOpenMedia();
-      if (_disposed || _disposing) {
+      if (_disposed || _disposing || _mediaRefreshAborted) {
         return;
       }
       final resume = state.position;
@@ -360,9 +364,51 @@ class PlayerNotifier extends Notifier<PlayerState> {
           await player.play();
         } catch (_) {}
       }
+    } on MediaTokenUnsupported {
+      // 媒体票据不支持(老服务器)时给出明确提示,避免静默卡死(P1)。
+      if (setErrorOnFailure && !_disposed && !_disposing) {
+        _setState(
+          state.copyWith(isLoading: false, error: '当前服务器不支持媒体票据，请升级服务器'),
+        );
+      }
+      _didNearExpiryReopen = false;
+    } catch (_) {
+      // 其它错误(如网络故障)降级为通用提示,并复位 NearExpiry 标志以便下次仍可尝试(P1)。
+      if (setErrorOnFailure && !_disposed && !_disposing) {
+        _setState(
+          state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'),
+        );
+      }
+      _didNearExpiryReopen = false;
     } finally {
+      _mediaRefreshGuardTimer?.cancel();
+      _mediaRefreshGuardTimer = null;
       _mediaTokenRefreshInFlight = false;
     }
+  }
+
+  // 临近过期触发刷新后启动守卫:若刷新在超时内仍未完成(如网络挂起),
+  // 回退到错误态,避免 _handleError 在刷新期间吞掉所有 player 错误导致无提示卡死(P10)。
+  void _startMediaRefreshGuard() {
+    _mediaRefreshGuardTimer?.cancel();
+    _mediaRefreshGuardTimer = Timer(const Duration(seconds: 15), () {
+      _mediaRefreshGuardTimer = null;
+      if (_disposed || _disposing) {
+        return;
+      }
+      if (_mediaTokenRefreshInFlight) {
+        // 只置 abort 与错误态,不要在这里把 _mediaTokenRefreshInFlight 清回 false:
+        // 原 _refreshMediaToken 仍可能卡在 _buildOpenMedia() 里,若提前清标志,
+        // _handleError 会误判"无刷新在进行"而再开一次刷新;新刷新开头又把 abort 复位,
+        // 旧请求检查 abort 时已失效,两条路径会同时 player.open(P10 第二轮 review)。
+        // in-flight 标志交给进行中 _refreshMediaToken 的 finally 清理。
+        _mediaRefreshAborted = true;
+        _didNearExpiryReopen = false;
+        _setState(
+          state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'),
+        );
+      }
+    });
   }
 
   void _handlePlaying(bool playing) {
@@ -429,6 +475,11 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   void _handleTrack(Track track) {
     final subtitle = track.subtitle;
+    // 仅在字幕轨真正变化时更新当前字幕;视频/音频轨变化带来的空字幕轨
+    // (SubtitleTrack.empty, id 为 '')不应覆盖已选字幕,否则 UI 会误显示已选中(P7)。
+    if (subtitle.id.isEmpty) {
+      return;
+    }
     if (subtitle.id == 'auto' || subtitle.id == 'no') {
       _setState(state.copyWith(clearCurrentSubtitleTrack: true));
       return;
@@ -444,6 +495,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (!_didNearExpiryReopen) {
         _didNearExpiryReopen = true;
         unawaited(_refreshMediaToken());
+        // 启动守卫:若刷新在超时内仍未恢复播放,回退到错误态(P10)。
+        _startMediaRefreshGuard();
       }
       return;
     }
@@ -852,6 +905,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _progressTimer = null;
     _mediaRefreshTimer?.cancel();
     _mediaRefreshTimer = null;
+    _mediaRefreshGuardTimer?.cancel();
+    _mediaRefreshGuardTimer = null;
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }

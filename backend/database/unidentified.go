@@ -46,8 +46,10 @@ func DeleteUnidentifiedByDir(filePath string) error {
 	return err
 }
 
-// ListUnidentified 分页读取未识别文件。page<1 按 1；pageSize 非法按 50，上限 100。
-func ListUnidentified(page, pageSize int) ([]models.UnidentifiedFile, int, error) {
+// NormalizePaging 夹紧分页参数：page<1 按 1；pageSize<1 按 50，>100 按 100。
+// 这是未识别列表分页策略的唯一真相源：查询与响应回显都用同一套夹紧后的值，
+// 避免 handler 原样回显未裁剪的 query（如 page=0、page_size=999）。
+func NormalizePaging(page, pageSize int) (int, int) {
 	if page < 1 {
 		page = 1
 	}
@@ -56,6 +58,11 @@ func ListUnidentified(page, pageSize int) ([]models.UnidentifiedFile, int, error
 	} else if pageSize > 100 {
 		pageSize = 100
 	}
+	return page, pageSize
+}
+
+func ListUnidentified(page, pageSize int) ([]models.UnidentifiedFile, int, error) {
+	page, pageSize = NormalizePaging(page, pageSize)
 
 	var total int
 	if err := DB.QueryRow("SELECT COUNT(*) FROM unidentified_files").Scan(&total); err != nil {

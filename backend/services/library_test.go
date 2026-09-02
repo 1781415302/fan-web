@@ -998,6 +998,55 @@ func TestLibraryScanFastPathSkipsWhenGroupHasSeason(t *testing.T) {
 	}
 }
 
+// 中文季号 11+ 是 parseChineseNum 扩到 1–99 后才生效的行为变更：
+// 季号会进组键，从而让整组脱离“目录已绑定番剧”的快通道。
+// 若季号解析退回只认 1–10，这一组会被误当成无季号而快通道写进已绑定的 S1。
+func TestLibraryScanFastPathSkipsOnChineseSeasonAboveTen(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "芙莉莲")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeEmptyFile(filepath.Join(dir, "第十一季 - 01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	setupLibraryDB(t)
+	if _, err := database.CreateAnime(&models.Anime{
+		Title: "Sousou no Frieren", TitleCn: "芙莉莲", BangumiID: 2001, EpCount: 28, FilePath: "芙莉莲",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var searches atomic.Int32
+	bangumi := mockBangumiResponses(func(request *http.Request) string {
+		if strings.HasPrefix(request.URL.Path, "/search/subject/") {
+			searches.Add(1)
+			return `{"list":[{"id":2011,"name":"Sousou no Frieren Season 11","name_cn":"葬送的芙莉莲 第11季","eps_count":12}]}`
+		}
+		if request.URL.Path == "/v0/subjects/2011" {
+			return `{"id":2011,"name":"Sousou no Frieren Season 11","name_cn":"葬送的芙莉莲 第11季","summary":"s","total_episodes":12,"images":{}}`
+		}
+		return `{}`
+	})
+	result, err := NewLibraryService(bangumi, root).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searches.Load() == 0 {
+		t.Fatal("chinese season 11 group must not fast-path bind to S1")
+	}
+	if result.NewEpisodes != 0 {
+		t.Fatalf("must not write S11 into bound S1, got %#v", result)
+	}
+	eps, err := database.ListEpisodesByAnimeID(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 0 {
+		t.Fatalf("bound S1 gained episodes: %#v", eps)
+	}
+}
+
 func TestLibraryScanBoundDirConflictFallsBackToSearch(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "芙莉莲")

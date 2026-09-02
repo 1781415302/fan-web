@@ -38,6 +38,10 @@ func Init(dbPath string) error {
 		}
 	}()
 
+	// MaxOpenConns=1：全局单连接，把所有数据库访问串行化。该设定是为了支持
+	// DeleteUserWithLastAdminGuard 在单个 serializable 事务内完成“检查-删除”最后管理员，
+	// 避免并发互删导致管理员被删光（见该函数的注释）。代价是单连接串行化所有读查询，
+	// 存在吞吐瓶颈，对自托管个人站点影响有限，此为已知性能权衡。
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
@@ -123,6 +127,10 @@ func InitAdmin(username, password string) error {
 // tightenDBFilePermissions 将数据库主文件及 WAL/SHM 伴随文件权限收紧为 0600。
 // 不存在的文件（如新库尚未创建的伴随文件）跳过，后续 SQLite 创建时
 // 以主文件权限为模板，自动继承 0600。
+//
+// 注意：os.Chmod 的权限位仅在类 Unix（POSIX）系统生效；Windows 部署下 Chmod 不改变
+// 报告权限位，数据库文件无操作系统级文件权限保护（本项目交付物含 Windows 可执行，部署
+// 时需注意此平台差异，应通过专用服务账户 / NTFS ACL 限制数据库文件访问）。
 func tightenDBFilePermissions(dbPath string) error {
 	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
 		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {

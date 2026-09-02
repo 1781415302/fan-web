@@ -67,7 +67,7 @@ cd backend && go test -race ./...
 cd mobile && flutter analyze
 cd mobile && flutter test
 cd mobile && flutter build apk --release
-# 构建单文件服务器（产出 dist/fan-web-server）
+# 构建单文件服务器（默认 dist/fan-web-server，版本取最近 tag；DEV=1 拼 +dev）
 ./build.sh
 # 本地开发运行（前后端）
 ./dev.sh

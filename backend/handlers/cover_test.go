@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -56,31 +57,9 @@ func serveCover(t *testing.T, handler *AnimeHandler, animeID int64) *httptest.Re
 	router := gin.New()
 	router.GET("/api/animes/:id/cover", handler.Cover)
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/animes/"+int64ToString(animeID)+"/cover", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/animes/"+strconv.FormatInt(animeID, 10)+"/cover", nil)
 	router.ServeHTTP(recorder, req)
 	return recorder
-}
-
-func int64ToString(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	var buf [20]byte
-	i := len(buf)
-	for v > 0 {
-		i--
-		buf[i] = byte('0' + v%10)
-		v /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
 
 func TestCoverAcceptsTrustedPNG(t *testing.T) {

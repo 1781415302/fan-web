@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -101,10 +102,27 @@ func (h *SetupHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	info, err := os.Stat(request.VideoRootPath)
+	// 先解析符号链接得到真实路径，避免 os.Stat 直接跟随 symlink 把指向敏感目录的
+	// 符号链接当作视频根接受；再校验真实路径存在且为目录，并禁止其等于配置目录或程序所在目录。
+	realPath, err := filepath.EvalSymlinks(request.VideoRootPath)
+	if err != nil {
+		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
+		return
+	}
+	info, err := os.Stat(realPath)
 	if err != nil || !info.IsDir() {
 		utils.Error(c, utils.CodeInvalidParams, "视频根目录不存在或不是目录")
 		return
+	}
+	if isSameDir(realPath, filepath.Dir(h.configPath)) {
+		utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向配置目录")
+		return
+	}
+	if exePath, err := os.Executable(); err == nil {
+		if isSameDir(realPath, filepath.Dir(exePath)) {
+			utils.Error(c, utils.CodeInvalidParams, "视频根目录不能指向程序目录")
+			return
+		}
 	}
 
 	// 校验完成后，在提交任何修改前再做一次配置写入可用性预检，
@@ -200,4 +218,21 @@ func deleteCreatedUser(userID int64) error {
 		return nil
 	}
 	return database.DeleteUser(userID)
+}
+
+// isSameDir 报告 path 与 dir 是否为同一目录（用于禁止视频根指向配置/程序目录）。
+// 只判断相等，不拒绝 dir 的子目录：官方与常见部署把视频根放在程序目录下的
+// videos/（如 /opt/fan-web + /opt/fan-web/videos），按后代判断会误伤。
+// 两边都先 Abs 再比较：config.yaml 用相对路径时 cfgDir 是进程 cwd，
+// 且 filepath.Rel 在两边一个绝对一个相对时会失败，失败不得当作"安全"放行。
+func isSameDir(path, dir string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(absPath) == filepath.Clean(absDir)
 }

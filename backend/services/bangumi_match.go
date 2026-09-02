@@ -187,19 +187,48 @@ func firstASCIIDigits(s string) int {
 var chineseNumRe = regexp.MustCompile(`[一二三四五六七八九十百]+`)
 
 func parseChineseNum(s string) int {
-	// 只认 1–10。十一、二十、百 一律 0。
+	// 支持 1–99：单字（一~九）、十、整十（二十~九十）、“十X”（十一~十九）与
+	// “X十Y”（二十一~九十九）。含“百”或不合法组合一律返回 0。
 	digits := map[rune]int{
 		'一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
 		'六': 6, '七': 7, '八': 8, '九': 9,
 	}
-	if s == "十" {
-		return 10
-	}
 	runes := []rune(s)
-	if len(runes) == 1 {
+	switch len(runes) {
+	case 0:
+		return 0
+	case 1:
+		if runes[0] == '十' {
+			return 10
+		}
 		return digits[runes[0]]
+	case 2:
+		if runes[0] == '十' {
+			if v, ok := digits[runes[1]]; ok {
+				return 10 + v
+			}
+			return 0
+		}
+		if runes[1] == '十' {
+			if v, ok := digits[runes[0]]; ok {
+				return v * 10
+			}
+			return 0
+		}
+		return 0
+	case 3:
+		// 形如“二十一”：X 十 Y。
+		if runes[1] == '十' {
+			tens, ok1 := digits[runes[0]]
+			ones, ok2 := digits[runes[2]]
+			if ok1 && ok2 {
+				return tens*10 + ones
+			}
+		}
+		return 0
+	default:
+		return 0
 	}
-	return 0
 }
 
 func normalizeTitle(s string) string {

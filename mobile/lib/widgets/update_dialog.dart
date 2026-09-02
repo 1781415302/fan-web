@@ -59,7 +59,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           if (!mounted) return;
           setState(() {
             _received = received;
-            _total = total;
+            // Dio 未返回 content-length 时传 total=-1；忽略它，
+            // 保留开始下载时设置的 downloadSize 兜底，避免回退为不确定进度。
+            if (total > 0) {
+              _total = total;
+            }
           });
         },
       );
@@ -133,6 +137,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ),
       ),
       actions: [
+        if (_downloading)
+          TextButton(
+            onPressed: () => _cancelToken?.cancel(),
+            child: const Text('取消'),
+          ),
         TextButton(
           onPressed: _downloading ? null : () => Navigator.of(context).pop(),
           child: const Text('稍后'),

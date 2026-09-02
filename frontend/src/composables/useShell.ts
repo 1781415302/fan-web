@@ -1,4 +1,4 @@
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
@@ -23,11 +23,21 @@ export function useShell() {
   const bangumiSuffix = ref('')
   const bangumiTokenDraft = ref('')
   const bangumiLoading = ref(false)
+  const bangumiLinkLoading = ref(false)
   const bangumiSyncing = ref(false)
   const bangumiError = ref('')
   const bangumiMessage = ref('')
 
+  // 组件卸载后置位，异步回调据此放弃写回已销毁组件的 ref（避免 Vue 告警）。
+  let disposed = false
+  // 统计进行中的绑定/解绑操作，避免二者并发时一方的 finally 提前把
+  // bangumiLoading 置回 false。
+  let bangumiOpCount = 0
+
   onMounted(() => themeStore.initialize())
+  onUnmounted(() => {
+    disposed = true
+  })
 
   watch(
     () => authStore.isAuthenticated,
@@ -63,11 +73,21 @@ export function useShell() {
       applyBangumiLink(false)
       return
     }
+    // 请求进行中去重：watch(immediate) / openBangumiPanel / syncBangumiProgress 的
+    // catch 都可能触发，避免重复请求。
+    if (bangumiLinkLoading.value) {
+      return
+    }
+    bangumiLinkLoading.value = true
     try {
       const data = await getBangumiLink()
+      if (disposed) return
       applyBangumiLink(data.linked, data.suffix)
     } catch (error: unknown) {
+      if (disposed) return
       bangumiError.value = error instanceof ApiError ? error.message : '查询 Bangumi 绑定失败'
+    } finally {
+      bangumiLinkLoading.value = false
     }
   }
 
@@ -94,29 +114,37 @@ export function useShell() {
       return
     }
     bangumiLoading.value = true
+    bangumiOpCount++
     try {
       const data = await putBangumiToken(token)
+      if (disposed) return
       applyBangumiLink(data.linked, data.suffix)
       bangumiMessage.value = data.suffix ? `已绑定 ···${data.suffix}` : '已绑定'
     } catch (error: unknown) {
+      if (disposed) return
       bangumiError.value = error instanceof ApiError ? error.message : '绑定失败'
     } finally {
-      bangumiLoading.value = false
+      bangumiOpCount--
+      if (bangumiOpCount === 0) bangumiLoading.value = false
     }
   }
 
   async function unbindBangumi() {
     bangumiError.value = ''
     bangumiMessage.value = ''
+    bangumiOpCount++
     bangumiLoading.value = true
     try {
       const data = await deleteBangumiToken()
+      if (disposed) return
       applyBangumiLink(data.linked, data.suffix)
       bangumiMessage.value = '已解除绑定'
     } catch (error: unknown) {
+      if (disposed) return
       bangumiError.value = error instanceof ApiError ? error.message : '解除绑定失败'
     } finally {
-      bangumiLoading.value = false
+      bangumiOpCount--
+      if (bangumiOpCount === 0) bangumiLoading.value = false
     }
   }
 
@@ -126,8 +154,10 @@ export function useShell() {
     bangumiSyncing.value = true
     try {
       const data = await syncBangumi()
+      if (disposed) return
       bangumiMessage.value = `已同步 ${data.animes} 部，标记 ${data.episodes_marked} 集`
     } catch (error: unknown) {
+      if (disposed) return
       bangumiError.value = error instanceof ApiError ? error.message : '同步失败'
       await loadBangumiLink()
     } finally {

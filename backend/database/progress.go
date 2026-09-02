@@ -103,6 +103,10 @@ func scanProgress(row scanner, progress *models.WatchProgress) error {
 // ListContinueWatching 返回有进度的番剧，按该番 max(wp.updated_at) 降序。
 // 每番用 PickContinueEpisode 选继续播放的集；全看完（nil）则跳过。
 // limit 夹紧为 1..50，非法默认 20。
+//
+// SQL 不下推 LIMIT：全看完但仍有 watch_progress 的番同样会占用配额，
+// 若在 SQL 里先截断，最近 N 部都看完、更早还有在看的就会返回空列表。
+// 因此先按活跃度取全量候选，在 Go 里过滤掉全看完的，凑满 limit 才停止。
 func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error) {
 	if limit < 1 {
 		limit = 20
@@ -111,7 +115,8 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 	}
 
 	rows, err := DB.Query(`
-		SELECT a.id, MAX(wp.updated_at)
+		SELECT a.id, a.title, a.title_cn, a.bangumi_id, a.cover, a.summary, a.ep_count, a.file_path, a.created_at,
+			MAX(wp.updated_at)
 		FROM animes a
 		JOIN episodes e ON e.anime_id = a.id
 		JOIN watch_progress wp ON wp.episode_id = e.id
@@ -125,14 +130,18 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 	defer rows.Close()
 
 	type animeActivity struct {
-		id        int64
+		anime     models.Anime
 		updatedAt time.Time
 	}
 	activities := make([]animeActivity, 0)
 	for rows.Next() {
 		var item animeActivity
 		var raw sql.NullString
-		if err := rows.Scan(&item.id, &raw); err != nil {
+		if err := rows.Scan(
+			&item.anime.ID, &item.anime.Title, &item.anime.TitleCn, &item.anime.BangumiID,
+			&item.anime.Cover, &item.anime.Summary, &item.anime.EpCount, &item.anime.FilePath, &item.anime.CreatedAt,
+			&raw,
+		); err != nil {
 			return nil, err
 		}
 		if raw.Valid {
@@ -153,21 +162,17 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 		if len(items) >= limit {
 			break
 		}
-		episodes, err := ListEpisodesByAnimeID(activity.id)
+		episodes, err := ListEpisodesByAnimeID(activity.anime.ID)
 		if err != nil {
 			return nil, err
 		}
-		progressList, err := ListProgressByAnime(userID, activity.id)
+		progressList, err := ListProgressByAnime(userID, activity.anime.ID)
 		if err != nil {
 			return nil, err
 		}
 		picked := PickContinueEpisode(episodes, progressList)
 		if picked == nil {
 			continue
-		}
-		anime, err := GetAnimeByID(activity.id)
-		if err != nil {
-			return nil, err
 		}
 		position := 0
 		watched := false
@@ -179,7 +184,7 @@ func ListContinueWatching(userID int64, limit int) ([]models.ContinueItem, error
 			}
 		}
 		items = append(items, models.ContinueItem{
-			Anime:     *anime,
+			Anime:     activity.anime,
 			Episode:   *picked,
 			Position:  position,
 			Watched:   watched,

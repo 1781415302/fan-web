@@ -59,6 +59,18 @@ func JWTAuth(authService *services.AuthService) gin.HandlerFunc {
 }
 
 func RequireAdmin(c *gin.Context) {
+	// 复用 JWTAuth 已写入的 claims：其中 IsAdmin 已由数据库最新值覆盖，
+	// 因此无需再次查库。仅在未经过 JWTAuth（claims 缺失）时回退到查库校验。
+	if claims, ok := CurrentClaims(c); ok {
+		if !claims.IsAdmin {
+			utils.Error(c, utils.CodeForbidden, "无权限")
+			c.Abort()
+			return
+		}
+		c.Next()
+		return
+	}
+
 	userID, ok := CurrentUserID(c)
 	if !ok {
 		utils.Error(c, utils.CodeUnauthenticated, "未登录")
@@ -246,6 +258,12 @@ func freshAttempts(attempts []time.Time, cutoff time.Time) []time.Time {
 // Middleware 返回检查登录限流的 Gin 中间件。
 // Allow 在检查的同时原子计入本次尝试，认证失败后无需再重复计数；
 // 成功登录由 AuthHandler 调用 Reset 清空对应来源。
+//
+// 注意前置条件：限流以 ClientIP 为来源键，而 ClientIP 的正确性依赖 gin 的
+// 可信代理配置（engine.SetTrustedProxies）。若进程位于反向代理（nginx/caddy）之后
+// 却未正确配置 SetTrustedProxies，c.ClientIP() 会返回代理 IP：一方面所有真实用户
+// 共用同一桶，任一客户端即可把全体用户挡在登录外（DoS）；另一方面限流也可能形同虚设。
+// 部署时务必显式设置 SetTrustedProxies，仅信任实际反向代理网段。
 func (l *LoginRateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !l.Allow(ClientIP(c)) {

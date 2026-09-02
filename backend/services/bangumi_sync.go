@@ -76,6 +76,15 @@ func (s *BangumiSync) EnqueueWatched(userID, episodeID int64) {
 	s.Drain()
 }
 
+// Drain 处理 outbox 中的待同步行。
+// 全进程单槽：Drain 持 drainMu 处理完当前批次才释放。EnqueueWatched 与
+// bangumi_me 触发的并发 Drain 会阻塞等待而非直接返回；上一轮 Drain 处理期间
+// 新入队的行，由等锁的下一趟 Drain 重新 ListBangumiOutbox 取到并消费——行不丢。
+// drainMu 全程持锁、只在函数返回时解锁一次：既保证互斥，也不会出现手动
+// Unlock 后 panic 导致 unlock of unlocked mutex。网络 I/O 期间持锁，代价是
+// 上游故障/慢响应时入队方会阻塞到本轮结束；所有调用方都运行在独立 goroutine
+// （episode.go 的派发、bangumi_me.go 的 go func），阻塞不阻塞请求处理，
+// 相比 TryLock 丢唤醒（后入队的行要等下一次入队才被消费）是更可取的取舍。
 func (s *BangumiSync) Drain() {
 	if s == nil {
 		return
@@ -88,41 +97,59 @@ func (s *BangumiSync) Drain() {
 		log.Printf("[BangumiSync] 读取 outbox 失败: %v", err)
 		return
 	}
+	s.drainRows(rows)
+}
 
+// drainRows 在 Drain 持有 drainMu 期间被调用，内部不得触碰 drainMu。
+func (s *BangumiSync) drainRows(rows []database.OutboxRow) {
 	unauthorized := make(map[int64]bool)
+	// tokenCache 按 userID 缓存令牌，避免同一用户多行 outbox 重复查库读取。
+	tokenCache := make(map[int64]string)
 	first := true
 	for _, row := range rows {
 		if unauthorized[row.UserID] {
 			continue
 		}
-		token, ok, err := database.GetBangumiToken(row.UserID)
-		if err != nil {
-			log.Printf("[BangumiSync] 读取令牌失败: %v", err)
-			continue
-		}
-		if !ok || token == "" {
-			if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
-				log.Printf("[BangumiSync] 清除无令牌 outbox 失败: %v", delErr)
+		token, ok := tokenCache[row.UserID]
+		if !ok {
+			tok, tokOk, tokErr := database.GetBangumiToken(row.UserID)
+			if tokErr != nil {
+				log.Printf("[BangumiSync] 读取令牌失败: %v", tokErr)
+				continue
 			}
-			unauthorized[row.UserID] = true
-			continue
+			if !tokOk || tok == "" {
+				if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
+					log.Printf("[BangumiSync] 清除无令牌 outbox 失败: %v", delErr)
+				}
+				unauthorized[row.UserID] = true
+				continue
+			}
+			token = tok
+			tokenCache[row.UserID] = token
 		}
 		if !first {
 			s.sleep()
 		}
 		first = false
-		if err := s.drainRow(row, token); err != nil {
-			if errors.Is(err, ErrBangumiUnauthorized) {
+		// 瞬时错误（非 401）保留行并额外让出时间片，避免上游故障期被持续
+		// 触发的高频请求打爆 Bangumi。
+		drainErr := s.drainRow(row, token)
+		if drainErr != nil && !errors.Is(drainErr, ErrBangumiUnauthorized) {
+			s.sleep()
+		}
+		if drainErr != nil {
+			if errors.Is(drainErr, ErrBangumiUnauthorized) {
 				if delErr := database.DeleteBangumiToken(row.UserID); delErr != nil {
 					log.Printf("[BangumiSync] 清除令牌失败: %v", delErr)
 				}
 				if delErr := database.DeleteBangumiOutboxByUser(row.UserID); delErr != nil {
 					log.Printf("[BangumiSync] 清除 outbox 失败: %v", delErr)
 				}
+				delete(tokenCache, row.UserID)
 				unauthorized[row.UserID] = true
 				continue
 			}
-			log.Printf("[BangumiSync] 出站同步失败: %v", err)
+			log.Printf("[BangumiSync] 出站同步失败: %v", drainErr)
 		}
 	}
 }

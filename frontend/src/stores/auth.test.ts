@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from './auth'
-import { ApiError, TOKEN_STORAGE_KEY } from '../api'
+import { ApiError, TOKEN_STORAGE_KEY, resetLoginRedirect } from '../api'
 
 vi.mock('../api', () => ({
   TOKEN_STORAGE_KEY: 'fan_web_token',
@@ -13,10 +13,11 @@ vi.mock('../api', () => ({
       this.code = code
     }
   },
-  unwrap: (response: { data: { code: number; data: unknown } }) => {
-    if (response.data.code !== 0) throw new Error(response.data as unknown as string)
+  unwrap: (response: { data: { code: number; message: string; data: unknown } }) => {
+    if (response.data.code !== 0) throw new ApiError(response.data.code, response.data.message)
     return response.data.data
   },
+  resetLoginRedirect: vi.fn(),
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -27,6 +28,7 @@ import api from '../api'
 
 const mockedGet = vi.mocked(api.get)
 const mockedPost = vi.mocked(api.post)
+const mockedResetLoginRedirect = vi.mocked(resetLoginRedirect)
 
 function newStore() {
   setActivePinia(createPinia())
@@ -38,6 +40,7 @@ describe('auth store', () => {
     window.localStorage.clear()
     mockedGet.mockReset()
     mockedPost.mockReset()
+    mockedResetLoginRedirect.mockReset()
   })
 
   it('does not call /auth/me when no token stored', async () => {
@@ -95,6 +98,24 @@ describe('auth store', () => {
     expect(store.token).toBe('fresh-token')
     expect(store.user?.username).toBe('alice')
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('fresh-token')
+  })
+
+  // 登录是 SPA 内跳转，不发生整页刷新；若不复闩锁，本次会话之后再收到
+  // 2001 就不会再跳登录页，用户会卡在失效会话里。
+  it('resets the unauthorized redirect latch on login and setSession', async () => {
+    mockedPost.mockResolvedValue({
+      data: {
+        code: 0,
+        message: 'ok',
+        data: { token: 'fresh-token', user: { id: 1, username: 'alice', is_admin: false, created_at: '' } },
+      },
+    })
+    const store = newStore()
+    await store.login('alice', 'secret')
+    expect(mockedResetLoginRedirect).toHaveBeenCalledTimes(1)
+
+    store.setSession('another-token', { id: 2, username: 'bob', is_admin: false, created_at: '' })
+    expect(mockedResetLoginRedirect).toHaveBeenCalledTimes(2)
   })
 
   it('logout clears local state even when api fails', async () => {

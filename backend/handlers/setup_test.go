@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -153,7 +154,7 @@ func TestSetupSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("expected config permissions 0600, got %v", info.Mode().Perm())
 	}
 	if config.IsInsecureJWTSecret(cfg.JWT.Secret) {
@@ -533,6 +534,66 @@ func TestIsConfiguredUsesAdminCount(t *testing.T) {
 	cfg.Configured = true
 	if !handler.IsConfigured() {
 		t.Fatal("expected IsConfigured=true when flag is true")
+	}
+}
+
+func TestIsSameDirOnlyRejectsEqualDirs(t *testing.T) {
+	root := t.TempDir()
+	// Windows 上 TempDir 可能带 8.3 短名或盘符大小写差异，先统一成 Clean 后的绝对路径。
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installDir := filepath.Join(rootAbs, "opt", "fan-web")
+	videosDir := filepath.Join(installDir, "videos")
+	if err := os.MkdirAll(videosDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if !isSameDir(installDir, installDir) {
+		t.Fatal("same dir must be rejected")
+	}
+	// 官方布局把视频根放在程序目录下的 videos/：按后代判断会误伤，必须放行。
+	if isSameDir(videosDir, installDir) {
+		t.Fatal("sub directory of install dir must be allowed")
+	}
+	if isSameDir(installDir, videosDir) {
+		t.Fatal("parent of install dir must not be reported as same")
+	}
+	if isSameDir(filepath.Join(rootAbs, "elsewhere"), installDir) {
+		t.Fatal("unrelated dir must not be reported as same")
+	}
+}
+
+func TestIsSameDirHandlesRelativeAndDots(t *testing.T) {
+	root := t.TempDir()
+	installDir := filepath.Join(root, "opt")
+	nested := filepath.Join(installDir, "videos")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// config.yaml 用相对路径时 cfgDir 是进程 cwd：相对路径对绝对路径求 Rel 会失败，
+	// 失败不得当作"安全"放行，必须按 Abs 后的真实位置判断。
+	relVideos := filepath.Join("opt", "videos")
+	if !isSameDir(nested, relVideos) {
+		t.Fatal("relative dir must be resolved via Abs before comparing")
+	}
+	if !isSameDir(relVideos, relVideos) {
+		t.Fatal("equal relative dirs must be reported as same")
 	}
 }
 
