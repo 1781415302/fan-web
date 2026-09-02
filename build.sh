@@ -1,6 +1,13 @@
 #!/bin/bash
 # 一键构建：将前后端编译为单个可执行文件
-# 用法: ./build.sh [输出路径，默认 ./dist/fan-web-server-${GOOS}-${GOARCH}]
+# 用法:
+#   ./build.sh                       # 本地模拟发布：dist/fan-web-server，版本为最近 tag
+#   DEV=1 ./build.sh                 # 显式开发构建：版本追加 +dev
+#   ./build.sh <输出路径>             # 自定义产物路径（交叉编译时常用，见下）
+# 说明: 默认无参数输出固定为 ./dist/fan-web-server（兼容历史/文档/发布流程）；
+#   交叉编译时显式传 GOOS/GOARCH 与输出路径（如
+#   GOOS=linux GOARCH=arm64 ./build.sh dist/fan-web-server-linux-arm64），
+#   或直接使用 .opencode/skills/publish-release 发布流程。
 set -euo pipefail
 
 # 使用当前 WSL 的系统 PATH。工具链位置见 AGENTS.md。
@@ -10,7 +17,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 GOOS="${GOOS:-linux}"
 GOARCH="${GOARCH:-amd64}"
-OUT="${1:-$ROOT/dist/fan-web-server-${GOOS}-${GOARCH}}"
+OUT="${1:-$ROOT/dist/fan-web-server}"
 OUT_DIR="$(dirname "$OUT")"
 
 echo "==> [1/3] 构建前端..."
@@ -36,8 +43,13 @@ go vet ./...
 go test ./...
 mkdir -p "$OUT_DIR"
 VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo dev)}"
-if [ -z "${CI:-}" ]; then
-  VERSION="${VERSION}+dev"
+# +dev 只用于明确的开发构建（DEV=1）；发布/本地模拟发布保持 VERSION 原样
+# （在 tag 提交上 describe 即干净 tag vX.Y.Z），不再因未设 CI 而拼 +dev。
+if [ "${DEV:-0}" = "1" ]; then
+  case "$VERSION" in
+    *+dev|dev) ;;
+    *) VERSION="${VERSION}+dev" ;;
+  esac
 fi
 CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w -X main.AppVersion=$VERSION" -o "$OUT" .
 

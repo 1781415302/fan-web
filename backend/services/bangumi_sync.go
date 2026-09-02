@@ -77,19 +77,19 @@ func (s *BangumiSync) EnqueueWatched(userID, episodeID int64) {
 }
 
 // Drain 处理 outbox 中的待同步行。
-// 全进程单槽：已有 Drain 在进行就直接返回（EnqueueWatched 与 bangumi_me 都会
-// 触发 Drain），避免第二趟在 HTTP 窗口内抢到锁重复处理同一行。
-// drainMu 由本 goroutine 全程持有、只在函数返回时解锁一次：既保证互斥，
-// 也不会出现手动 Unlock 后 panic 导致 unlock of unlocked mutex。
-// 取行在持锁下完成，之后的 Bangumi 网络 I/O 与 DB 提交不再触碰这把锁，
-// 且因单槽保证期间不会有第二趟介入，提交仍然安全。
+// 全进程单槽：Drain 持 drainMu 处理完当前批次才释放。EnqueueWatched 与
+// bangumi_me 触发的并发 Drain 会阻塞等待而非直接返回；上一轮 Drain 处理期间
+// 新入队的行，由等锁的下一趟 Drain 重新 ListBangumiOutbox 取到并消费——行不丢。
+// drainMu 全程持锁、只在函数返回时解锁一次：既保证互斥，也不会出现手动
+// Unlock 后 panic 导致 unlock of unlocked mutex。网络 I/O 期间持锁，代价是
+// 上游故障/慢响应时入队方会阻塞到本轮结束；所有调用方都运行在独立 goroutine
+// （episode.go 的派发、bangumi_me.go 的 go func），阻塞不阻塞请求处理，
+// 相比 TryLock 丢唤醒（后入队的行要等下一次入队才被消费）是更可取的取舍。
 func (s *BangumiSync) Drain() {
 	if s == nil {
 		return
 	}
-	if !s.drainMu.TryLock() {
-		return
-	}
+	s.drainMu.Lock()
 	defer s.drainMu.Unlock()
 
 	rows, err := database.ListBangumiOutbox(500)

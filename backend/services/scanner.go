@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"fan-web/models"
 )
@@ -32,6 +33,11 @@ var epPatterns = []*regexp.Regexp{
 var ErrInvalidVideoPath = errors.New("文件目录必须是视频根目录下的相对目录")
 
 type ScannerService struct {
+	// rootMu 保护 rootPath：ScannerService 被 LibraryHandler.Dirs 等长期缓存并在
+	// 请求间复用（每次 SetRootPath），并发请求与 SetRootPath 交错时不能对 string
+	// 做无同步读写。SetRootPath 一次仅改一个字段，rootMu 足够；Scan 等长耗时
+	// 操作在 resolveDirectory 内取一次快照，不全程持锁。
+	rootMu   sync.RWMutex
 	rootPath string
 }
 
@@ -41,11 +47,15 @@ func NewScannerService(rootPath string) *ScannerService {
 
 // SetRootPath 更新视频根目录，初始化完成时调用。
 func (s *ScannerService) SetRootPath(rootPath string) {
+	s.rootMu.Lock()
+	defer s.rootMu.Unlock()
 	s.rootPath = rootPath
 }
 
 // RootPath 返回当前视频根目录。
 func (s *ScannerService) RootPath() string {
+	s.rootMu.RLock()
+	defer s.rootMu.RUnlock()
 	return s.rootPath
 }
 
@@ -225,7 +235,13 @@ func (s *ScannerService) resolveDirectory(dirPath string) (string, error) {
 		return "", err
 	}
 
-	root, err := filepath.Abs(s.rootPath)
+	// 取一次根目录快照：整个解析只用同一个 root，避免解析中途 SetRootPath
+	// 导致 root/target 各用一半不一致的根。
+	s.rootMu.RLock()
+	rootPath := s.rootPath
+	s.rootMu.RUnlock()
+
+	root, err := filepath.Abs(rootPath)
 	if err != nil {
 		return "", fmt.Errorf("解析视频根目录失败: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"fan-web/database"
 	"fan-web/models"
@@ -318,6 +319,96 @@ func TestEnqueueDrainEmptiesOutbox(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("Enqueue+Drain should empty outbox, got %#v", rows)
+	}
+}
+
+// TestDrainDoesNotDropRowsEnqueuedDuringDrain 覆盖第二轮 review 的 Drain TryLock
+// 丢唤醒问题。真实时序：
+//  1. 第一趟 Drain 持锁取走快照（只有 episode1）；
+//  2. Drain 处理 episode1 的 HTTP 期间，用户看完 episode2 → 入队，EnqueueWatched
+//     触发的第二趟 Drain 并发到达。TryLock 语义下第二趟直接返回 = 丢唤醒；
+//     阻塞 Lock 语义下第二趟会等第一趟结束、重新取队列并消费 episode2。
+//
+// 测试确定性：第一趟 PATCH 处理中阻塞 handler，确保 episode2 入队与第二趟 Drain
+// 都发生在第一趟持锁期间（此时第一趟的快照已固定、不会再包含 episode2）。
+func TestDrainDoesNotDropRowsEnqueuedDuringDrain(t *testing.T) {
+	user := setupSyncDB(t)
+	_, episode1 := mustBoundAnime(t, 105, 1)
+	_, episode2 := mustBoundAnime(t, 106, 2)
+	if err := database.SaveBangumiToken(user.ID, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.EnqueueBangumiOutbox(user.ID, episode1.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var patched atomic.Int32
+	inFirstPatch := make(chan struct{})
+	releaseFirstPatch := make(chan struct{})
+	sync := newTestSync(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v0/me":
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case r.URL.Path == "/v0/episodes":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []BangumiEpisode{{ID: 1, Ep: 1, Sort: 1}, {ID: 2, Ep: 2, Sort: 2}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/v0/users/-/collections/") && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"subject_id":1}`))
+		case strings.HasSuffix(r.URL.Path, "/episodes") && r.Method == http.MethodPatch:
+			if patched.Add(1) == 1 {
+				// 第一集 PATCH 处理中：阻塞 handler，等待主 goroutine 完成
+				// "episode2 入队 + 第二趟 Drain 发起" 后再返回。
+				close(inFirstPatch)
+				<-releaseFirstPatch
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	firstDone := make(chan struct{})
+	go func() {
+		sync.Drain()
+		close(firstDone)
+	}()
+	<-inFirstPatch // 第一趟 Drain 已持锁并进入 episode1 的 HTTP 处理。
+
+	// 第一趟快照已固定：此时入队 episode2 并并发触发第二趟 Drain。
+	if err := database.EnqueueBangumiOutbox(user.ID, episode2.ID); err != nil {
+		t.Fatal(err)
+	}
+	secondDone := make(chan struct{})
+	go func() {
+		sync.Drain()
+		close(secondDone)
+	}()
+	// 给第二趟 Drain 留出到达锁的时间（TryLock 会立即失败返回 / Lock 会排队）。
+	time.Sleep(200 * time.Millisecond)
+	close(releaseFirstPatch)
+
+	select {
+	case <-firstDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first drain did not finish")
+	}
+	select {
+	case <-secondDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("second drain did not finish (TryLock dropped wakeup?)")
+	}
+
+	rows, err := database.ListBangumiOutbox(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("outbox not drained: %#v", rows)
+	}
+	if patched.Load() != 2 {
+		t.Fatalf("expected both episodes PATCHed, got %d", patched.Load())
 	}
 }
 

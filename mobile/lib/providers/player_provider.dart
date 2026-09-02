@@ -397,8 +397,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
         return;
       }
       if (_mediaTokenRefreshInFlight) {
+        // 只置 abort 与错误态,不要在这里把 _mediaTokenRefreshInFlight 清回 false:
+        // 原 _refreshMediaToken 仍可能卡在 _buildOpenMedia() 里,若提前清标志,
+        // _handleError 会误判"无刷新在进行"而再开一次刷新;新刷新开头又把 abort 复位,
+        // 旧请求检查 abort 时已失效,两条路径会同时 player.open(P10 第二轮 review)。
+        // in-flight 标志交给进行中 _refreshMediaToken 的 finally 清理。
         _mediaRefreshAborted = true;
-        _mediaTokenRefreshInFlight = false;
         _didNearExpiryReopen = false;
         _setState(
           state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'),
