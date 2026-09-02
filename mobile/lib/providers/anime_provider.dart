@@ -137,7 +137,12 @@ class AnimeListNotifier extends Notifier<AnimeListState> {
           )
         : const AnimeListState();
     if (identity.$2 != null) {
-      unawaited(_fetchFirstPage(generation: generation));
+      // 必须等 build 返回后再拉页。Fake/已完成的 Future 会在第一个 await 后立刻
+      // 读写 state；同步 unawaited 会撞上 Notifier 尚未 mount。
+      Future<void>.microtask(() {
+        if (!_isCurrentGeneration(generation)) return;
+        unawaited(_fetchFirstPage(generation: generation));
+      });
     }
     return initial;
   }

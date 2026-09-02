@@ -151,7 +151,7 @@ void main() {
       3: _prog(3, position: 0, watched: false),
     };
     // 进行中的 ep2 优先于未看的 ep3。
-    expect(pickContinueEpisode(episodes, progress), _ep(2));
+    expect(pickContinueEpisode(episodes, progress)?.id, 2);
   });
 
   test('pickContinueEpisode returns first unwatched when none in progress', () {
@@ -160,7 +160,7 @@ void main() {
       1: _prog(1, position: 0, watched: true),
       2: _prog(2, position: 0, watched: false),
     };
-    expect(pickContinueEpisode(episodes, progress), _ep(2));
+    expect(pickContinueEpisode(episodes, progress)?.id, 2);
   });
 
   test('pickContinueEpisode returns null when all watched', () {
@@ -178,6 +178,6 @@ void main() {
       1: _prog(1, position: 0, watched: true),
     };
     // ep2 进度为空视为未看，无进行中时应返回它。
-    expect(pickContinueEpisode(episodes, progress), _ep(2));
+    expect(pickContinueEpisode(episodes, progress)?.id, 2);
   });
 }

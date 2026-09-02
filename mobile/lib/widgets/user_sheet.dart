@@ -12,7 +12,7 @@ import '../utils/api_error.dart';
 import 'update_dialog.dart';
 
 /// App 版本号，与 pubspec.yaml 的 version 保持同步。
-const appVersion = '1.4.0';
+const appVersion = '1.4.4';
 
 const _bangumiTokenSource = 'https://next.bgm.tv/demo/access-token';
 
