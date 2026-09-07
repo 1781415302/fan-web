@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { getSubtitleUrl, getStreamUrl } from './episode'
+import { getSubtitleUrl, buildDownloadUrl, getStreamUrl } from './episode'
 
 const tokenKey = 'fan_web_token'
 
@@ -24,5 +24,17 @@ describe('episode media URLs', () => {
     expect(url).toContain('track=3')
     expect(url).not.toContain('SHOULD-NOT-APPEAR')
     expect(url).not.toMatch(/[?&]token=/)
+  })
+
+  it('download URL uses media_token and never embeds login JWT', () => {
+    const url = buildDownloadUrl(23, 'media-token-example')
+    expect(url).toBe('/api/episodes/23/download?media_token=media-token-example')
+    expect(url).not.toContain('SHOULD-NOT-APPEAR')
+    expect(url).not.toMatch(/[?&]token=/)
+  })
+
+  it('download URL encodes the media token', () => {
+    const url = buildDownloadUrl(23, 'a/b+c=d&e')
+    expect(url).toBe('/api/episodes/23/download?media_token=a%2Fb%2Bc%3Dd%26e')
   })
 })

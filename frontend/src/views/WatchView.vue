@@ -13,6 +13,7 @@ import {
 } from '../api/episode'
 import { getAnime, listEpisodes } from '../api/anime'
 import { getAnimeProgress, reportProgress } from '../api/progress'
+import { useDownload } from '../composables/useDownload'
 import { useThemeStore } from '../stores/theme'
 import type { Anime, Episode } from '../types/anime'
 import type { AnimeProgress } from '../types/progress'
@@ -31,6 +32,8 @@ const loading = ref(true)
 const error = ref('')
 const playerError = ref('')
 const progressError = ref('')
+const downloadError = ref('')
+const { downloadingId, downloadEpisode } = useDownload()
 const statusMessage = ref('')
 const currentPosition = ref(0)
 const currentDuration = ref(0)
@@ -357,13 +360,15 @@ function createPlayer(episode: Episode) {
     hotkey: true,
     mutex: true,
     playsInline: true,
-    subtitle: defaultSubtitle
+    ...(defaultSubtitle
       ? {
-          url: getSubtitleUrl(episode.id, defaultSubtitle.track_number, mediaToken.value),
-          name: defaultSubtitle.label,
-          type: 'vtt',
+          subtitle: {
+            url: getSubtitleUrl(episode.id, defaultSubtitle.track_number, mediaToken.value),
+            name: defaultSubtitle.label,
+            type: 'vtt',
+          },
         }
-      : undefined,
+      : {}),
     controls: subtitleTracks.value.length
       ? [createSubtitleControl(episode), createSubtitleSizeControl()]
       : [],
@@ -526,6 +531,17 @@ function onPlaybackRateSelect(event: Event) {
   if (player) player.playbackRate = playbackRate.value
 }
 
+async function handleDownload() {
+  const episode = currentEpisode.value
+  if (!episode) return
+  downloadError.value = ''
+  try {
+    await downloadEpisode(episode)
+  } catch (e: unknown) {
+    downloadError.value = e instanceof ApiError ? e.message : '下载失败'
+  }
+}
+
 function changeEpisode(offset: number) {
   const nextEpisode = episodes.value[currentIndex.value + offset]
   if (nextEpisode) navigateToEpisode(nextEpisode.id)
@@ -576,6 +592,12 @@ onBeforeUnmount(() => {
               <option :value="2">2x</option>
             </select>
           </label>
+          <label class="episode-select-label">
+            <span>下载本集</span>
+            <button type="button" class="action-btn" :disabled="loading || !currentEpisode || downloadingId === episodeId" @click="handleDownload">
+              {{ downloadingId === episodeId ? '下载中...' : '下载' }}
+            </button>
+          </label>
         </div>
       </header>
 
@@ -590,6 +612,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p v-if="playerError" class="error-msg" role="alert">{{ playerError }}</p>
+          <p v-if="downloadError" class="error-msg" role="alert">{{ downloadError }}</p>
           <p v-if="progressError" class="progress-error" role="alert">{{ progressError }}</p>
         </section>
 

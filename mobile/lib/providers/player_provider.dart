@@ -13,6 +13,7 @@ import '../models/anime.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
 import 'auth_provider.dart';
+import 'download_provider.dart';
 
 @immutable
 class PlayerLaunchInfo {
@@ -300,6 +301,16 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<Media> _buildOpenMedia() async {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
+    final localPath =
+        ref.read(downloadProvider.notifier).localFilePath(serverUrl, config.episodeId);
+    if (localPath != null) {
+      _mediaExpiresAt = null;
+      _scheduleMediaTokenRefresh(null);
+      return Media(
+        localPath,
+        start: _savedPosition > 0 ? Duration(seconds: _savedPosition) : null,
+      );
+    }
     final mediaApi = ref.read(mediaApiProvider);
     final built = await buildPlayerMedia(
       requestMediaToken: mediaApi.fetchMediaToken,

@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api'
 import { deleteAnime, getAnime, listEpisodes, rebindAnime, scanAnime, updateAnime } from '../api/anime'
 import { getAnimeProgress } from '../api/progress'
+import { useDownload } from '../composables/useDownload'
 import { useAuthStore } from '../stores/auth'
 import type { Anime, Episode } from '../types/anime'
 import type { AnimeProgress } from '../types/progress'
@@ -27,6 +28,8 @@ const saving = ref(false)
 const showEdit = ref(false)
 const coverFailed = ref(false)
 const showFullSummary = ref(false)
+const downloadError = ref('')
+const { downloadingId, downloadEpisode } = useDownload()
 // ep_count 允许为 ''：v-model.number 对清空后的输入返回空字符串（并非 0），
 // 提交前归一化为 0（后端 ep_count 为 int，无法绑定空字符串）。
 const editForm = reactive<{
@@ -192,6 +195,15 @@ function openEpisode(episodeID: number) {
   void router.push({ name: 'watch', params: { id: animeId.value, epId: episodeID } })
 }
 
+async function handleDownload(episode: Episode) {
+  downloadError.value = ''
+  try {
+    await downloadEpisode(episode)
+  } catch (e: unknown) {
+    downloadError.value = e instanceof ApiError ? e.message : '下载失败'
+  }
+}
+
 async function refreshProgress() {
   try {
     const currentProgress = await getAnimeProgress(animeId.value)
@@ -340,19 +352,29 @@ watch(animeId, () => void load(), { immediate: true })
         </div>
         <div v-if="episodes.length === 0" class="empty-state">暂无集数，请扫描文件</div>
         <div v-else class="episode-grid">
-          <button
-            v-for="episode in episodes"
-            :key="episode.id"
-            type="button"
-            class="episode-tile"
-            :class="`tile-${episodeStatus(episode)}`"
-            :aria-label="`第 ${episode.ep_number} 话，${episodeStatus(episode)}`"
-            @click="openEpisode(episode.id)"
-          >
-            <span class="episode-number">第 {{ episode.ep_number }} 话</span>
-            <span class="episode-status" :class="`status-${episodeStatus(episode)}`">{{ episodeStatus(episode) }}</span>
-          </button>
+          <div v-for="episode in episodes" :key="episode.id" class="episode-cell">
+            <button
+              type="button"
+              class="episode-tile"
+              :class="`tile-${episodeStatus(episode)}`"
+              :aria-label="`第 ${episode.ep_number} 话，${episodeStatus(episode)}`"
+              @click="openEpisode(episode.id)"
+            >
+              <span class="episode-number">第 {{ episode.ep_number }} 话</span>
+              <span class="episode-status" :class="`status-${episodeStatus(episode)}`">{{ episodeStatus(episode) }}</span>
+            </button>
+            <button
+              type="button"
+              class="episode-download"
+              :disabled="downloadingId === episode.id"
+              :aria-label="'下载第 ' + episode.ep_number + ' 话'"
+              @click="handleDownload(episode)"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.8 13.2h10.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
         </div>
+        <p v-if="downloadError" class="error-msg" role="alert">{{ downloadError }}</p>
       </section>
     </template>
   </section>
@@ -404,6 +426,12 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .episode-section { padding-top: 32px; }
 .episode-heading { display: flex; align-items: end; gap: 18px; margin-bottom: 18px; }
 .episode-count { margin-right: auto; color: var(--text-muted-color); font-size: 13px; }
+.episode-cell { position: relative; }
+.episode-cell .episode-tile { width: 100%; }
+.episode-download { position: absolute; top: 6px; right: 6px; display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 999px; background: var(--surface-color); color: var(--text-secondary); cursor: pointer; transition: border-color 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out; }
+.episode-download:hover, .episode-download:focus-visible { border-color: var(--accent-color); color: var(--accent-color); box-shadow: var(--shadow-sm); outline: none; }
+.episode-download:disabled { opacity: 0.55; cursor: default; }
+.episode-download svg { width: 14px; height: 14px; }
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
 .episode-tile { display: flex; min-height: 72px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
 .episode-tile:hover, .episode-tile:focus-visible { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); outline: none; }

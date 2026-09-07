@@ -69,3 +69,14 @@ String buildStreamUrlWithMediaToken(String serverUrl, int episodeId, String medi
   }
   return '$normalized/api/episodes/$episodeId/stream?media_token=${Uri.encodeComponent(mediaToken)}';
 }
+
+/// 与 buildStreamUrlWithMediaToken 并列：`{serverUrl}/api/episodes/{id}/download`
+String buildDownloadUrl(String serverUrl, int episodeId) {
+  var normalized = serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+  // 兜底补全协议头，避免传入无 scheme 的 serverUrl 时拼接出非法下载地址
+  // （与 buildStreamUrlWithMediaToken 的口径一致；正常调用方已传规范化 URL）。
+  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(normalized)) {
+    normalized = 'http://$normalized';
+  }
+  return '$normalized/api/episodes/$episodeId/download';
+}

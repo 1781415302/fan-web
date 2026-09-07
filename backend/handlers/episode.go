@@ -3,8 +3,10 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -41,6 +43,91 @@ func (h *EpisodeHandler) Stream(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Referrer-Policy", "no-referrer")
 	http.ServeFile(c.Writer, c.Request, fullPath)
+}
+
+// Download 以附件形式下发整集视频文件，鉴权与路径解析语义与 Stream 逐字一致。
+// 浏览器原生下载：先设置下载头再交由 http.ServeFile 处理 Range，不自绘进度、不做 Range 预检。
+func (h *EpisodeHandler) Download(c *gin.Context) {
+	fullPath, ok := h.resolveEpisodePath(c)
+	if !ok {
+		return
+	}
+
+	// 下载文件名取解析后完整路径的 Base；必须先设头再 ServeFile，否则 Content-Type 会被嗅探覆盖。
+	c.Header("Content-Disposition", buildAttachmentDisposition(filepath.Base(fullPath)))
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	http.ServeFile(c.Writer, c.Request, fullPath)
+}
+
+// buildAttachmentDisposition 构造下载用的 Content-Disposition 头。
+// 1) 控制字符(<0x20、0x7F)、双引号、反斜杠一律替换为 _，阻断头注入与引号逃逸。
+// 2) 优先用 mime.FormatMediaType：纯 ASCII（含方括号）走 filename=，非 ASCII 走 filename*=utf-8'' 编码。
+// 3) 标准库输出若含裸非 ASCII/CR/LF，或输入含非 ASCII 却缺 filename*=，则退回手工 filename+filename* 双写。
+func buildAttachmentDisposition(name string) string {
+	sanitized := strings.Map(func(r rune) rune {
+		// CR、LF 已包含在 <0x20 内，此处与双引号、反斜杠一并替换，防止响应头拆分。
+		if r < 0x20 || r == 0x7F || r == '"' || r == '\\' {
+			return '_'
+		}
+		return r
+	}, name)
+
+	if v := mime.FormatMediaType("attachment", map[string]string{"filename": sanitized}); v != "" {
+		// 校验标准库输出：绝不允许 CR/LF 与裸非 ASCII；输入含非 ASCII 时必须带 filename*=。
+		hasNonASCIIInput := false
+		for i := 0; i < len(sanitized); i++ {
+			if sanitized[i] > 127 {
+				hasNonASCIIInput = true
+				break
+			}
+		}
+		valid := !strings.ContainsAny(v, "\r\n")
+		if valid {
+			for i := 0; i < len(v); i++ {
+				if v[i] > 127 {
+					valid = false
+					break
+				}
+			}
+		}
+		if valid && hasNonASCIIInput && !strings.Contains(v, "filename*=") {
+			valid = false
+		}
+		if valid {
+			return v
+		}
+	}
+
+	// 兜底手工双写：filename 放纯 ASCII 回退名兼容老客户端，filename* 放 RFC5987 编码供新客户端还原。
+	ascii := strings.Map(func(r rune) rune {
+		if r > 127 {
+			return '_'
+		}
+		return r
+	}, sanitized)
+	return `attachment; filename="` + ascii + `"; filename*=utf-8''` + encodeRFC5987Value(sanitized)
+}
+
+// encodeRFC5987Value 按 RFC5987 attr-char 逐字节百分号编码（大写十六进制），空格等一律 %XX。
+func encodeRFC5987Value(s string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if '0' <= c && c <= '9' || 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' ||
+			c == '!' || c == '#' || c == '$' || c == '&' || c == '+' || c == '-' ||
+			c == '.' || c == '^' || c == '_' || c == '`' || c == '|' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0x0F])
+		}
+	}
+	return b.String()
 }
 
 // Subtitles lists embedded text tracks, or returns one selected track as VTT.

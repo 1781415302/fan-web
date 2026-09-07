@@ -50,6 +50,8 @@ vi.mock('../api/episode', () => ({
   getSubtitleTracks: mocks.getSubtitleTracks,
   getSubtitleUrl: (episodeId: number, track: number, token: string) =>
     `/api/episodes/${episodeId}/subtitles?track=${track}&media_token=${encodeURIComponent(token)}`,
+  buildDownloadUrl: (episodeId: number, token: string) =>
+    `/api/episodes/${episodeId}/download?media_token=${encodeURIComponent(token)}`,
   requestMediaToken: mocks.requestMediaToken,
 }))
 
@@ -285,6 +287,18 @@ describe('WatchView media token flow', () => {
     const html = controls?.[0]?.selector?.[1]?.html
     expect(html).toBe('zh &amp; &lt;b&gt;x&lt;/b&gt;')
     expect(html).not.toBe('zh & <b>x</b>')
+    wrapper.unmount()
+  })
+
+  it('creates the player without a subtitle key when the episode has no subtitle tracks', async () => {
+    mocks.getSubtitleTracks.mockResolvedValue([])
+    const wrapper = mountWatch()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('加载观看页失败')
+    expect(mocks.artOptions).toHaveLength(1)
+    expect('subtitle' in (mocks.artOptions[0] ?? {})).toBe(false)
+    expect(mocks.artOptions[0]?.controls).toEqual([])
     wrapper.unmount()
   })
 })

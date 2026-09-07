@@ -86,9 +86,10 @@ func main() {
 
 		auth := api.Group("/auth")
 		auth.POST("/login", loginRateLimiter.Middleware(), authHandler.Login)
-		// Stream/Subtitles 自行校验 Bearer 与 media_token，不能放在 JWTAuth 组内。
+		// Stream/Subtitles/Download 自行校验 Bearer 与 media_token，不能放在 JWTAuth 组内。
 		api.GET("/episodes/:id/stream", episodeHandler.Stream)
 		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
+		api.GET("/episodes/:id/download", episodeHandler.Download)
 
 		protected := api.Group("")
 		protected.Use(middleware.JWTAuth(authService))

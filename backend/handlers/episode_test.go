@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -615,5 +616,270 @@ func TestContinueWatchingAPI(t *testing.T) {
 	_, clamped := getContinue("100", true)
 	if clamped.Code != 0 || len(clamped.Data.Items) != 2 {
 		t.Fatalf("limit=100 should clamp to 50 and return 2 items, got %d", len(clamped.Data.Items))
+	}
+}
+
+// newDownloadHarness 为下载接口用例搭建最小内联环境：真实临时视频（.mp4 命中 videoExts）+ 独立 sqlite + 登录 Bearer。
+func newDownloadHarness(t *testing.T, fileName string, videoData []byte) (*services.AuthService, string, int64, *gin.Engine) {
+	t.Helper()
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, fileName), videoData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(t.TempDir(), "download-test.db")
+	if err := database.Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+		}
+	})
+	if err := database.InitAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	user, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anime, err := database.CreateAnime(&models.Anime{Title: "Download Anime", FilePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SyncEpisodes(anime.ID, []models.Episode{{EpNumber: 1, FilePath: fileName}}); err != nil {
+		t.Fatal(err)
+	}
+	episodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 {
+		t.Fatalf("expected one episode, got %d", len(episodes))
+	}
+	auth := services.NewAuthService("download-test-secret", 24*60*60*1e9)
+	token, _, err := auth.IssueToken(*user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewEpisodeHandler(auth, services.NewScannerService(rootPath))
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/episodes/:id/download", handler.Download)
+	return auth, token, episodes[0].ID, router
+}
+
+func downloadWithAuth(router *gin.Engine, epID int64, token string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/download", nil)
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
+// 1) 无凭证 → HTTP200 + code 2001。
+func TestDownloadRequiresAuth(t *testing.T) {
+	_, _, epID, router := newDownloadHarness(t, "dl01.mp4", []byte("0123456789"))
+	recorder := downloadWithAuth(router, epID, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected application error with HTTP 200, got %d", recorder.Code)
+	}
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 2001 {
+		t.Fatalf("expected unauthenticated code 2001, got %d", resp.Code)
+	}
+}
+
+// 2) 有效 Bearer + 真实临时视频 → Disposition 前缀 attachment; + octet-stream + body 相等。
+func TestDownloadWithBearer(t *testing.T) {
+	videoData := []byte("0123456789")
+	_, token, epID, router := newDownloadHarness(t, "dl02.mp4", videoData)
+	recorder := downloadWithAuth(router, epID, token)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "attachment;") {
+		t.Fatalf("unexpected Content-Disposition: %q", got)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("unexpected Content-Type: %q", got)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), videoData) {
+		t.Fatalf("unexpected body: %q", recorder.Body.String())
+	}
+}
+
+// 3) Range bytes=2-5 → 206 + Content-Range + 4 字节。
+func TestDownloadRange(t *testing.T) {
+	_, token, epID, router := newDownloadHarness(t, "dl03.mp4", []byte("0123456789"))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/download", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Range", "bytes=2-5")
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusPartialContent {
+		t.Fatalf("expected HTTP 206 for range request, got %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("Content-Range"); got != "bytes 2-5/10" {
+		t.Fatalf("unexpected Content-Range: %q", got)
+	}
+	if got := recorder.Body.String(); got != "2345" {
+		t.Fatalf("unexpected range body: %q", got)
+	}
+}
+
+// 4) 有效 media_token → 同 2（QueryEscape 后传递）。
+func TestDownloadWithMediaToken(t *testing.T) {
+	videoData := []byte("0123456789")
+	auth, _, epID, router := newDownloadHarness(t, "dl04.mp4", videoData)
+	admin, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaToken, _, err := auth.IssueMediaToken(admin.ID, epID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/download?media_token="+url.QueryEscape(mediaToken), nil)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 with media token, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "attachment;") {
+		t.Fatalf("unexpected Content-Disposition: %q", got)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("unexpected Content-Type: %q", got)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), videoData) {
+		t.Fatalf("unexpected body: %q", recorder.Body.String())
+	}
+}
+
+// 5) 错配票据（他集票据访问本集）→ 2001。
+func TestDownloadMismatchedMediaToken(t *testing.T) {
+	auth, _, epID, router := newDownloadHarness(t, "dl05.mp4", []byte("0123456789"))
+	admin, err := database.GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherToken, _, err := auth.IssueMediaToken(admin.ID, 99999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/episodes/"+strconv.FormatInt(epID, 10)+"/download?media_token="+url.QueryEscape(otherToken), nil)
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected application error with HTTP 200, got %d", recorder.Code)
+	}
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 2001 {
+		t.Fatalf("wrong-episode media token must return 2001, got %d", resp.Code)
+	}
+}
+
+// 6) 集数不存在 → 1002。
+func TestDownloadEpisodeNotFound(t *testing.T) {
+	_, token, _, router := newDownloadHarness(t, "dl06.mp4", []byte("0123456789"))
+	recorder := downloadWithAuth(router, 99999, token)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected application error with HTTP 200, got %d", recorder.Code)
+	}
+	var resp struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Code != 1002 {
+		t.Fatalf("expected not-found code 1002, got %d", resp.Code)
+	}
+}
+
+// 7) 文件名两分支 + 无 CR/LF：ASCII 走 filename=，中文/全角冒号走 filename*=，控制字符被替换。
+func TestDownloadAttachmentDisposition(t *testing.T) {
+	assertASCII := func(out string) {
+		t.Helper()
+		if strings.ContainsAny(out, "\r\n") {
+			t.Fatalf("disposition must not contain CR/LF: %q", out)
+		}
+		for i := 0; i < len(out); i++ {
+			if out[i] > 127 {
+				t.Fatalf("disposition must be pure ASCII: %q", out)
+			}
+		}
+	}
+	ascii := buildAttachmentDisposition("episode[01].mp4")
+	if !strings.HasPrefix(ascii, "attachment;") || !strings.Contains(ascii, "filename=") {
+		t.Fatalf("unexpected ASCII disposition: %q", ascii)
+	}
+	assertASCII(ascii)
+
+	nonASCII := buildAttachmentDisposition("第01集：中文.mp4")
+	if !strings.HasPrefix(nonASCII, "attachment;") || !strings.Contains(nonASCII, "filename*=") || !strings.Contains(nonASCII, "utf-8''") {
+		t.Fatalf("non-ASCII disposition must carry filename*=: %q", nonASCII)
+	}
+	assertASCII(nonASCII)
+
+	sanitized := buildAttachmentDisposition("a\"b\\c\x01d\x7Fe.mp4")
+	assertASCII(sanitized)
+	for _, bad := range []string{"%22", "%5C", "%0A", "%00"} {
+		if strings.Contains(sanitized, bad) {
+			t.Fatalf("sanitized disposition must not encode replaced chars, got %q", sanitized)
+		}
+	}
+	if !strings.Contains(sanitized, "a_b_c_d_e.mp4") {
+		t.Fatalf("control/quote/backslash must become _: %q", sanitized)
+	}
+
+	crlf := buildAttachmentDisposition("evil\r\nname.mp4")
+	assertASCII(crlf)
+	if !strings.Contains(crlf, "evil__name.mp4") {
+		t.Fatalf("CR/LF must become _: %q", crlf)
+	}
+
+	if got := encodeRFC5987Value("第"); got != "%E7%AC%AC" {
+		t.Fatalf("unexpected RFC5987 encoding: %q", got)
+	}
+	if got := encodeRFC5987Value("a b~.mp4"); got != "a%20b~.mp4" {
+		t.Fatalf("unexpected RFC5987 encoding: %q", got)
+	}
+}
+
+// 8) 路由与 Stream/Subtitles 同区注册，且不在 JWTAuth 组内。
+func TestDownloadRouteRegistration(t *testing.T) {
+	content, err := os.ReadFile("../main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(content)
+	const downloadRoute = `api.GET("/episodes/:id/download", episodeHandler.Download)`
+	if !strings.Contains(src, downloadRoute) {
+		t.Fatalf("main.go must register download route %q", downloadRoute)
+	}
+	streamIdx := strings.Index(src, `/episodes/:id/stream`)
+	downloadIdx := strings.Index(src, `/episodes/:id/download`)
+	jwtIdx := strings.Index(src, "middleware.JWTAuth")
+	if streamIdx < 0 || downloadIdx < 0 || jwtIdx < 0 {
+		t.Fatalf("main.go must contain stream/download routes and JWTAuth (got %d/%d/%d)", streamIdx, downloadIdx, jwtIdx)
+	}
+	if downloadIdx < streamIdx {
+		t.Fatalf("download route must sit beside stream/subtitles, before JWTAuth group")
+	}
+	if downloadIdx > jwtIdx {
+		t.Fatalf("download route must be outside the JWTAuth group (before middleware.JWTAuth)")
 	}
 }

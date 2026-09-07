@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/anime.dart';
+import '../models/download.dart';
 import '../providers/anime_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/download_provider.dart';
 import '../providers/player_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anime_card.dart';
@@ -268,7 +270,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
           const SizedBox(height: 28),
           _buildSummary(anime),
           const SizedBox(height: 28),
-          _buildEpisodes(),
+          _buildEpisodes(anime),
           if (isAdmin) ...[
             const SizedBox(height: 28),
             Wrap(
@@ -357,7 +359,11 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     );
   }
 
-  Widget _buildEpisodes() {
+  Widget _buildEpisodes(Anime anime) {
+    final downloadStates = ref.watch(downloadProvider);
+    final serverUrl = ref.watch(
+      authProvider.select((auth) => auth.serverUrl),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -388,6 +394,19 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                         episode: episode,
                         progress: _progressByEpisode[episode.id],
                         onTap: () => unawaited(_openPlayer(episode)),
+                        download: serverUrl == null
+                            ? null
+                            : (downloadStates[DownloadKey(
+                                    serverUrl,
+                                    episode.id,
+                                  )] ??
+                                  const DownloadTaskState(
+                                    status: DownloadStatus.idle,
+                                  )),
+                        onDownloadTap: serverUrl == null
+                            ? null
+                            : () =>
+                                  unawaited(_handleDownloadTap(anime, episode)),
                       ),
                     ),
                 ],
@@ -417,6 +436,54 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
     );
     if (mounted) {
       await _refreshProgress();
+    }
+  }
+
+  Future<void> _handleDownloadTap(Anime anime, Episode episode) async {
+    final serverUrl = ref.read(authProvider).serverUrl;
+    if (serverUrl == null) {
+      return;
+    }
+    final current =
+        ref.read(downloadProvider)[DownloadKey(serverUrl, episode.id)]?.status ??
+        DownloadStatus.idle;
+    switch (current) {
+      case DownloadStatus.completed:
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text('删除下载'),
+              content: Text('确定删除第${episode.epNumber}话的已下载文件吗？'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('删除'),
+                ),
+              ],
+            );
+          },
+        );
+        if (confirmed != true || !mounted) {
+          return;
+        }
+        await ref.read(downloadProvider.notifier).delete(serverUrl, episode.id);
+      case DownloadStatus.downloading:
+      case DownloadStatus.queued:
+        await ref.read(downloadProvider.notifier).cancel(serverUrl, episode.id);
+      case DownloadStatus.idle:
+      case DownloadStatus.failed:
+        await ref
+            .read(downloadProvider.notifier)
+            .enqueue(
+              serverUrl: serverUrl,
+              episode: episode,
+              animeTitle: _displayTitle(anime),
+            );
     }
   }
 

@@ -33,3 +33,8 @@ export function getStreamUrl(episodeId: number, mediaToken: string): string {
 export function getSubtitleUrl(episodeId: number, trackNumber: number, mediaToken: string): string {
   return `/api/episodes/${episodeId}/subtitles?track=${trackNumber}&media_token=${encodeURIComponent(mediaToken)}`
 }
+
+// 构造下载地址；mediaToken 经 encodeURIComponent，JWT 永不出现在 URL。
+export function buildDownloadUrl(episodeId: number, mediaToken: string): string {
+  return `/api/episodes/${episodeId}/download?media_token=${encodeURIComponent(mediaToken)}`
+}
