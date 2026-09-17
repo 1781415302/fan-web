@@ -259,12 +259,12 @@ func SyncEpisodes(animeID int64, episodes []models.Episode) error {
 	if err != nil {
 		return fmt.Errorf("开启事务失败: %w", err)
 	}
-	defer tx.Rollback()
 
 	existingRows, err := tx.Query(
 		episodeSelect+" WHERE anime_id = ?", animeID,
 	)
 	if err != nil {
+		_ = tx.Rollback()
 		return fmt.Errorf("查询已有剧集失败: %w", err)
 	}
 	existing := make(map[int]models.Episode)
@@ -272,16 +272,19 @@ func SyncEpisodes(animeID int64, episodes []models.Episode) error {
 		episode, err := scanEpisode(existingRows)
 		if err != nil {
 			existingRows.Close()
+			_ = tx.Rollback()
 			return fmt.Errorf("读取已有剧集失败: %w", err)
 		}
 		if _, dup := existing[episode.EpNumber]; dup {
 			existingRows.Close()
+			_ = tx.Rollback()
 			return fmt.Errorf("数据库中存在重复集数 %d，请先清理后再重扫", episode.EpNumber)
 		}
 		existing[episode.EpNumber] = *episode
 	}
 	if err := existingRows.Err(); err != nil {
 		existingRows.Close()
+		_ = tx.Rollback()
 		return fmt.Errorf("遍历已有剧集失败: %w", err)
 	}
 	existingRows.Close()
@@ -296,6 +299,7 @@ func SyncEpisodes(animeID int64, episodes []models.Episode) error {
 				`UPDATE episodes SET title = ?, file_path = ?, duration = ? WHERE id = ? AND anime_id = ?`,
 				episode.Title, episode.FilePath, episode.Duration, stored.ID, animeID,
 			); err != nil {
+				_ = tx.Rollback()
 				return fmt.Errorf("更新集数 %d 失败: %w", episode.EpNumber, err)
 			}
 			continue
@@ -304,6 +308,7 @@ func SyncEpisodes(animeID int64, episodes []models.Episode) error {
 			`INSERT INTO episodes (anime_id, ep_number, title, file_path, duration) VALUES (?, ?, ?, ?, ?)`,
 			animeID, episode.EpNumber, episode.Title, episode.FilePath, episode.Duration,
 		); err != nil {
+			_ = tx.Rollback()
 			return fmt.Errorf("新增集数 %d 失败: %w", episode.EpNumber, err)
 		}
 	}
@@ -314,6 +319,7 @@ func SyncEpisodes(animeID int64, episodes []models.Episode) error {
 			continue
 		}
 		if _, err := tx.Exec("DELETE FROM episodes WHERE id = ?", stored.ID); err != nil {
+			_ = tx.Rollback()
 			return fmt.Errorf("删除已移除集数 %d 失败: %w", epNumber, err)
 		}
 	}

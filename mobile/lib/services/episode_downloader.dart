@@ -785,11 +785,13 @@ class EpisodeDownloader {
           if (stallFired || userCancelled || done.isCompleted) return;
           try {
             sink?.add(chunk);
+            // received 累计仅在写入成功时递增，避免磁盘满等写入失败时
+            // 进度条显示虚假数值（实际文件并未增长）。
+            received += chunk.length;
           } catch (_) {
-            // 写入失败在收尾校验中体现，此处仅累计避免进度倒退。
+            // 写入失败不累计 received，但继续接收后续 chunk 以防 sink
+            // 的异常是瞬态的（如缓冲区临时满）。
           }
-          // received 累计包含 .part 已有偏移。
-          received += chunk.length;
           resetStall();
           report();
         },
