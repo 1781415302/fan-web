@@ -362,15 +362,15 @@ watch(animeId, () => void load(), { immediate: true })
             >
               <span class="episode-number">第 {{ episode.ep_number }} 话</span>
               <span class="episode-status" :class="`status-${episodeStatus(episode)}`">{{ episodeStatus(episode) }}</span>
-            </button>
-            <button
-              type="button"
-              class="episode-download"
-              :disabled="downloadingId === episode.id"
-              :aria-label="'下载第 ' + episode.ep_number + ' 话'"
-              @click="handleDownload(episode)"
-            >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.8 13.2h10.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <button
+                type="button"
+                class="episode-download"
+                :disabled="downloadingId === episode.id"
+                :aria-label="'下载第 ' + episode.ep_number + ' 话'"
+                @click.stop="handleDownload(episode)"
+              >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M8 2v8m0 0L4.8 6.8M8 10l3.2-3.2M2.8 13.2h10.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
             </button>
           </div>
         </div>
@@ -426,17 +426,16 @@ h1 { max-width: 780px; margin: 14px 0 8px; color: var(--text-color); font-size: 
 .episode-section { padding-top: 32px; }
 .episode-heading { display: flex; align-items: end; gap: 18px; margin-bottom: 18px; }
 .episode-count { margin-right: auto; color: var(--text-muted-color); font-size: 13px; }
-.episode-cell { position: relative; }
-.episode-cell .episode-tile { width: 100%; }
-.episode-download { position: absolute; top: 6px; right: 6px; display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 999px; background: var(--surface-color); color: var(--text-secondary); cursor: pointer; transition: border-color 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out; }
+.episode-cell { width: 100%; }
+.episode-tile { display: flex; width: 100%; min-height: 72px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 6px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
+.episode-tile:hover, .episode-tile:focus-visible { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); outline: none; }
+.episode-tile.tile-已看 { border-color: var(--success-border); }
+.episode-tile.tile-进行中 { border-color: var(--warning-border); }
+.episode-download { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 999px; background: var(--surface-color); color: var(--text-secondary); cursor: pointer; transition: border-color 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out; }
 .episode-download:hover, .episode-download:focus-visible { border-color: var(--accent-color); color: var(--accent-color); box-shadow: var(--shadow-sm); outline: none; }
 .episode-download:disabled { opacity: 0.55; cursor: default; }
 .episode-download svg { width: 14px; height: 14px; }
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; }
-.episode-tile { display: flex; min-height: 72px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-color); color: var(--text-color); text-align: left; cursor: pointer; transition: background-color 180ms ease-out, border-color 180ms ease-out, box-shadow 180ms ease-out; }
-.episode-tile:hover, .episode-tile:focus-visible { border-color: var(--accent-color); background: var(--surface-raised-color); box-shadow: var(--shadow-sm); outline: none; }
-.episode-tile.tile-已看 { border-color: var(--success-border); }
-.episode-tile.tile-进行中 { border-color: var(--warning-border); }
 .episode-number { font-size: 14px; font-weight: 600; }
 .episode-status { font-size: 12px; }
 .status-已看 { color: var(--success-color); }

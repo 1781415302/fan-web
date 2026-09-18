@@ -93,6 +93,10 @@ class ProgressOutbox {
   });
 
   /// 删除指定记录（仅当内容完全匹配时）。
+  /// 匹配条件为 position + watched + updatedAt 三者一致；若 send 期间
+  /// 有新 save() 更新记录导致内容不一致，则跳过删除——新记录在下一轮
+  /// syncAll 仍会被发送。由于 watched 不可逆且 position 更新幂等，
+  /// 重复发送不会产生副作用，此设计确保不丢失数据。
   Future<void> removeIfMatched(PendingProgress record) =>
       _enqueueStorage(() async {
         final all = _loadAll();

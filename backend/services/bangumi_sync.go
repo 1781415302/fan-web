@@ -61,14 +61,6 @@ func (s *BangumiSync) EnqueueWatched(userID, episodeID int64) {
 	if s == nil {
 		return
 	}
-	token, ok, err := database.GetBangumiToken(userID)
-	if err != nil {
-		log.Printf("[BangumiSync] 读取令牌失败: %v", err)
-		return
-	}
-	if !ok || token == "" {
-		return
-	}
 	if err := database.EnqueueBangumiOutbox(userID, episodeID); err != nil {
 		log.Printf("[BangumiSync] 入队失败: %v", err)
 		return
@@ -100,11 +92,39 @@ func (s *BangumiSync) Drain() {
 	s.drainRows(rows)
 }
 
+// drainRowCache 缓存 drainRows 内部调用的外部 API 结果，避免同一用户/番剧的
+// 重复 HTTP 请求：用户身份校验（GetMe）每用户一次、剧集列表（ListSubjectEpisodes）
+// 每用户+番剧一次、存在性校验（EnsureCollection）每用户+番剧一次。
+//
+// 注意：值可为 nil，表示缓存缺失或未执行；nil 不代表失败——失败路径直接 return 不
+// 写入缓存，后续行仍会重试。调用方不得对 nil 值做业务判断。
+type drainRowCache struct {
+	// userGotMe 记录哪些用户已调过 GetMe 且成功。用 bool 而非 error，因为 GetMe 不
+	// 返回错误语义的 nil（失败时直接 return err），成功时也不需要返回值。
+	userGotMe map[int64]struct{}
+	// episodeCache 缓存 bangumi 剧集列表：key = userID，value = bangumiID → episodes。
+	// 同用户同一番剧的剧集列表不变，避免重复调用 ListSubjectEpisodes。
+	episodeCache map[int64]map[int][]BangumiEpisode
+	// collectionCache 缓存 EnsureCollection 的结果：key = userID → bangumiID。
+	// 确保已创建收藏的番剧不再重复 POST。
+	collectionCache map[int64]map[int]struct{}
+}
+
+func newDrainRowCache() *drainRowCache {
+	return &drainRowCache{
+		userGotMe:     make(map[int64]struct{}),
+		episodeCache:  make(map[int64]map[int][]BangumiEpisode),
+		collectionCache: make(map[int64]map[int]struct{}),
+	}
+}
+
 // drainRows 在 Drain 持有 drainMu 期间被调用，内部不得触碰 drainMu。
 func (s *BangumiSync) drainRows(rows []database.OutboxRow) {
 	unauthorized := make(map[int64]bool)
 	// tokenCache 按 userID 缓存令牌，避免同一用户多行 outbox 重复查库读取。
 	tokenCache := make(map[int64]string)
+	// 内部 API 结果缓存：避免同一用户/番剧重复调用。
+	cache := newDrainRowCache()
 	first := true
 	for _, row := range rows {
 		if unauthorized[row.UserID] {
@@ -133,7 +153,7 @@ func (s *BangumiSync) drainRows(rows []database.OutboxRow) {
 		first = false
 		// 瞬时错误（非 401）保留行并额外让出时间片，避免上游故障期被持续
 		// 触发的高频请求打爆 Bangumi。
-		drainErr := s.drainRow(row, token)
+		drainErr := s.drainRow(row, token, cache)
 		if drainErr != nil && !errors.Is(drainErr, ErrBangumiUnauthorized) {
 			s.sleep()
 		}
@@ -160,10 +180,15 @@ func (s *BangumiSync) sleep() {
 	}
 }
 
-func (s *BangumiSync) drainRow(row database.OutboxRow, token string) error {
-	if err := s.bangumi.GetMe(token); err != nil {
-		return err
+func (s *BangumiSync) drainRow(row database.OutboxRow, token string, cache *drainRowCache) error {
+	// GetMe：每用户调用一次。
+	if _, ok := cache.userGotMe[row.UserID]; !ok {
+		if err := s.bangumi.GetMe(token); err != nil {
+			return err
+		}
+		cache.userGotMe[row.UserID] = struct{}{}
 	}
+
 	episode, err := database.GetEpisodeByID(row.EpisodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -182,18 +207,52 @@ func (s *BangumiSync) drainRow(row database.OutboxRow, token string) error {
 		return database.DeleteBangumiOutbox(row.UserID, row.EpisodeID)
 	}
 
+	// ListSubjectEpisodes：每用户+番剧调用一次，结果在缓存中共享。
+	if userCache, ok := cache.episodeCache[row.UserID]; ok {
+		if episodes, ok := userCache[anime.BangumiID]; ok {
+			bgmEpisode, ok := matchBangumiEpisode(*episode, episodes)
+			if !ok {
+				return database.DeleteBangumiOutbox(row.UserID, row.EpisodeID)
+			}
+			return s.patchEpisodeAndDelete(row, token, anime.BangumiID, bgmEpisode.ID)
+		}
+	} else {
+		cache.episodeCache[row.UserID] = make(map[int][]BangumiEpisode)
+	}
+
 	bgmEpisodes, err := s.bangumi.ListSubjectEpisodes(token, anime.BangumiID)
 	if err != nil {
 		return err
 	}
+	cache.episodeCache[row.UserID][anime.BangumiID] = bgmEpisodes
 	bgmEpisode, ok := matchBangumiEpisode(*episode, bgmEpisodes)
 	if !ok {
 		return database.DeleteBangumiOutbox(row.UserID, row.EpisodeID)
 	}
-	if err := s.bangumi.EnsureCollection(token, anime.BangumiID); err != nil {
-		return err
+
+	// EnsureCollection：每用户+番剧调用一次，避免重复 POST。
+	if userColl, ok := cache.collectionCache[row.UserID]; ok {
+		if _, already := userColl[anime.BangumiID]; !already {
+			if err := s.bangumi.EnsureCollection(token, anime.BangumiID); err != nil {
+				return err
+			}
+			if userColl == nil {
+				cache.collectionCache[row.UserID] = map[int]struct{}{anime.BangumiID: {}}
+			} else {
+				userColl[anime.BangumiID] = struct{}{}
+			}
+		}
+	} else {
+		if err := s.bangumi.EnsureCollection(token, anime.BangumiID); err != nil {
+			return err
+		}
+		cache.collectionCache[row.UserID] = map[int]struct{}{anime.BangumiID: {}}
 	}
-	if err := s.bangumi.PatchEpisodeCollection(token, anime.BangumiID, []int{bgmEpisode.ID}); err != nil {
+	return s.patchEpisodeAndDelete(row, token, anime.BangumiID, bgmEpisode.ID)
+}
+
+func (s *BangumiSync) patchEpisodeAndDelete(row database.OutboxRow, token string, bangumiID int, bgmEpisodeID int) error {
+	if err := s.bangumi.PatchEpisodeCollection(token, bangumiID, []int{bgmEpisodeID}); err != nil {
 		return err
 	}
 	return database.DeleteBangumiOutbox(row.UserID, row.EpisodeID)
