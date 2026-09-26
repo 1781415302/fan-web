@@ -1,0 +1,21 @@
+# 编辑器行为统一约定：配合 .gitattributes，防止 Windows 侧编辑器把文件存成 CRLF。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.go]
+indent_style = tab
+
+[*.{ts,vue,dart,yaml,yml,json}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
