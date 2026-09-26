@@ -951,7 +951,6 @@ func TestLibraryScanFastPathBoundDirNoSearch(t *testing.T) {
 	}
 }
 
-
 func TestLibraryScanFastPathSkipsWhenGroupHasSeason(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "芙莉莲")

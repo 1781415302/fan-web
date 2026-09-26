@@ -65,7 +65,6 @@ func BackupDatabase(db *sql.DB, backupPath string) error {
 	return nil
 }
 
-
 func recoverBackupSidecar(backupPath, sidecarPath string) error {
 	_, destErr := os.Stat(backupPath)
 	if destErr == nil {

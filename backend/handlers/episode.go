@@ -63,7 +63,7 @@ func (h *EpisodeHandler) Download(c *gin.Context) {
 
 // buildAttachmentDisposition 构造下载用的 Content-Disposition 头。
 // 1) 控制字符(<0x20、0x7F)、双引号、反斜杠一律替换为 _，阻断头注入与引号逃逸。
-// 2) 优先用 mime.FormatMediaType：纯 ASCII（含方括号）走 filename=，非 ASCII 走 filename*=utf-8'' 编码。
+// 2) 优先用 mime.FormatMediaType：纯 ASCII（含方括号）走 filename=，非 ASCII 走 filename* 的 utf-8 百分号编码。
 // 3) 标准库输出若含裸非 ASCII/CR/LF，或输入含非 ASCII 却缺 filename*=，则退回手工 filename+filename* 双写。
 func buildAttachmentDisposition(name string) string {
 	sanitized := strings.Map(func(r rune) rune {

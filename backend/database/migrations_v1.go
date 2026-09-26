@@ -91,6 +91,7 @@ func migrateInitialSchema(tx *sql.Tx) error {
 //  2. 同一 (anime_id, ep_number) 的重复剧集（含 reparent 引入的以及迁移前已存在的）：
 //     保留最小 id，把其余剧集的观看进度合并（取更大 position、watched 取或、updated_at
 //     取更近）到保留剧集后再删除。
+//
 // 合并完成后才创建唯一索引。
 func migrateUniqueAnimeEpisodeKeys(tx *sql.Tx) error {
 	if err := collapseDuplicateBangumiAnimes(tx); err != nil {
@@ -116,7 +117,7 @@ func migrateUniqueAnimeEpisodeKeys(tx *sql.Tx) error {
 // checkDuplicateBangumiAnimePaths 在合并重复 bangumi 番剧前检查目录一致性：
 // 对每个 bangumi_id>0 且含 >1 个番剧的分组，若其下番剧的 file_path（目录）不止一种取值
 // （NULL/空视为独立的"无目录"取值，因此不能用 COUNT(DISTINCT file_path)——它忽略 NULL，
-// 这里用 COALESCE(file_path,'') 归一后按 bangumi_id 分组在 Go 内统计），合并会把剧集
+// 这里用 COALESCE 把 file_path 空值归一后按 bangumi_id 分组在 Go 内统计），合并会把剧集
 // reparent 到 MIN(id) 番剧、而文件仍留在原目录，导致播放路径失效，必须拒绝。
 // 返回的错误会列出受影响的 bangumi_id 与每个番剧的 id、目录（NULL/空显示为"无目录"），
 // 并提示需要人工介入；该错误使整个 v2 迁移在事务内回滚，schema_migrations 不会记录 v2。
