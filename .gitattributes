@@ -1,0 +1,32 @@
+# 统一换行符：所有文本文件入库为 LF、检出为 LF。
+# （v1.5.0 曾误将约 60 个文件以 CRLF 提交，本文件防止再次发生。）
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF（若未来引入）
+# *.bat text eol=crlf
+# *.ps1 text eol=crlf
+
+# 二进制资产不做任何换行符处理（text=auto 通常能自动识别，此处显式声明以防误判）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.svg text eol=lf
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.jks binary
+*.keystore binary
+*.jar binary
+*.zip binary
+*.apk binary
+*.mp4 binary
+*.mkv binary
+*.webm binary
+*.mp3 binary
+*.wav binary
+*.pdf binary
