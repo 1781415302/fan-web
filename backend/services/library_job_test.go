@@ -183,3 +183,20 @@ func keysOf(m map[string]UnidentifiedFile) []string {
 	}
 	return out
 }
+
+func TestLibraryJobRunNoDataRace(t *testing.T) {
+	// 扫描根指向不存在路径 → Start → 等待离开 running；循环多次。
+	// 修复前 defer 无锁读 current.State，与下一轮 Start 写 State 在 -race 下稳定报 DATA RACE。
+	setupLibraryDB(t)
+	missingRoot := filepath.Join(t.TempDir(), "missing-root")
+	job := NewLibraryJob(NewLibraryService(mockBangumiService(), missingRoot))
+	for i := 0; i < 50; i++ {
+		if snap := job.Start(); snap.State != ScanJobRunning {
+			t.Fatalf("iter %d Start state = %q, want running", i, snap.State)
+		}
+		done := waitJobLeftRunning(t, job)
+		if done.State != ScanJobError {
+			t.Fatalf("iter %d job state = %q error=%q, want error", i, done.State, done.Error)
+		}
+	}
+}

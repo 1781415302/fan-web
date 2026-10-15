@@ -20,6 +20,17 @@ var (
 	ErrUsernameExists = errors.New("username already exists")
 )
 
+// 每条新建连接都会执行的 PRAGMA。必须经 DSN 传入,db.Exec 只作用于当前连接。
+const sqliteConnPragmas = "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+
+// sqliteDSN 把文件路径拼成带连接级 PRAGMA 的 DSN。dbPath 含 '?' 时返回错误(驱动以第一个 '?' 截断路径)。
+func sqliteDSN(dbPath string) (string, error) {
+	if strings.Contains(dbPath, "?") {
+		return "", fmt.Errorf("数据库路径不得包含 '?': %s", dbPath)
+	}
+	return dbPath + "?" + sqliteConnPragmas, nil
+}
+
 // Init 初始化数据库连接并创建表。
 func Init(dbPath string) error {
 	dir := filepath.Dir(dbPath)
@@ -27,7 +38,11 @@ func Init(dbPath string) error {
 		return fmt.Errorf("创建数据库目录失败: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	dsn, err := sqliteDSN(dbPath)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return fmt.Errorf("打开数据库失败: %w", err)
 	}
@@ -44,17 +59,6 @@ func Init(dbPath string) error {
 	// 存在吞吐瓶颈，对自托管个人站点影响有限，此为已知性能权衡。
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL;",
-		"PRAGMA busy_timeout=5000;",
-		"PRAGMA foreign_keys=ON;",
-	}
-	for _, pragma := range pragmas {
-		if _, err := db.Exec(pragma); err != nil {
-			return fmt.Errorf("设置 PRAGMA 失败: %w", err)
-		}
-	}
 
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
