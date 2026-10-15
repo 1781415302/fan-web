@@ -30,6 +30,15 @@ class UpdateCheckResult {
   final String? sha256sumsUrl;
 }
 
+
+/// 判断 Release 资产名是否为校验和文件。
+/// 大小写不敏感，精确等于 'sha256sums.txt' 或 'sha256sums'。
+/// 与 backend/services/updater.go findSHA256Asset 同口径。
+bool isSha256SumsAssetName(String assetName) {
+  final n = assetName.toLowerCase();
+  return n == 'sha256sums.txt' || n == 'sha256sums';
+}
+
 bool isNewerVersion(String current, String latest) {
   List<int> normalize(String v) {
     v = v.trim();
@@ -82,12 +91,8 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
     for (final item in assets) {
       if (item is! Map) continue;
       final name = (item['name'] as String?) ?? '';
-      final lowerName = name.toLowerCase();
       // 查找发布附带的校验和文件（对齐服务器端 findSHA256Asset 的匹配口径）。
-      if (sha256sumsUrl == null &&
-          (lowerName == 'sha256sums.txt' ||
-              lowerName == 'sha256sums' ||
-              lowerName.startsWith('sha256'))) {
+      if (sha256sumsUrl == null && isSha256SumsAssetName(name)) {
         sha256sumsUrl = item['browser_download_url'] as String?;
       }
       if (name.startsWith('fan-web-app-') && name.endsWith('.apk')) {
@@ -117,6 +122,16 @@ Future<UpdateCheckResult> checkAppUpdate(String currentVersion) async {
   }
 }
 
+/// 发布缺少 SHA256SUMS 时在下载前抛出，阻止 fail-open 安装。
+class ApkIntegrityException implements Exception {
+  const ApkIntegrityException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// 下载成功但系统安装器启动失败时抛出。
 /// 携带已下载 APK 的路径，UI 可用它提供“直接打开安装包、不再重新下载”的重试路径。
 class ApkInstallException implements Exception {
@@ -136,6 +151,9 @@ Future<String> downloadAndInstallApk(
   void Function(int received, int total)? onProgress,
   CancelToken? cancelToken,
 }) async {
+  if (sha256sumsUrl == null || sha256sumsUrl.isEmpty) {
+    throw const ApkIntegrityException('发布缺少 SHA256SUMS.txt,已取消更新');
+  }
   final dir = await getTemporaryDirectory();
   final filePath = '${dir.path}/fan-web-update.apk';
   // 大文件下载设置整体超时，避免慢网或卡死连接下更新界面永久挂起且无法取消。
@@ -182,13 +200,13 @@ Future<void> openDownloadedApk(String filePath) async {
 
 /// 校验下载文件的完整性：
 /// 1. 若 GitHub 声明了 size，比对文件大小，不符视为下载损坏；
-/// 2. 若发布附带 SHA256SUMS.txt 且其中含本 APK 的条目，比对 sha256。
+/// 2. 用发布附带的 SHA256SUMS.txt 比对本 APK 的 sha256（调用方已保证 URL 非空）。
 /// 校验失败时删除已下载文件并抛异常，由调用方提示重新下载。
 Future<void> _verifyDownloadIntegrity(
   File file,
   String url,
   int? expectedSize,
-  String? sha256sumsUrl,
+  String sha256sumsUrl,
 ) async {
   var failReason = '';
   if (expectedSize != null && expectedSize > 0) {
@@ -198,10 +216,10 @@ Future<void> _verifyDownloadIntegrity(
           '文件大小不匹配（GitHub 声明 $expectedSize 字节，实际 $actualSize 字节）';
     }
   }
-  if (failReason.isEmpty && requireApkSha256(sha256sumsUrl)) {
+  if (failReason.isEmpty) {
     String? expectedHash;
     try {
-      expectedHash = await _lookupApkSha256(sha256sumsUrl!, url);
+      expectedHash = await _lookupApkSha256(sha256sumsUrl, url);
     } catch (_) {
       failReason = '无法获取 SHA256SUMS.txt';
     }
@@ -225,11 +243,6 @@ Future<void> _verifyDownloadIntegrity(
     throw Exception('安装包校验失败（$failReason），已删除，请重新下载');
   }
 }
-
-/// sha256sumsUrl 非空时必须拿到本 APK 行（获取失败或缺行均失败关闭并删除 APK）。
-/// URL 为 null/空时只做 size 校验。
-bool requireApkSha256(String? sha256sumsUrl) =>
-    sha256sumsUrl != null && sha256sumsUrl.isNotEmpty;
 
 /// 从 SHA256SUMS.txt 中查找本 APK 资产对应的 sha256。
 Future<String?> _lookupApkSha256(String sha256sumsUrl, String downloadUrl) async {
