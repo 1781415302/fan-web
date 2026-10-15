@@ -1,6 +1,8 @@
+# 参考模板:请勿直接放入部署目录。全新部署不要预置 config.yaml,由初始化页自动生成。
 server:
   port: 8080
-  mode: debug
+  # 本地开发可改为 debug
+  mode: release
 
 database:
   path: ./data/fan-web.db

@@ -63,16 +63,17 @@ func (j *LibraryJob) Start() ScanJob {
 }
 
 func (j *LibraryJob) run() {
-	completed := false
+	handled := false
 	defer func() {
 		if rec := recover(); rec != nil {
 			j.fail(fmt.Sprint(rec))
 			return
 		}
-		// 正常路径会在末尾置 completed=true。若函数因 panic(nil) 等异常提前
-		// 返回而 current 仍停在 running，则强制进入 error，避免唯一扫描槽被
-		// 永久卡死（panic(nil) 时 recover()==nil，无法被上面的分支捕获）。
-		if !completed && j.current.State == ScanJobRunning {
+		// 正常路径会在每条终态(succeed/fail)后置 handled=true。若因 panic(nil)
+		// 等既未 succeed 也未 fail 就退出，则兜底 fail，避免唯一扫描槽永久卡死
+		// （panic(nil) 时 recover()==nil，无法被上面的分支捕获）。
+		// 此处不读 j.current.State，避免与 Snapshot 产生数据竞争。
+		if !handled {
 			j.fail("scan aborted unexpectedly")
 		}
 	}()
@@ -80,20 +81,23 @@ func (j *LibraryJob) run() {
 	result, err := j.lib.Scan()
 	if err != nil {
 		j.fail(err.Error())
+		handled = true
 		return
 	}
 
 	rows, err := unidentifiedRowsForWrite(result.Unidentified)
 	if err != nil {
 		j.fail(err.Error())
+		handled = true
 		return
 	}
 	if err := database.ReplaceUnidentified(rows); err != nil {
 		j.fail(err.Error())
+		handled = true
 		return
 	}
 	j.succeed(result)
-	completed = true
+	handled = true
 }
 
 func (j *LibraryJob) fail(message string) {

@@ -51,7 +51,7 @@ fan-web 诞生于对现有自托管方案的不满。此前我使用 Alist 管�
 │   ├── utils/
 │   ├── web/               # 嵌入的前端静态资源（go:embed）
 │   ├── main.go
-│   └── config.yaml        # 配置文件
+│   └── config.example.yaml # 参考模板（运行时 config.yaml 不入库，由初始化生成）
 ├── frontend/              # Vue 3 前端
 │   └── src/
 │       ├── api/           # API 客户端
@@ -131,7 +131,7 @@ APK 位于 `mobile/build/app/outputs/flutter-apk/app-release.apk`。详见 [mobi
 
 > 视频目录在浏览器中无法直接选择，需手动输入服务器上的路径，如 `/home/user/anime`。
 
-> **首次部署不要预先放置 `config.yaml`**（包括不要从仓库复制 `backend/config.yaml`）：全新安装应在**没有** config.yaml 的情况下直接运行二进制并进入初始化页，由初始化流程生成 config.yaml。若预先放置了 config.yaml，实例会被标记为「已初始化」，而全新数据库还没有管理员，启动会被安全机制拦截（见下文「升级已有部署」）。复制 config.yaml 只适用于**升级**已有部署的场景。
+> **首次部署不要预先放置 `config.yaml`**（包括不要把仓库里的 `backend/config.example.yaml` 复制/改名为部署目录下的 `config.yaml`）：全新安装应在**没有**运行时 `config.yaml` 的情况下直接运行二进制并进入初始化页，由初始化流程生成 `config.yaml`。若预先放置了 `config.yaml`，实例会被标记为「已初始化」，而全新数据库还没有管理员，启动会被安全机制拦截（见下文「升级已有部署」）。保留已有 `config.yaml` 只适用于**升级**已有部署的场景。
 
 ### 端口说明
 
@@ -150,11 +150,11 @@ APK 位于 `mobile/build/app/outputs/flutter-apk/app-release.apk`。详见 [mobi
 ```bash
 mkdir -p /opt/fan-web && cd /opt/fan-web
 cp <产物路径>/fan-web-server .        # 覆盖旧二进制
-# 保留现有的 config.yaml 与 data/fan-web.db（不要用仓库里的 backend/config.yaml 覆盖）
+# 保留现有的运行时 config.yaml 与 data/fan-web.db（不要用仓库里的 backend/config.example.yaml 覆盖）
 ./fan-web-server
 ```
 
-仓库中的 `backend/config.yaml` 仅用于参考配置字段，**不要**把它复制进部署目录——一旦 config.yaml 存在，实例就被标记为「已初始化」（`Configured=true`），而全新部署的数据库还没有管理员，启动会被安全机制拦截（见下）。
+仓库中的 `backend/config.example.yaml` 是**参考模板**；部署目录 / 开发 cwd 下的 `config.yaml` 才是运行时文件（本地生成，不入库）。**不要**把模板复制进部署目录——一旦运行时 `config.yaml` 存在，实例就被标记为「已初始化」（`Configured=true`），而全新部署的数据库还没有管理员，启动会被安全机制拦截（见下）。
 
 ### 启动行为区分
 
@@ -165,12 +165,12 @@ cp <产物路径>/fan-web-server .        # 覆盖旧二进制
 
 ## 配置说明
 
-配置文件 `backend/config.yaml`：
+参考模板 `backend/config.example.yaml`（运行时在 cwd 生成 `config.yaml`，该文件为本地文件、不入库）：
 
 ```yaml
 server:
   port: 8080
-  mode: debug          # 生产环境建议改为 release
+  mode: release        # 本地开发可改为 debug；未配置时程序默认 debug
 
 database:
   path: ./data/fan-web.db
@@ -187,6 +187,8 @@ video:
 ```
 
 > **注意**：管理员密码不会写入 `config.yaml`，只以 bcrypt 哈希保存在数据库中。旧配置中的明文密码会在升级启动时迁移并从磁盘删除；使用仓库公开默认 JWT 密钥的旧实例会自动轮换密钥，因此需要重新登录一次。自定义 JWT 密钥不会被轮换。
+>
+> 若本地曾修改过此前被跟踪的 `backend/config.yaml`，拉取本变更前请按 [开发指南 §5.1](docs/开发指南.md#51-开发模式) 完成迁移备份与还原。
 
 ## 主要 API
 

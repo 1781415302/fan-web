@@ -3,14 +3,49 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fan_web/services/app_updater.dart';
 
 void main() {
-  group('requireApkSha256', () {
-    test('null or empty URL is size-only', () {
-      expect(requireApkSha256(null), isFalse);
-      expect(requireApkSha256(''), isFalse);
+  group('isSha256SumsAssetName', () {
+    test('exact names match case-insensitively', () {
+      expect(isSha256SumsAssetName('SHA256SUMS.txt'), isTrue);
+      expect(isSha256SumsAssetName('sha256sums'), isTrue);
+      expect(isSha256SumsAssetName('SHA256SUMS'), isTrue);
     });
 
-    test('non-empty URL requires APK line and fail-closed fetch', () {
-      expect(requireApkSha256('https://example.com/SHA256SUMS.txt'), isTrue);
+    test('loose or prefixed names do not match', () {
+      expect(isSha256SumsAssetName('sha256-evil.txt'), isFalse);
+      expect(isSha256SumsAssetName('sha256sums.txt.sig'), isFalse);
+      expect(isSha256SumsAssetName('my-sha256sums.txt'), isFalse);
+      expect(isSha256SumsAssetName(''), isFalse);
+    });
+  });
+
+  group('downloadAndInstallApk fail-closed without SHA256SUMS', () {
+    test('missing sha256sumsUrl throws ApkIntegrityException', () async {
+      await expectLater(
+        downloadAndInstallApk('https://x/fan-web-app-v1.0.0.apk'),
+        throwsA(
+          isA<ApkIntegrityException>().having(
+            (e) => e.toString(),
+            'message',
+            contains('SHA256SUMS.txt'),
+          ),
+        ),
+      );
+    });
+
+    test('empty sha256sumsUrl throws ApkIntegrityException', () async {
+      await expectLater(
+        downloadAndInstallApk(
+          'https://x/fan-web-app-v1.0.0.apk',
+          sha256sumsUrl: '',
+        ),
+        throwsA(
+          isA<ApkIntegrityException>().having(
+            (e) => e.toString(),
+            'message',
+            contains('SHA256SUMS.txt'),
+          ),
+        ),
+      );
     });
   });
 }

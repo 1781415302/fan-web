@@ -226,3 +226,23 @@ func TestLoadLegacyPasswordMovedToLegacyField(t *testing.T) {
 		t.Fatalf("password must be removed after re-save, got %q", reloaded.Admin.LegacyPassword)
 	}
 }
+
+// 守卫:参考模板必须可被 Load 正确解析,且不含不安全密钥/非法 mode。
+func TestExampleConfigLoads(t *testing.T) {
+	cfg, err := Load("../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Mode != "release" {
+		t.Fatalf("expected Server.Mode=release, got %q", cfg.Server.Mode)
+	}
+	if cfg.JWT.Secret != "" {
+		t.Fatalf("expected empty JWT.Secret, got %q", cfg.JWT.Secret)
+	}
+	if cfg.Admin.LegacyPassword != "" {
+		t.Fatalf("expected empty Admin.LegacyPassword, got %q", cfg.Admin.LegacyPassword)
+	}
+	if cfg.Video.RootPath == "" {
+		t.Fatal("expected non-empty Video.RootPath")
+	}
+}

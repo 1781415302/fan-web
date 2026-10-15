@@ -23,7 +23,7 @@
 - 发布产物命名（对齐既有 Release）：
   - 服务器：`fan-web-server-{goos}-{goarch}`（Windows 加 `.exe`），平台为 linux-amd64 / linux-arm64 / darwin-arm64 / windows-amd64，共 4 个。
   - 移动端：`fan-web-app-vX.Y.Z.apk`。
-  - 校验和：`SHA256SUMS.txt`（覆盖本次上传的服务器二进制以及 APK）。
+  - 校验和：`SHA256SUMS.txt`（覆盖本次上传的服务器二进制以及 APK）。含 APK 的 Release 必须附带含该 APK 行的 `SHA256SUMS.txt`，否则 App 拒绝安装。
 - 每个 Release 必须**两个端各自独立判断**是否提示更新：
   - 服务器端只在 Release 附带当前平台二进制时 `has_update=true`；
   - 移动端只在 Release 附带 APK 时认为有更新。
@@ -37,7 +37,7 @@
 - 发布流程执行 `./build.sh` 验证单文件可构建。
 
 ### R4. 不要误提交底下这些杂项文件
-`.agents/`、`.commandcode/`、`fan-web.code-workspace`、`mobile/icon.png:Zone.Identifier` 是本地工具残留，不入库。
+`.agents/`、`.commandcode/`、`fan-web.code-workspace`、`mobile/icon.png:Zone.Identifier` 是本地工具残留，不入库。`backend/config.yaml` 是运行时本地文件（由初始化生成），不入库；参考模板为 `backend/config.example.yaml`。
 
 ### R5. 阶段交接与长期文档必须同步
 - `docs/` 可以创建阶段计划、执行交接和验收记录，用于明确范围、实现方案与完成状态。
