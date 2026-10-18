@@ -196,7 +196,8 @@ type AliasFamily struct {
 
 // Catalog 不透明只读索引；实现字段不构成跨模块契约（S2 填充）。
 type Catalog struct {
-	opaque struct{}
+	families []AliasFamily
+	index    map[string]int // Strict/Normal 键 → families 下标
 }
 
 // TextForms 严格/常规/宽松比较形态。
