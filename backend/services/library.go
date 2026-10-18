@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log"
@@ -12,12 +13,15 @@ import (
 
 	"fan-web/database"
 	"fan-web/models"
+	"fan-web/services/matching"
 )
 
 type LibraryService struct {
 	bangumi *BangumiService
 	// matching 可选；nil 表示完整 legacy。由 WithLibraryMatching 注入（S0 接缝）。
 	matching *MatchingRuntime
+	// newSession 包内测试可注入带 fake Provider 的 Session；生产为 nil。
+	newSession func(context.Context) *MatchingSession
 	// rootMu 只保护 rootPath 的读写，与 scanMu 分离：
 	// 读根目录（GET /library/dirs）不该跟整次扫描（Walk + Bangumi HTTP）抢同一把锁，
 	// 否则扫描期间目录列表会一直堵到扫描结束。
@@ -137,6 +141,10 @@ func stripSeasonSuffix(title string) string {
 func (s *LibraryService) Scan() (*LibraryScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
+
+	if s.useMatchingV2() {
+		return s.scanV2()
+	}
 
 	ctx := &scanContext{
 		episodesBySubject: make(map[int]subjectEpisodesResult),
@@ -627,5 +635,399 @@ func addUnidentified(result *LibraryScanResult, fileName, relDir, reason string)
 		Reason:     reason,
 		FilePath:   relDir,
 		Candidates: []MatchCandidate{},
+	})
+}
+
+func (s *LibraryService) useMatchingV2() bool {
+	return s.matching != nil && s.matching.Engine() == matching.EngineV2
+}
+
+func (s *LibraryService) openMatchingSession(ctx context.Context) *MatchingSession {
+	if s.newSession != nil {
+		return s.newSession(ctx)
+	}
+	return s.matching.NewSession(ctx)
+}
+
+// libraryV2GroupPlan 单目录内一组的决策结果（先不写入）。
+type libraryV2GroupPlan struct {
+	group     matching.Group
+	decision  matching.Decision
+	subject   *matching.Subject
+	fromBound bool
+	bindings  []matching.EpisodeBinding
+	rejected  map[string]string
+}
+
+// scanV2：ParseFile/GroupFiles → Session.Resolve → CheckBindingConflicts → ReconcileEpisodes(RemoveMissing=false)。
+func (s *LibraryService) scanV2() (*LibraryScanResult, error) {
+	rootPath := s.RootPath()
+	result := &LibraryScanResult{Unidentified: make([]UnidentifiedFile, 0)}
+
+	allFiles, err := s.collectFiles(rootPath)
+	if err != nil {
+		return nil, err
+	}
+	result.TotalFiles = len(allFiles)
+
+	associated := make(map[string]bool, len(allFiles))
+	for _, file := range allFiles {
+		ok, err := database.IsFileAssociated(file.fileName, file.relDir)
+		if err != nil {
+			log.Printf("[Library] 查询文件关联状态失败 %q: %v", file.fileName, err)
+			addUnidentified(result, file.fileName, file.relDir, "查询文件状态失败")
+			continue
+		}
+		associated[libraryFileKey(file.relDir, file.fileName)] = ok
+	}
+
+	inputs := make([]matching.FileInput, 0, len(allFiles))
+	for _, file := range allFiles {
+		inputs = append(inputs, matching.FileInput{Name: file.fileName, Dir: file.relDir})
+	}
+	groups := matching.GroupFiles(inputs)
+
+	presentByDir := make(map[string][]string)
+	for _, file := range allFiles {
+		presentByDir[file.relDir] = append(presentByDir[file.relDir], file.fileName)
+	}
+
+	byDir := make(map[string][]matching.Group)
+	for _, g := range groups {
+		byDir[g.Dir] = append(byDir[g.Dir], g)
+	}
+	dirs := make([]string, 0, len(byDir))
+	for dir := range byDir {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	session := s.openMatchingSession(context.Background())
+
+	for _, dir := range dirs {
+		if err := s.scanV2Directory(session, dir, byDir[dir], associated, presentByDir[dir], result); err != nil {
+			log.Printf("[Library] 目录 %q 匹配基础设施错误，已写入的其他目录保留，下次扫描续扫: %v", dir, err)
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func libraryFileKey(dir, name string) string {
+	return dir + "\x00" + name
+}
+
+func (s *LibraryService) scanV2Directory(
+	session *MatchingSession,
+	dir string,
+	groups []matching.Group,
+	associated map[string]bool,
+	presentFiles []string,
+	result *LibraryScanResult,
+) error {
+	boundAnimes, listErr := database.ListAnimesByFilePath(dir)
+	if listErr != nil {
+		log.Printf("[Library] 按目录查询番剧失败 %q: %v", dir, listErr)
+		boundAnimes = nil
+	}
+	var bound *BoundMatch
+	if len(boundAnimes) == 1 && boundAnimes[0].BangumiID > 0 {
+		sub := subjectFromBoundAnime(boundAnimes[0])
+		bound = &BoundMatch{Subject: sub, UniqueDirectory: true}
+	}
+
+	plans := make([]libraryV2GroupPlan, 0, len(groups))
+	for _, full := range groups {
+		pending, skipped := splitGroupByAssociation(full, associated)
+		result.Skipped += skipped
+		if len(pending.Files) == 0 {
+			continue
+		}
+
+		res, err := session.Resolve(pending, bound)
+		if err != nil {
+			return err
+		}
+		if res.Decision.Candidates == nil {
+			res.Decision.Candidates = []matching.Candidate{}
+		}
+
+		switch res.Decision.Code {
+		case matching.Accepted:
+			if res.Subject == nil || res.Subject.ID <= 0 {
+				addPendingUnidentified(result, pending, "接受结果缺少条目", matchCandidatesFromDecision(res.Decision))
+				continue
+			}
+			bindings := append([]matching.EpisodeBinding(nil), res.Chapters.Bindings...)
+			rejected := res.Chapters.Rejected
+			if rejected == nil {
+				rejected = map[string]string{}
+			}
+			for name, reason := range rejected {
+				addUnidentifiedWithCandidates(result, name, dir, reason, matchCandidatesFromDecision(res.Decision))
+			}
+			if len(bindings) == 0 {
+				// 已全部拒绝或无可入库编号：不创建空番剧
+				if len(rejected) == 0 {
+					addPendingUnidentified(result, pending, "无可入库集数绑定", matchCandidatesFromDecision(res.Decision))
+				}
+				continue
+			}
+			plans = append(plans, libraryV2GroupPlan{
+				group:     pending,
+				decision:  res.Decision,
+				subject:   res.Subject,
+				fromBound: res.FromExistingBound,
+				bindings:  bindings,
+				rejected:  rejected,
+			})
+		default:
+			reason := res.Decision.Reason
+			if reason == "" {
+				if res.Decision.Code == matching.NoCandidates {
+					reason = "无搜索结果"
+				} else {
+					reason = "匹配置信度不足"
+				}
+			}
+			addPendingUnidentified(result, pending, reason, matchCandidatesFromDecision(res.Decision))
+		}
+	}
+
+	if len(plans) == 0 {
+		return nil
+	}
+
+	batches := make([]matching.BindingBatch, 0, len(plans)+len(boundAnimes))
+	for _, plan := range plans {
+		batches = append(batches, matching.BindingBatch{
+			Dir:       dir,
+			SubjectID: plan.subject.ID,
+			Existing:  false,
+			Bindings:  plan.bindings,
+		})
+	}
+	existingBatches, err := libraryExistingBindingBatches(dir, presentFiles)
+	if err != nil {
+		return err
+	}
+	batches = append(batches, existingBatches...)
+
+	conflicts := matching.CheckBindingConflicts(batches)
+	conflictReason := make(map[string]string)
+	for _, c := range conflicts {
+		for _, name := range c.Files {
+			if _, ok := conflictReason[name]; ok {
+				continue
+			}
+			conflictReason[name] = c.Reason
+		}
+	}
+
+	// 按 subject 汇总仍合法的新绑定
+	type subjectWrite struct {
+		subject   matching.Subject
+		fromBound bool
+		bindings  []matching.EpisodeBinding
+		cands     []MatchCandidate
+	}
+	bySubject := make(map[int]*subjectWrite)
+	subjectOrder := make([]int, 0)
+
+	for _, plan := range plans {
+		legal := make([]matching.EpisodeBinding, 0, len(plan.bindings))
+		for _, b := range plan.bindings {
+			if reason, hit := conflictReason[b.FileName]; hit {
+				addUnidentifiedWithCandidates(result, b.FileName, dir, reason, matchCandidatesFromDecision(plan.decision))
+				continue
+			}
+			legal = append(legal, b)
+		}
+		if len(legal) == 0 {
+			continue
+		}
+		sw, ok := bySubject[plan.subject.ID]
+		if !ok {
+			sw = &subjectWrite{
+				subject:   *plan.subject,
+				fromBound: plan.fromBound,
+				cands:     matchCandidatesFromDecision(plan.decision),
+			}
+			bySubject[plan.subject.ID] = sw
+			subjectOrder = append(subjectOrder, plan.subject.ID)
+		}
+		sw.bindings = append(sw.bindings, legal...)
+		if plan.fromBound {
+			sw.fromBound = true
+		}
+	}
+
+	for _, sid := range subjectOrder {
+		sw := bySubject[sid]
+		if err := s.persistSubjectV2(dir, sw.subject, sw.fromBound, sw.bindings, presentFiles, sw.cands, result); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func splitGroupByAssociation(full matching.Group, associated map[string]bool) (pending matching.Group, skipped int) {
+	rebuild := make([]matching.FileInput, 0, len(full.Files))
+	for _, ev := range full.Files {
+		if associated[libraryFileKey(full.Dir, ev.Name)] {
+			skipped++
+			continue
+		}
+		rebuild = append(rebuild, matching.FileInput{Name: ev.Name, Dir: full.Dir})
+	}
+	if len(rebuild) == 0 {
+		return matching.Group{Key: full.Key, Dir: full.Dir}, skipped
+	}
+	regrouped := matching.GroupFiles(rebuild)
+	if len(regrouped) == 1 {
+		return regrouped[0], skipped
+	}
+	// 去掉已关联文件后若拆成多组，仍保留原组 Key，仅携带 pending 证据与原 Query，
+	// 由章节核对拒绝不支持编号；不在此处二次拆组写入。
+	files := make([]matching.FileEvidence, 0, len(rebuild))
+	for _, in := range rebuild {
+		files = append(files, matching.ParseFile(in))
+	}
+	return matching.Group{Key: full.Key, Dir: full.Dir, Files: files, Query: full.Query}, skipped
+}
+
+func (s *LibraryService) persistSubjectV2(
+	dir string,
+	subject matching.Subject,
+	fromBound bool,
+	bindings []matching.EpisodeBinding,
+	presentFiles []string,
+	cands []MatchCandidate,
+	result *LibraryScanResult,
+) error {
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	anime, err := database.GetAnimeByBangumiID(subject.ID)
+	if err != nil {
+		addBindingsUnidentified(result, dir, bindings, "查询已有番剧失败", cands)
+		return nil
+	}
+	if anime != nil && anime.FilePath != dir {
+		reason := fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, dir)
+		addBindingsUnidentified(result, dir, bindings, reason, cands)
+		return nil
+	}
+
+	created := false
+	if anime == nil {
+		if fromBound || !subject.Detailed {
+			addBindingsUnidentified(result, dir, bindings, "缺少已核对详情，不能创建新番剧", cands)
+			return nil
+		}
+		anime, err = database.CreateAnime(&models.Anime{
+			Title:     subject.Name,
+			TitleCn:   subject.NameCn,
+			BangumiID: subject.ID,
+			Cover:     subject.Cover,
+			Summary:   subject.Summary,
+			EpCount:   subject.EpisodeCount,
+			FilePath:  dir,
+		})
+		if err != nil {
+			addBindingsUnidentified(result, dir, bindings, "创建番剧失败", cands)
+			return nil
+		}
+		if anime.FilePath != dir {
+			reason := fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, dir)
+			addBindingsUnidentified(result, dir, bindings, reason, cands)
+			return nil
+		}
+		created = true
+		result.NewAnimes++
+	}
+
+	existing, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		addBindingsUnidentified(result, dir, bindings, "查询已有集数失败", cands)
+		return nil
+	}
+	expected := append([]models.Episode(nil), existing...)
+
+	existingByFile := make(map[string]models.Episode, len(existing))
+	for _, ep := range existing {
+		existingByFile[ep.FilePath] = ep
+	}
+
+	desired := append([]models.Episode(nil), existing...)
+	newCount := 0
+	newBindings := make([]matching.EpisodeBinding, 0, len(bindings))
+	for _, b := range bindings {
+		if b.FileName == "" || b.StoredNumber <= 0 {
+			addUnidentifiedWithCandidates(result, b.FileName, dir, "无效集数绑定", cands)
+			continue
+		}
+		if _, ok := existingByFile[b.FileName]; ok {
+			continue
+		}
+		desired = append(desired, models.Episode{
+			AnimeID:  anime.ID,
+			EpNumber: b.StoredNumber,
+			FilePath: b.FileName,
+		})
+		newBindings = append(newBindings, b)
+		newCount++
+	}
+	if newCount == 0 {
+		// 新建了空番剧但没有可加入剧集：保留可恢复空条目并报告（不删除）。
+		if created {
+			addBindingsUnidentified(result, dir, bindings, "创建番剧后无新剧集可写入", cands)
+		}
+		return nil
+	}
+
+	if err := database.ReconcileEpisodes(anime.ID, database.EpisodeReconcileInput{
+		ExpectedAnime: *anime,
+		Expected:      expected,
+		Desired:       desired,
+		PresentFiles:  append([]string(nil), presentFiles...),
+		Renames:       nil,
+		RemoveMissing: false,
+	}); err != nil {
+		log.Printf("[Library] Reconcile 失败 anime=%d dir=%q: %v", anime.ID, dir, err)
+		addBindingsUnidentified(result, dir, newBindings, "写入剧集失败: "+err.Error(), cands)
+		return nil
+	}
+	result.NewEpisodes += newCount
+	return nil
+}
+
+func addPendingUnidentified(result *LibraryScanResult, group matching.Group, reason string, cands []MatchCandidate) {
+	if cands == nil {
+		cands = []MatchCandidate{}
+	}
+	for _, ev := range group.Files {
+		addUnidentifiedWithCandidates(result, ev.Name, group.Dir, reason, cands)
+	}
+}
+
+func addBindingsUnidentified(result *LibraryScanResult, dir string, bindings []matching.EpisodeBinding, reason string, cands []MatchCandidate) {
+	for _, b := range bindings {
+		addUnidentifiedWithCandidates(result, b.FileName, dir, reason, cands)
+	}
+}
+
+func addUnidentifiedWithCandidates(result *LibraryScanResult, fileName, relDir, reason string, cands []MatchCandidate) {
+	if cands == nil {
+		cands = []MatchCandidate{}
+	}
+	// 拷贝切片，避免后续修改共享底层数组。
+	copied := append([]MatchCandidate(nil), cands...)
+	result.Unidentified = append(result.Unidentified, UnidentifiedFile{
+		FileName:   fileName,
+		Reason:     reason,
+		FilePath:   relDir,
+		Candidates: copied,
 	})
 }
