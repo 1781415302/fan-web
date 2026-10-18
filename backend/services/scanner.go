@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"fan-web/models"
+	"fan-web/services/matching"
 )
 
 var videoExts = map[string]bool{
@@ -33,6 +34,8 @@ var epPatterns = []*regexp.Regexp{
 var ErrInvalidVideoPath = errors.New("文件目录必须是视频根目录下的相对目录")
 
 type ScannerService struct {
+	// matching 可选；nil 表示 legacy。由 WithScannerMatching 注入（S0 接缝）。
+	matching *MatchingRuntime
 	// rootMu 保护 rootPath：ScannerService 被 LibraryHandler.Dirs 等长期缓存并在
 	// 请求间复用（每次 SetRootPath），并发请求与 SetRootPath 交错时不能对 string
 	// 做无同步读写。SetRootPath 一次仅改一个字段，rootMu 足够；Scan 等长耗时
@@ -41,8 +44,29 @@ type ScannerService struct {
 	rootPath string
 }
 
-func NewScannerService(rootPath string) *ScannerService {
-	return &ScannerService{rootPath: rootPath}
+// ScannerOption 配置 ScannerService 的可选接缝。
+type ScannerOption func(*ScannerService)
+
+// WithScannerMatching 注入匹配 Runtime；无 opts 时保持 nil/legacy。
+func WithScannerMatching(r *MatchingRuntime) ScannerOption {
+	return func(s *ScannerService) { s.matching = r }
+}
+
+// NewScannerService 构造单番扫描服务。没有 opts 时完整 legacy。
+func NewScannerService(rootPath string, opts ...ScannerOption) *ScannerService {
+	s := &ScannerService{rootPath: rootPath}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// MatchEngine 返回注入的引擎；无 Runtime 时返回 Legacy（handler 不重读环境）。
+func (s *ScannerService) MatchEngine() matching.Engine {
+	if s == nil || s.matching == nil {
+		return matching.EngineLegacy
+	}
+	return s.matching.Engine()
 }
 
 // SetRootPath 更新视频根目录，初始化完成时调用。

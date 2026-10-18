@@ -16,6 +16,8 @@ import (
 
 type LibraryService struct {
 	bangumi *BangumiService
+	// matching 可选；nil 表示完整 legacy。由 WithLibraryMatching 注入（S0 接缝）。
+	matching *MatchingRuntime
 	// rootMu 只保护 rootPath 的读写，与 scanMu 分离：
 	// 读根目录（GET /library/dirs）不该跟整次扫描（Walk + Bangumi HTTP）抢同一把锁，
 	// 否则扫描期间目录列表会一直堵到扫描结束。
@@ -52,8 +54,21 @@ type parsedLibraryFile struct {
 	parsed ParsedFilename
 }
 
-func NewLibraryService(bangumi *BangumiService, rootPath string) *LibraryService {
-	return &LibraryService{bangumi: bangumi, rootPath: rootPath}
+// LibraryOption 配置 LibraryService 的可选接缝。
+type LibraryOption func(*LibraryService)
+
+// WithLibraryMatching 注入匹配 Runtime；无 opts 时保持 nil/legacy。
+func WithLibraryMatching(r *MatchingRuntime) LibraryOption {
+	return func(s *LibraryService) { s.matching = r }
+}
+
+// NewLibraryService 构造库扫描服务。没有 opts 时完整 legacy；Scan() 既有签名不变。
+func NewLibraryService(bangumi *BangumiService, rootPath string, opts ...LibraryOption) *LibraryService {
+	s := &LibraryService{bangumi: bangumi, rootPath: rootPath}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // SetRootPath 更新视频根目录，初始化完成时调用。
