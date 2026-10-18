@@ -1,0 +1,81 @@
+[
+  {
+    "id": "synthetic-xianwang-s4-scan",
+    "synthetic": true,
+    "split": "synthetic",
+    "root_files": [
+      {
+        "rel_path": "仙王/[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+        "dir": "仙王"
+      }
+    ],
+    "expected": [
+      {
+        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+        "subject_id": 405214,
+        "stored_number": 12,
+        "mode": "accepted"
+      }
+    ],
+    "notes": "ATTACHMENT_GAP: 非语料回放；S11 全链路用。不得标 A/B 质量门通过。"
+  },
+  {
+    "id": "synthetic-xianwang-s3-scan",
+    "synthetic": true,
+    "split": "synthetic",
+    "root_files": [
+      {
+        "rel_path": "仙王/[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+        "dir": "仙王"
+      }
+    ],
+    "expected": [
+      {
+        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+        "subject_id": 358742,
+        "stored_number": 9,
+        "mode": "accepted"
+      }
+    ],
+    "notes": "与 S4 不得合组；subject 358742"
+  },
+  {
+    "id": "synthetic-immortal-king-en-scan",
+    "synthetic": true,
+    "split": "synthetic",
+    "root_files": [
+      {
+        "rel_path": "IK/[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+        "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+        "dir": "IK"
+      }
+    ],
+    "expected": [
+      {
+        "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+        "subject_id": 529875,
+        "stored_number": 3,
+        "mode": "accepted"
+      }
+    ],
+    "notes": "英文经 catalog 召回中文季条"
+  },
+  {
+    "id": "synthetic-unsupported-numbering-scan",
+    "synthetic": true,
+    "split": "synthetic",
+    "root_files": [
+      {"rel_path": "num/Show - 01-02.mkv", "name": "Show - 01-02.mkv", "dir": "num"},
+      {"rel_path": "num/Show - 12.5.mkv", "name": "Show - 12.5.mkv", "dir": "num"},
+      {"rel_path": "num/Show 第0话.mkv", "name": "Show 第0话.mkv", "dir": "num"}
+    ],
+    "expected": [
+      {"name": "Show - 01-02.mkv", "subject_id": 0, "stored_number": 0, "mode": "review"},
+      {"name": "Show - 12.5.mkv", "subject_id": 0, "stored_number": 0, "mode": "review"},
+      {"name": "Show 第0话.mkv", "subject_id": 0, "stored_number": 0, "mode": "review"}
+    ],
+    "notes": "Range/Fraction/Special → Review，绝不截断"
+  }
+]
