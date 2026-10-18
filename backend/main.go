@@ -20,6 +20,7 @@ import (
 	"fan-web/handlers"
 	"fan-web/middleware"
 	"fan-web/services"
+	"fan-web/services/matching"
 	"fan-web/web"
 )
 
@@ -52,7 +53,11 @@ func main() {
 
 	authService := services.NewAuthService(cfg.JWT.Secret, cfg.JWT.Expire)
 	bangumiService := services.NewBangumiService()
-	scannerService := services.NewScannerService(cfg.Video.RootPath)
+	matchingRuntime, err := loadMatchingRuntime(bangumiService)
+	if err != nil {
+		log.Fatalf("匹配引擎初始化失败: %v", err)
+	}
+	scannerService := services.NewScannerService(cfg.Video.RootPath, services.WithScannerMatching(matchingRuntime))
 	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 	authHandler := handlers.NewAuthHandler(authService, loginRateLimiter)
 	adminUserHandler := handlers.NewAdminUserHandler()
@@ -62,7 +67,7 @@ func main() {
 	bangumiSync := services.NewBangumiSync(bangumiService)
 	episodeHandler.SetBangumiSync(bangumiSync)
 	bangumiMeHandler := handlers.NewBangumiMeHandler(bangumiService, bangumiSync)
-	libraryService := services.NewLibraryService(bangumiService, cfg.Video.RootPath)
+	libraryService := services.NewLibraryService(bangumiService, cfg.Video.RootPath, services.WithLibraryMatching(matchingRuntime))
 	libraryHandler := handlers.NewLibraryHandler(libraryService)
 	setupHandler := handlers.NewSetupHandler("config.yaml", cfg, authService, scannerService, libraryService)
 	updateHandler := handlers.NewUpdateHandler(AppVersion)
@@ -167,6 +172,34 @@ func main() {
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
+}
+
+// loadMatchingRuntime 读取 FAN_WEB_MATCH_ENGINE / FAN_WEB_MATCH_ALIASES_FILE 一次，
+// 构造注入 Library 与 Scanner 的同一 MatchingRuntime。
+// legacy 不要求别名文件存在，避免映射故障阻止紧急回滚。
+func loadMatchingRuntime(bangumi *services.BangumiService) (*services.MatchingRuntime, error) {
+	engine := services.MatchEngineFromEnv(os.Getenv("FAN_WEB_MATCH_ENGINE"))
+	aliasFile := ""
+	if engine == matching.EngineV2 {
+		aliasFile = strings.TrimSpace(os.Getenv("FAN_WEB_MATCH_ALIASES_FILE"))
+	}
+	rt, err := services.NewMatchingRuntime(bangumi, engine, aliasFile)
+	if err != nil {
+		return nil, err
+	}
+	switch engine {
+	case matching.EngineV2:
+		if aliasFile == "" {
+			log.Printf("[Matching] 引擎=v2（默认），使用内置系列别名 catalog")
+		} else {
+			log.Printf("[Matching] 引擎=v2，内置 catalog + 覆盖文件 %s", aliasFile)
+		}
+	case matching.EngineLegacy:
+		log.Printf("[Matching] 引擎=legacy，全库与单番扫描使用原流程")
+	default:
+		log.Printf("[Matching] 引擎=%s，全库与单番扫描使用原流程", engine)
+	}
+	return rt, nil
 }
 
 // shouldCleanupRollback 仅在实际绑定端口等于配置端口时清理回滚资产。
