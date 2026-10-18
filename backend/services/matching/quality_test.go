@@ -656,3 +656,93 @@ func runPlan45ParseExtras(t *testing.T) {
 		t.Fatalf("第2023话 must not set Year")
 	}
 }
+
+// TestMatchingQualityHoldout S11 终验：跑冻结的 C.4 变体集；只验证、禁止据它调分。
+// 失败只报告，不修改 holdout expected。
+func TestMatchingQualityHoldout(t *testing.T) {
+	path := filepath.Join("testdata", "quality_holdout_variants.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("holdout missing: %v", err)
+	}
+	var doc holdoutFile
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("holdout parse: %v", err)
+	}
+	if !doc.Frozen || doc.Version != 1 || len(doc.Variants) == 0 {
+		t.Fatalf("holdout not frozen: frozen=%v version=%d n=%d", doc.Frozen, doc.Version, len(doc.Variants))
+	}
+	fx := loadProviderFixture(t)
+	cat, err := LoadCatalog(BuiltinTitleAliasesJSON, nil)
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+
+	var (
+		autoOK, wrongAccept, reviewN, noCandN int
+		failures                              []string
+	)
+	for _, tc := range doc.Variants {
+		tc := tc
+		t.Run(tc.ID, func(t *testing.T) {
+			got := evaluateQualityCase(t, cat, fx, tc)
+			for _, exp := range tc.Expected {
+				g, ok := got[exp.Name]
+				if !ok {
+					msg := fmt.Sprintf("%s: missing result for %q", tc.ID, exp.Name)
+					t.Error(msg)
+					failures = append(failures, msg)
+					continue
+				}
+				switch exp.Mode {
+				case "accepted":
+					if g.mode != Accepted || g.winnerID != exp.SubjectID {
+						msg := fmt.Sprintf("%s/%s: want accepted subject=%d stored=%d; got mode=%s winner=%d stored=%d reason=%s",
+							tc.ID, exp.Name, exp.SubjectID, exp.StoredNumber, g.mode, g.winnerID, g.stored, g.reason)
+						t.Error(msg)
+						failures = append(failures, msg)
+						if g.mode == Accepted && g.winnerID != exp.SubjectID {
+							wrongAccept++
+						}
+						break
+					}
+					if exp.StoredNumber > 0 && g.stored != exp.StoredNumber {
+						msg := fmt.Sprintf("%s/%s: stored_number got=%d want=%d", tc.ID, exp.Name, g.stored, exp.StoredNumber)
+						t.Error(msg)
+						failures = append(failures, msg)
+						break
+					}
+					autoOK++
+				case "review":
+					if g.mode == Accepted {
+						msg := fmt.Sprintf("%s/%s: want review, ACCEPTED %d", tc.ID, exp.Name, g.winnerID)
+						t.Error(msg)
+						failures = append(failures, msg)
+						wrongAccept++
+						break
+					}
+					reviewN++
+				case "no_candidates":
+					if g.mode == Accepted {
+						msg := fmt.Sprintf("%s/%s: want no_candidates, ACCEPTED %d", tc.ID, exp.Name, g.winnerID)
+						t.Error(msg)
+						failures = append(failures, msg)
+						wrongAccept++
+						break
+					}
+					noCandN++
+				}
+			}
+		})
+	}
+	t.Logf("holdout summary: variants=%d auto_ok=%d wrong_accept=%d review=%d no_candidates=%d failures=%d",
+		len(doc.Variants), autoOK, wrongAccept, reviewN, noCandN, len(failures))
+	if wrongAccept > 0 {
+		t.Fatalf("holdout hard gate: %d wrong accepts (do NOT tune scores against holdout; report to main agent)", wrongAccept)
+	}
+	if len(failures) > 0 {
+		// 记录失败供主 Agent；本测试失败以阻断静默绿灯
+		t.Fatalf("holdout FAIL (%d) — 禁止改 holdout expected / 禁止据它调分:\n%s",
+			len(failures), strings.Join(failures, "\n"))
+	}
+}
