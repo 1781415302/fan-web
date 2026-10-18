@@ -69,16 +69,23 @@ func BuildQueries(q Query, catalog Catalog) []QueryTerm {
 		add(base, SourceFile, false)
 	}
 
-	// 4. 带明确季号的查询
+	// 4. 带明确季号的查询（catalog 只对 CJK canonical；文件标题发阿拉伯/中文季等价写法）
 	if q.Ordinal.Season > 0 {
 		season := q.Ordinal.Season
 		for _, t := range expandInputs {
 			for _, et := range catalog.Expand(t.Text) {
-				add(withSeasonQualifier(et.Text, season), SourceCatalog, false)
+				if queryHasCJK(et.Text) {
+					for _, form := range seasonQualifierForms(et.Text, season) {
+						add(form, SourceCatalog, false)
+					}
+				}
 			}
 		}
 		for _, t := range fileTitles {
-			add(withSeasonQualifier(titleBase(t.Text), season), SourceFile, false)
+			base := titleBase(t.Text)
+			for _, form := range seasonQualifierForms(base, season) {
+				add(form, SourceFile, false)
+			}
 		}
 	}
 
@@ -88,7 +95,9 @@ func BuildQueries(q Query, catalog Catalog) []QueryTerm {
 			base := titleBase(t.Text)
 			add(base, SourceDirectory, false)
 			if q.Ordinal.Season > 0 {
-				add(withSeasonQualifier(base, q.Ordinal.Season), SourceDirectory, false)
+				for _, form := range seasonQualifierForms(base, q.Ordinal.Season) {
+					add(form, SourceDirectory, false)
+				}
 			}
 		}
 	}
@@ -157,14 +166,38 @@ func pickMostInformativeTitle(titles []Title) Title {
 }
 
 func withSeasonQualifier(base string, season int) string {
+	forms := seasonQualifierForms(base, season)
+	if len(forms) == 0 {
+		return ""
+	}
+	return forms[0]
+}
+
+// seasonQualifierForms 同一 base+季的等价写法（第N季与第X季中文数字；拉丁加尾数）。
+func seasonQualifierForms(base string, season int) []string {
 	base = strings.TrimSpace(base)
 	if base == "" || season <= 0 {
-		return base
+		return nil
 	}
 	if queryHasCJK(base) {
-		return fmt.Sprintf("%s 第%d季", base, season)
+		out := []string{fmt.Sprintf("%s 第%d季", base, season)}
+		if cn := chineseSeasonNum(season); cn != "" {
+			form := fmt.Sprintf("%s 第%s季", base, cn)
+			if form != out[0] {
+				out = append(out, form)
+			}
+		}
+		return out
 	}
-	return fmt.Sprintf("%s %d", base, season)
+	return []string{fmt.Sprintf("%s %d", base, season)}
+}
+
+func chineseSeasonNum(n int) string {
+	names := []string{"", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"}
+	if n >= 1 && n < len(names) {
+		return names[n]
+	}
+	return ""
 }
 
 func isLatinMultiWord(text string) bool {

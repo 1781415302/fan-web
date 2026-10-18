@@ -61,13 +61,28 @@ func ParseFile(input FileInput) FileEvidence {
 	var seasons []int
 	var years []int
 	var epCandidates []EpisodeToken
-	var media MediaKind
+	media := KindUnknown
 	var conflicts []string
 
 	for _, b := range classified {
 		switch b.kind {
-		case blockFansub, blockCategory, blockCodec, blockSource, blockLang, blockRes, blockCRC:
+		case blockFansub, blockCodec, blockSource, blockLang, blockRes, blockCRC:
 			// noise
+		case blockCategory:
+			if media == KindUnknown {
+				if mk, rest := stripMedia(b.text); mk != KindUnknown && strings.TrimSpace(rest) == "" {
+					media = mk
+				} else if mediaBracketOnly(b.text) {
+					switch strings.ToLower(strings.TrimSpace(b.text)) {
+					case "tv":
+						media = KindSeries
+					case "ova", "oad":
+						media = KindOVA
+					case "movie", "film", "剧场版", "劇場版", "电影", "電影":
+						media = KindMovie
+					}
+				}
+			}
 		case blockYear:
 			years = append(years, b.year)
 		case blockEpisode:
@@ -335,9 +350,19 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 			out = append(out, cb)
 			continue
 		}
-		// First bracket fansub heuristic: short latin/team-like OR known hints,
-		// and later blocks form a title. Unknown group names: if looks like group, mark fansub.
-		if i == 0 && looksLikeFansub(b) {
+		// 纯媒体标记优先于字幕组启发式（避免 [TV] 被当成 fansub）
+		if mk, rest := stripMedia(b); mk != KindUnknown && strings.TrimSpace(rest) == "" {
+			cb.kind = blockCategory
+			out = append(out, cb)
+			continue
+		}
+		if mediaBracketOnly(b) {
+			cb.kind = blockCategory
+			out = append(out, cb)
+			continue
+		}
+		// First bracket：允许短拉丁组名（含 Dynamis One）
+		if i == 0 && looksLikeLeadingFansub(b) {
 			cb.kind = blockFansub
 			out = append(out, cb)
 			continue
@@ -352,6 +377,14 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 		out = append(out, cb)
 	}
 	return out
+}
+
+func mediaBracketOnly(b string) bool {
+	switch strings.ToLower(strings.TrimSpace(b)) {
+	case "tv", "ova", "oad", "movie", "film", "剧场版", "劇場版", "电影", "電影":
+		return true
+	}
+	return false
 }
 
 func yearBracketContent(b string) bool {
@@ -369,21 +402,49 @@ func looksLikeFansub(b string) bool {
 			return true
 		}
 	}
-	// Pure short latin/digits/hyphen team tag, e.g. GM-Team, Sub, VCB-Studio
 	if hasCJK(b) {
 		return false
 	}
-	if len([]rune(b)) <= 24 && regexp.MustCompile(`(?i)^[A-Za-z0-9][A-Za-z0-9 ._\-&+]{0,22}$`).MatchString(b) {
-		// Avoid treating long English titles as fansub: require no spaces or short
-		if !strings.Contains(b, " ") || len(strings.Fields(b)) <= 3 {
-			// "The Daily Life..." is long — handled as rest not first bracket usually
-			if len(strings.Fields(b)) >= 4 {
-				return false
-			}
-			return true
-		}
+	// 无提示时，带空格的多词视为标题（Star River III），不作字幕组
+	if strings.Contains(b, " ") {
+		return false
+	}
+	if len([]rune(b)) <= 24 && regexp.MustCompile(`(?i)^[A-Za-z0-9][A-Za-z0-9._\-&+]{0,22}$`).MatchString(b) {
+		return true
 	}
 	return false
+}
+
+// looksLikeLeadingFansub 仅用于文件名首个括号：字幕组常为 1～3 个拉丁词（Dynamis One）。
+// 含罗马季号或中文季号的不视为组名。
+func looksLikeLeadingFansub(b string) bool {
+	if looksLikeFansub(b) {
+		return true
+	}
+	if hasCJK(b) || mediaBracketOnly(b) {
+		return false
+	}
+	if _, ok := findRomanSeason(b); ok {
+		return false
+	}
+	if reSeasonCN.MatchString(b) || reSeasonEn.MatchString(b) {
+		return false
+	}
+	fields := strings.Fields(b)
+	if len(fields) == 0 || len(fields) > 3 {
+		return false
+	}
+	if len([]rune(b)) > 28 {
+		return false
+	}
+	for _, f := range fields {
+		for _, r := range f {
+			if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' || r == '&' || r == '+') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func hasAnyToken(lower string, set map[string]bool) bool {
@@ -532,8 +593,29 @@ func parseRest(rest string) (ep EpisodeToken, title string, year, season int, me
 
 	// Scene dots → spaces for latin titles
 	work = strings.ReplaceAll(work, ".", " ")
+	work = stripSceneNoiseTokens(work)
 	title = cleanTitleSpaces(work)
 	return ep, title, year, season, media
+}
+
+// stripSceneNoiseTokens 去掉 rest 中残留的分辨率/来源/编码噪声。
+func stripSceneNoiseTokens(work string) string {
+	fields := strings.Fields(work)
+	if len(fields) == 0 {
+		return work
+	}
+	out := fields[:0]
+	for _, f := range fields {
+		low := strings.ToLower(strings.Trim(f, "-_"))
+		if reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] {
+			continue
+		}
+		if low == "web" || low == "dl" {
+			continue
+		}
+		out = append(out, f)
+	}
+	return strings.Join(out, " ")
 }
 
 func stripParenMeta(s string) string {
@@ -564,22 +646,27 @@ func isYearAlone(n int) bool {
 	return n >= 1900 && n <= 2099
 }
 
-// isTitleProtectedNumber: digits that are part of title identity (86, 1-2, U-17, No.8, 2012 as title)
+// isTitleProtectedNumber: digits that are part of title identity (86, 1-2, U-17, No.8)。
+// 不把 "Title - 1100" 这种空格分隔的 dash-ep 当成标题分数。
 func isTitleProtectedNumber(title string, n int) bool {
 	t := strings.ToLower(title)
 	ns := strconv.Itoa(n)
-	// Ranma1-2 / 1-2 glued
-	if regexp.MustCompile(`(?i)[a-z]` + regexp.QuoteMeta(ns) + `\s*[-/]`).MatchString(t) {
+	// 紧凑分数 Ranma1-2 / 1-2 / 1/2：连字符两侧无空格
+	compactLeft := regexp.MustCompile(`(?i)(?:[a-z]+)?` + regexp.QuoteMeta(ns) + `[-/]\d+\b`)
+	if compactLeft.MatchString(t) {
 		return true
 	}
-	if regexp.MustCompile(`(?i)[-/]\s*`+regexp.QuoteMeta(ns)+`\b`).MatchString(t) &&
-		regexp.MustCompile(`(?i)[a-z0-9]\s*[-/]\s*`+regexp.QuoteMeta(ns)).MatchString(t) {
-		return true
+	compactRight := regexp.MustCompile(`(?i)\d+[-/]` + regexp.QuoteMeta(ns) + `\b`)
+	if compactRight.MatchString(t) {
+		// 排除 "12 - 03" / "Tale - 1100" 这种两侧有空格的集号写法
+		spaced := regexp.MustCompile(`\d+\s+[-–—]\s*` + regexp.QuoteMeta(ns) + `|[-–—]\s+` + regexp.QuoteMeta(ns))
+		if !spaced.MatchString(t) {
+			return true
+		}
 	}
 	if strings.Contains(t, "u-"+ns) || strings.Contains(t, "no."+ns) || strings.Contains(t, "no "+ns) {
 		return true
 	}
-	// Bare title equals the number (86)
 	base := cleanTitleSpaces(reDashEp.ReplaceAllString(title, " "))
 	base = cleanTitleSpaces(base)
 	if base == ns {
@@ -639,6 +726,7 @@ func buildTitles(pieces []string, src Source) []Title {
 		// Split parallel language chunks by ][ already done; also split " / " when script switch
 		for _, part := range splitLanguageParts(p) {
 			part = cleanTitleSpaces(part)
+			part = normalizeTitleFractionHyphen(part)
 			if part == "" {
 				continue
 			}
@@ -652,6 +740,30 @@ func buildTitles(pieces []string, src Source) []Title {
 		}
 	}
 	return out
+}
+
+// normalizeTitleFractionHyphen 将标题内数字分数连字符写成斜杠（Ranma1-2 → Ranma1/2），
+// 与 4.5 / 检索夹具 Ranma1/2 对齐；不把集号范围 01-02 改成斜杠。
+func normalizeTitleFractionHyphen(s string) string {
+	if s == "" || !strings.Contains(s, "-") {
+		return s
+	}
+	// letter/digit glued fraction: Ranma1-2, 1-2 at word boundary after letters
+	re := regexp.MustCompile(`(?i)([A-Za-z]+\d+)-(\d+)\b`)
+	s = re.ReplaceAllString(s, `$1/$2`)
+	re2 := regexp.MustCompile(`(?i)\b(\d+)-(\d+)\b`)
+	// only bare N-M when both sides are single digit (title 1/2), not episode ranges like 01-02 / 12-13
+	s = re2.ReplaceAllStringFunc(s, func(m string) string {
+		parts := strings.Split(m, "-")
+		if len(parts) != 2 {
+			return m
+		}
+		if len(parts[0]) == 1 && len(parts[1]) == 1 {
+			return parts[0] + "/" + parts[1]
+		}
+		return m
+	})
+	return s
 }
 
 func splitLanguageParts(s string) []string {

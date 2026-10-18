@@ -89,6 +89,10 @@ func Rank(q Query, subjects []Subject, catalog Catalog, chapters map[int]Chapter
 	}
 
 	sort.SliceStable(out, func(i, j int) bool {
+		bi, bj := len(out[i].Blockers) > 0, len(out[j].Blockers) > 0
+		if bi != bj {
+			return !bi && bj // 无阻断者优先
+		}
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score
 		}
@@ -459,12 +463,19 @@ func applyStructure(c *Candidate, q Query, sub Subject) {
 		c.Blockers = appendUniqueString(c.Blockers, "候选为Final与查询结构不符")
 	}
 
-	// 媒体：TV/WEB 同属 Series，不互相否定
-	if q.Media != KindUnknown && subMedia != KindUnknown {
-		if !mediaCompatible(q.Media, subMedia) {
+	// 媒体：TV/WEB 同属 Series，不互相否定；空串视同 unknown
+	qMedia := q.Media
+	if qMedia == "" {
+		qMedia = KindUnknown
+	}
+	if subMedia == "" {
+		subMedia = KindUnknown
+	}
+	if qMedia != KindUnknown && subMedia != KindUnknown {
+		if !mediaCompatible(qMedia, subMedia) {
 			c.Blockers = appendUniqueString(c.Blockers,
-				fmt.Sprintf("类型冲突：查询%s vs 候选%s", q.Media, subMedia))
-		} else if q.Media == subMedia || (q.Media == KindSeries && subMedia == KindSeries) {
+				fmt.Sprintf("类型冲突：查询%s vs 候选%s", qMedia, subMedia))
+		} else if qMedia == subMedia || (qMedia == KindSeries && subMedia == KindSeries) {
 			c.Support = appendUniqueString(c.Support, "类型相容")
 		}
 	}

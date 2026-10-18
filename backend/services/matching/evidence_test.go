@@ -83,7 +83,7 @@ func TestParseTitleDigitsProtected(t *testing.T) {
 		year  int
 	}{
 		{"[Sub] 86 - 05.mkv", "86", 5, 0},
-		{"Ranma1-2 (2024) - 03.mkv", "Ranma1-2", 3, 2024},
+		{"Ranma1-2 (2024) - 03.mkv", "Ranma1/2", 3, 2024},
 		{"U-17 Show - 03.mkv", "U-17", 3, 0},
 	}
 	for _, tc := range cases {

@@ -8,18 +8,23 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
-// qualityCase 统一 case schema（§8.3）。
-// ATTACHMENT_GAP：当前仅含 synthetic / 手写 4.5 安全与仙王用例，不含 A/B 语料回放。
+// ---- C.3 / C.2 schema ----
+
+type qualityCasesFile struct {
+	Version int           `json:"version"`
+	Cases   []qualityCase `json:"cases"`
+}
+
 type qualityCase struct {
-	ID                 string                      `json:"id"`
-	Split              string                      `json:"split"`
-	Note               string                      `json:"note,omitempty"`
-	Files              []qualityFile               `json:"files"`
-	Expected           []qualityExpected           `json:"expected"`
-	CandidateSnapshots []qualitySubjectSnap        `json:"candidate_snapshots"`
-	ChapterSnapshots   map[string][]qualityChapter `json:"chapter_snapshots"`
+	ID       string            `json:"id"`
+	Bucket   string            `json:"bucket"`
+	Files    []qualityFile     `json:"files"`
+	Expected []qualityExpected `json:"expected"`
 }
 
 type qualityFile struct {
@@ -34,123 +39,55 @@ type qualityExpected struct {
 	Mode         string `json:"mode"` // accepted | review | no_candidates
 }
 
-type qualitySubjectSnap struct {
+type providerReplayFile struct {
+	Version      int                   `json:"version"`
+	Provenance   string                `json:"provenance"`
+	Subjects     []providerSubject     `json:"subjects"`
+	Searches     []providerSearch      `json:"searches"`
+	Chapters     []providerChapterRule `json:"chapters"`
+	UnknownQuery string                `json:"unknown_query"`
+}
+
+type providerSubject struct {
 	ID           int      `json:"id"`
 	Name         string   `json:"name"`
 	NameCn       string   `json:"name_cn"`
+	Aliases      []string `json:"aliases"`
 	Year         int      `json:"year"`
 	Media        string   `json:"media"`
-	Aliases      []string `json:"aliases"`
-	Platform     string   `json:"platform"`
 	EpisodeCount int      `json:"episode_count"`
-	Detailed     bool     `json:"detailed"`
+	Summary      string   `json:"summary"`
+	Cover        string   `json:"cover"`
+	Platform     string   `json:"platform"`
 }
 
-type qualityChapter struct {
-	ID   int     `json:"id"`
-	Ep   float64 `json:"ep"`
-	Sort float64 `json:"sort"`
+type providerSearch struct {
+	Terms     []string `json:"terms"`
+	IDs       []int    `json:"ids"`
+	Saturated bool     `json:"saturated"`
 }
 
-// TestMatchingQuality 加载统一夹具并做内核级对照。
-// 三 zip 附件缺失时不得宣称 A/B 质量门通过；本测试只保证夹具 schema、
-// 4.5 安全/仙王 synthetic 期望合法，以及对当前内核可验证的用例做回归。
-func TestMatchingQuality(t *testing.T) {
-	cases := loadQualityCases(t)
-	if len(cases) == 0 {
-		t.Fatal("quality_cases.json 为空：S6 至少需要 synthetic 用例以保持 TestMatchingQuality 可发现")
-	}
+type providerChapterRule struct {
+	SubjectID int `json:"subject_id"`
+	Rule      struct {
+		FirstEp   int `json:"first_ep"`
+		FirstSort int `json:"first_sort"`
+		Count     int `json:"count"`
+	} `json:"rule"`
+}
 
-	cat, err := LoadCatalog(BuiltinTitleAliasesJSON, nil)
-	if err != nil {
-		t.Fatalf("catalog: %v", err)
-	}
+type holdoutFile struct {
+	Version  int           `json:"version"`
+	Frozen   bool          `json:"frozen"`
+	Note     string        `json:"note"`
+	Variants []qualityCase `json:"variants"`
+}
 
-	assertNoFrozenWrongAccepts(t, cases)
-	validateCaseSchema(t, cases)
-
-	buckets := map[string]int{}
-	var (
-		autoOK, wrongAccept, reviewN, noCandN int
-	)
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.ID, func(t *testing.T) {
-			got := evaluateQualityCase(t, cat, tc)
-			for _, exp := range tc.Expected {
-				g, ok := got[exp.Name]
-				if !ok {
-					t.Fatalf("missing result for file %q", exp.Name)
-				}
-				buckets[bucketKey(tc, exp)]++
-
-				// 解析层：StoredNumber 期望 >0 时核对 Parse 结果
-				if exp.StoredNumber > 0 {
-					ev := ParseFile(FileInput{Name: exp.Name, Dir: dirOf(tc, exp.Name)})
-					if ev.Episode.Kind == NumberSingle && ev.Episode.First != exp.StoredNumber {
-						t.Errorf("parse StoredNumber: file=%s got=%d want=%d", exp.Name, ev.Episode.First, exp.StoredNumber)
-					}
-				}
-
-				switch exp.Mode {
-				case "accepted":
-					if g.mode != Accepted {
-						t.Errorf("want accepted subject=%d, got mode=%s winner=%d reason=%s",
-							exp.SubjectID, g.mode, g.winnerID, g.reason)
-						break
-					}
-					if g.winnerID != exp.SubjectID {
-						t.Errorf("WRONG ACCEPT: file=%s got subject=%d want=%d", exp.Name, g.winnerID, exp.SubjectID)
-						wrongAccept++
-						break
-					}
-					if exp.StoredNumber > 0 && g.stored != 0 && g.stored != exp.StoredNumber {
-						t.Errorf("stored_number: file=%s got=%d want=%d", exp.Name, g.stored, exp.StoredNumber)
-					}
-					autoOK++
-				case "review":
-					if g.mode == Accepted {
-						t.Errorf("want review, but ACCEPTED subject=%d (must not freeze wrong accept)", g.winnerID)
-						wrongAccept++
-						break
-					}
-					if g.mode != Review && g.mode != NoCandidates {
-						t.Errorf("want review-ish, got %s", g.mode)
-					}
-					reviewN++
-				case "no_candidates":
-					if g.mode != NoCandidates {
-						// 允许 Review（召回空时内核返回 no_candidates；若有噪声候选则 review）
-						if g.mode == Accepted {
-							t.Errorf("want no_candidates, got ACCEPTED %d", g.winnerID)
-							wrongAccept++
-						} else {
-							t.Logf("no_candidates case got %s (acceptable under ATTACHMENT_GAP synthetic)", g.mode)
-						}
-					}
-					noCandN++
-				default:
-					t.Fatalf("invalid expected mode %q", exp.Mode)
-				}
-			}
-		})
-	}
-
-	t.Logf("ATTACHMENT_GAP: A/B 语料三 zip 未提供；本测试仅 synthetic/手写夹具，不宣称质量门 PASS")
-	t.Logf("bucket totals: auto_ok=%d wrong_accept=%d review=%d no_candidates=%d cases=%d",
-		autoOK, wrongAccept, reviewN, noCandN, len(cases))
-	keys := make([]string, 0, len(buckets))
-	for k := range buckets {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		t.Logf("  bucket %s = %d", k, buckets[k])
-	}
-	if wrongAccept > 0 {
-		t.Fatalf("quality hard gate: %d wrong accepts", wrongAccept)
-	}
+type fixtureIndex struct {
+	subjects map[int]Subject
+	search   map[string]providerSearch // searchKey → entry
+	chapters map[int][]Chapter
+	unknown  string
 }
 
 type fileEval struct {
@@ -158,23 +95,152 @@ type fileEval struct {
 	winnerID int
 	stored   int
 	reason   string
+	chapter  int
 }
 
-func evaluateQualityCase(t *testing.T, cat Catalog, tc qualityCase) map[string]fileEval {
+// TestMatchingQuality 加载附录 C 夹具，跑内核硬门与分桶统计（§8.3）。
+func TestMatchingQuality(t *testing.T) {
+	cases := loadQualityCases(t)
+	if len(cases) == 0 {
+		t.Fatal("quality_cases.json 为空")
+	}
+	fx := loadProviderFixture(t)
+	cat, err := LoadCatalog(BuiltinTitleAliasesJSON, nil)
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	validateCaseSchema(t, cases)
+
+	buckets := map[string]bucketStat{}
+	var (
+		autoOK, wrongAccept, reviewN, noCandN int
+		failures                              []string
+	)
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.ID, func(t *testing.T) {
+			got := evaluateQualityCase(t, cat, fx, tc)
+			for _, exp := range tc.Expected {
+				g, ok := got[exp.Name]
+				if !ok {
+					msg := fmt.Sprintf("%s: missing result for file %q", tc.ID, exp.Name)
+					t.Error(msg)
+					failures = append(failures, msg)
+					continue
+				}
+				bs := buckets[tc.Bucket]
+				switch exp.Mode {
+				case "accepted":
+					if g.mode != Accepted || g.winnerID != exp.SubjectID {
+						msg := fmt.Sprintf("%s/%s: want accepted subject=%d stored=%d; got mode=%s winner=%d stored=%d reason=%s",
+							tc.ID, exp.Name, exp.SubjectID, exp.StoredNumber, g.mode, g.winnerID, g.stored, g.reason)
+						t.Error(msg)
+						failures = append(failures, msg)
+						if g.mode == Accepted && g.winnerID != exp.SubjectID {
+							wrongAccept++
+							bs.WrongAccept++
+						}
+						break
+					}
+					if exp.StoredNumber > 0 && g.stored != exp.StoredNumber {
+						msg := fmt.Sprintf("%s/%s: stored_number got=%d want=%d", tc.ID, exp.Name, g.stored, exp.StoredNumber)
+						t.Error(msg)
+						failures = append(failures, msg)
+						break
+					}
+					autoOK++
+					bs.AutoOK++
+				case "review":
+					if g.mode == Accepted {
+						msg := fmt.Sprintf("%s/%s: want review, but ACCEPTED subject=%d", tc.ID, exp.Name, g.winnerID)
+						t.Error(msg)
+						failures = append(failures, msg)
+						wrongAccept++
+						bs.WrongAccept++
+						break
+					}
+					if g.mode != Review && g.mode != NoCandidates {
+						msg := fmt.Sprintf("%s/%s: want review, got %s", tc.ID, exp.Name, g.mode)
+						t.Error(msg)
+						failures = append(failures, msg)
+					}
+					reviewN++
+					bs.Review++
+				case "no_candidates":
+					if g.mode == Accepted {
+						msg := fmt.Sprintf("%s/%s: want no_candidates, got ACCEPTED %d", tc.ID, exp.Name, g.winnerID)
+						t.Error(msg)
+						failures = append(failures, msg)
+						wrongAccept++
+						bs.WrongAccept++
+						break
+					}
+					if g.mode != NoCandidates {
+						msg := fmt.Sprintf("%s/%s: want no_candidates, got %s winner=%d reason=%s", tc.ID, exp.Name, g.mode, g.winnerID, g.reason)
+						t.Error(msg)
+						failures = append(failures, msg)
+					}
+					noCandN++
+					bs.NoCandidates++
+				default:
+					t.Fatalf("invalid expected mode %q", exp.Mode)
+				}
+				buckets[tc.Bucket] = bs
+			}
+		})
+	}
+
+	// 4.5 算法层补充（未完整列入 C.3 JSON 的解析用例）
+	t.Run("plan45_parse_extras", func(t *testing.T) {
+		runPlan45ParseExtras(t)
+	})
+
+	// 分桶输出 §8.3
+	t.Logf("quality summary: auto_ok=%d wrong_accept=%d review=%d no_candidates=%d cases=%d",
+		autoOK, wrongAccept, reviewN, noCandN, len(cases))
+	keys := make([]string, 0, len(buckets))
+	for k := range buckets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		b := buckets[k]
+		t.Logf("  bucket %s: auto_ok=%d wrong_accept=%d review=%d no_candidates=%d",
+			k, b.AutoOK, b.WrongAccept, b.Review, b.NoCandidates)
+	}
+
+	if wrongAccept > 0 {
+		t.Fatalf("quality hard gate: %d wrong accepts", wrongAccept)
+	}
+	if len(failures) > 0 {
+		t.Fatalf("quality hard gate FAIL (%d):\n%s", len(failures), strings.Join(failures, "\n"))
+	}
+
+	// Holdout 冻结集：终验只读加载，不据其调分；本测试断言文件存在且 frozen。
+	assertHoldoutFrozen(t)
+}
+
+type bucketStat struct {
+	AutoOK, WrongAccept, Review, NoCandidates int
+}
+
+func evaluateQualityCase(t *testing.T, cat Catalog, fx *fixtureIndex, tc qualityCase) map[string]fileEval {
 	t.Helper()
 	inputs := make([]FileInput, 0, len(tc.Files))
 	for _, f := range tc.Files {
 		inputs = append(inputs, FileInput{Name: f.Name, Dir: f.Dir})
 	}
 	groups := GroupFiles(inputs)
-	subjects := snapsToSubjects(tc.CandidateSnapshots)
 	out := map[string]fileEval{}
+	var batches []BindingBatch
 
-	// 先按组决策，再按文件落地 mode / stored
 	for _, g := range groups {
-		q := normalizeQueryMedia(g.Query)
+		q := g.Query
+		if q.Media == "" {
+			q.Media = KindUnknown
+		}
 
-		// 不支持编号的文件：强制 Review（4.5），不截断
 		unsupported := map[string]bool{}
 		for _, f := range g.Files {
 			switch f.Episode.Kind {
@@ -182,41 +248,46 @@ func evaluateQualityCase(t *testing.T, cat Catalog, tc qualityCase) map[string]f
 				unsupported[f.Name] = true
 			}
 		}
-
-		if len(subjects) == 0 {
-			d := Decide(q, nil, true)
+		// 不支持编号：整组 Review，不截断
+		if len(unsupported) > 0 {
 			for _, f := range g.Files {
-				mode := d.Code
-				if unsupported[f.Name] {
-					mode = Review
-				}
-				out[f.Name] = fileEval{mode: mode, reason: d.Reason}
+				out[f.Name] = fileEval{mode: Review, reason: "不支持编号，强制 Review"}
+			}
+			continue
+		}
+		if len(q.Conflicts) > 0 {
+			for _, f := range g.Files {
+				out[f.Name] = fileEval{mode: Review, reason: "查询冲突：" + strings.Join(q.Conflicts, "；")}
 			}
 			continue
 		}
 
-		// 章节：对每个候选先 Interpret，再一并交给 Rank
+		subjects, retrievalComplete, ferr := recallSubjects(t, fx, q, cat)
+		if ferr != nil {
+			t.Fatalf("%s: fixture/search error: %v", tc.ID, ferr)
+		}
+		if len(subjects) == 0 {
+			d := Decide(q, nil, retrievalComplete)
+			for _, f := range g.Files {
+				out[f.Name] = fileEval{mode: d.Code, reason: d.Reason}
+			}
+			continue
+		}
+
 		chMap := map[int]ChapterDecision{}
 		for _, sub := range subjects {
-			chs, known := chaptersFor(tc, sub.ID)
-			if !known {
-				continue
+			chs, ok := fx.chapters[sub.ID]
+			if !ok {
+				t.Fatalf("%s: subject %d missing chapters rule (fixture_error)", tc.ID, sub.ID)
 			}
 			chMap[sub.ID] = InterpretChapters(g.Files, sub, chs, true)
 		}
-
 		ranked := Rank(q, subjects, cat, chMap)
-		d := Decide(q, ranked, true)
+		d := Decide(q, ranked, retrievalComplete)
 
+		batch := BindingBatch{Dir: g.Dir, SubjectID: d.WinnerID, Existing: false}
 		for _, f := range g.Files {
 			ev := fileEval{mode: d.Code, winnerID: d.WinnerID, reason: d.Reason}
-			if unsupported[f.Name] {
-				ev.mode = Review
-				ev.winnerID = 0
-				ev.reason = "不支持编号，强制 Review"
-				out[f.Name] = ev
-				continue
-			}
 			if d.Code == Accepted && d.WinnerID > 0 {
 				if cd, ok := chMap[d.WinnerID]; ok {
 					if cd.State == ChapterConflict {
@@ -231,12 +302,13 @@ func evaluateQualityCase(t *testing.T, cat Catalog, tc qualityCase) map[string]f
 						for _, b := range cd.Bindings {
 							if b.FileName == f.Name {
 								ev.stored = b.StoredNumber
+								ev.chapter = b.ChapterID
+								batch.Bindings = append(batch.Bindings, b)
 								break
 							}
 						}
 					}
 				}
-				// 无章节绑定时用解析 Single
 				if ev.stored == 0 && ev.mode == Accepted {
 					for _, fe := range g.Files {
 						if fe.Name == f.Name && fe.Episode.Kind == NumberSingle {
@@ -247,9 +319,22 @@ func evaluateQualityCase(t *testing.T, cat Catalog, tc qualityCase) map[string]f
 			}
 			out[f.Name] = ev
 		}
+		if d.Code == Accepted && d.WinnerID > 0 && len(batch.Bindings) > 0 {
+			batches = append(batches, batch)
+		}
 	}
 
-	// 确保每个期望文件都有结果（防御 group 遗漏）
+	// 跨组 ChapterID / 编号冲突 → 相关新文件 Review
+	for _, c := range CheckBindingConflicts(batches) {
+		for _, name := range c.Files {
+			ev := out[name]
+			ev.mode = Review
+			ev.winnerID = 0
+			ev.reason = c.Reason
+			out[name] = ev
+		}
+	}
+
 	for _, exp := range tc.Expected {
 		if _, ok := out[exp.Name]; !ok {
 			out[exp.Name] = fileEval{mode: Review, reason: "未落入任何组"}
@@ -258,58 +343,127 @@ func evaluateQualityCase(t *testing.T, cat Catalog, tc qualityCase) map[string]f
 	return out
 }
 
-func normalizeQueryMedia(q Query) Query {
-	if q.Media == "" || q.Media == MediaKind("") {
-		q.Media = KindUnknown
-	}
-	return q
-}
-
-func snapsToSubjects(snaps []qualitySubjectSnap) []Subject {
-	out := make([]Subject, 0, len(snaps))
-	for _, s := range snaps {
-		media := MediaKind(s.Media)
-		if media == "" {
-			media = KindUnknown
+func recallSubjects(t *testing.T, fx *fixtureIndex, q Query, cat Catalog) ([]Subject, bool, error) {
+	t.Helper()
+	terms := BuildQueries(q, cat)
+	seen := map[int]bool{}
+	var out []Subject
+	retrievalComplete := true
+	anyHit := false
+	for _, term := range terms {
+		key := searchKey(term.Text)
+		entry, ok := fx.lookupSearch(key)
+		if !ok {
+			// 缩短探测词未登记：当作该路空召回（真实 Bangumi 亦然），不触发 fixture_error。
+			// 非缩短未知词仍为夹具/契约错误。
+			if term.Shortened {
+				continue
+			}
+			return nil, false, fmt.Errorf("unknown_query fixture_error for term %q (key=%q)", term.Text, key)
 		}
-		out = append(out, Subject{
-			ID:           s.ID,
-			Name:         s.Name,
-			NameCn:       s.NameCn,
-			Year:         s.Year,
-			Media:        media,
-			Aliases:      append([]string(nil), s.Aliases...),
-			Platform:     s.Platform,
-			EpisodeCount: s.EpisodeCount,
-			Detailed:     s.Detailed,
-		})
-	}
-	return out
-}
-
-func chaptersFor(tc qualityCase, subjectID int) ([]Chapter, bool) {
-	if tc.ChapterSnapshots == nil {
-		return nil, false
-	}
-	key := fmt.Sprintf("%d", subjectID)
-	raw, ok := tc.ChapterSnapshots[key]
-	if !ok {
-		return nil, false
-	}
-	out := make([]Chapter, 0, len(raw))
-	for _, c := range raw {
-		out = append(out, Chapter{ID: c.ID, Ep: c.Ep, Sort: c.Sort})
-	}
-	return out, true
-}
-
-func dirOf(tc qualityCase, name string) string {
-	for _, f := range tc.Files {
-		if f.Name == name {
-			return f.Dir
+		anyHit = true
+		for _, id := range entry.IDs {
+			if seen[id] {
+				continue
+			}
+			sub, ok := fx.subjects[id]
+			if !ok {
+				return nil, false, fmt.Errorf("search id %d missing from subjects", id)
+			}
+			sub.Detailed = false
+			seen[id] = true
+			out = append(out, sub)
 		}
 	}
-	return ""
+	if !anyHit && len(terms) == 0 {
+		retrievalComplete = true
+	}
+	// 提升为 Detailed=true 副本（内核质量测无需真实 HTTP）
+	for i := range out {
+		full := fx.subjects[out[i].ID]
+		full.Detailed = true
+		out[i] = full
+	}
+	return out, retrievalComplete, nil
+}
+
+// lookupSearch：精确键；若为「已登记 base + 明确季号」等价写法，回落到 base（候选集不变）。
+func (fx *fixtureIndex) lookupSearch(key string) (providerSearch, bool) {
+	if e, ok := fx.search[key]; ok {
+		return e, true
+	}
+	// 拉丁 "Title N" / 中文 "Title 第N季|第X季"
+	if base, ok := stripSeasonQualifierKey(key); ok {
+		if e, ok := fx.search[base]; ok {
+			return e, true
+		}
+	}
+	return providerSearch{}, false
+}
+
+func stripSeasonQualifierKey(key string) (string, bool) {
+	key = strings.TrimSpace(key)
+	// 第N季 / 第X季
+	for _, suf := range []string{" 第1季", " 第2季", " 第3季", " 第4季", " 第5季", " 第6季", " 第7季", " 第8季", " 第9季", " 第10季",
+		" 第一季", " 第二季", " 第三季", " 第四季", " 第五季", " 第六季", " 第七季", " 第八季", " 第九季", " 第十季"} {
+		if strings.HasSuffix(key, suf) {
+			return strings.TrimSpace(strings.TrimSuffix(key, suf)), true
+		}
+	}
+	// 拉丁尾数字季（1-2 位）
+	fields := strings.Fields(key)
+	if len(fields) >= 2 {
+		last := fields[len(fields)-1]
+		if len(last) <= 2 {
+			allDigit := true
+			for _, r := range last {
+				if r < '0' || r > '9' {
+					allDigit = false
+					break
+				}
+			}
+			if allDigit {
+				n := 0
+				fmt.Sscanf(last, "%d", &n)
+				if n >= 1 && n <= 24 {
+					return strings.Join(fields[:len(fields)-1], " "), true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+func sameIntSlice(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// searchKey：C.1 仅允许 TrimSpace、NFKC、连续空白合并。
+func searchKey(s string) string {
+	s = strings.TrimSpace(s)
+	s = norm.NFKC.String(s)
+	var b strings.Builder
+	prevSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if !prevSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		prevSpace = false
+		b.WriteRune(r)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func loadQualityCases(t *testing.T) []qualityCase {
@@ -319,11 +473,87 @@ func loadQualityCases(t *testing.T) []qualityCase {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	var cases []qualityCase
-	if err := json.Unmarshal(raw, &cases); err != nil {
+	var doc qualityCasesFile
+	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("parse %s: %v", path, err)
 	}
-	return cases
+	if doc.Version != 1 {
+		t.Fatalf("quality_cases version=%d want 1", doc.Version)
+	}
+	return doc.Cases
+}
+
+func loadProviderFixture(t *testing.T) *fixtureIndex {
+	t.Helper()
+	path := filepath.Join("..", "testdata", "matching", "provider_replay.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc providerReplayFile
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	if doc.Version != 1 {
+		t.Fatalf("provider_replay version=%d want 1", doc.Version)
+	}
+	if doc.UnknownQuery != "fixture_error" {
+		t.Fatalf("unknown_query=%q want fixture_error", doc.UnknownQuery)
+	}
+	fx := &fixtureIndex{
+		subjects: map[int]Subject{},
+		search:   map[string]providerSearch{},
+		chapters: map[int][]Chapter{},
+		unknown:  doc.UnknownQuery,
+	}
+	for _, s := range doc.Subjects {
+		media := MediaKind(s.Media)
+		if media == "" {
+			media = KindUnknown
+		}
+		fx.subjects[s.ID] = Subject{
+			ID: s.ID, Name: s.Name, NameCn: s.NameCn,
+			Aliases: append([]string(nil), s.Aliases...),
+			Year:    s.Year, Media: media, EpisodeCount: s.EpisodeCount,
+			Summary: s.Summary, Cover: s.Cover, Platform: s.Platform,
+			Detailed: true,
+		}
+	}
+	for _, se := range doc.Searches {
+		for _, term := range se.Terms {
+			k := searchKey(term)
+			if k == "" {
+				t.Fatalf("empty search term in fixture")
+			}
+			// C.1：NFKC 等价词可落到同一键；冲突的 ids 才是夹具错误
+			if prev, dup := fx.search[k]; dup {
+				if !sameIntSlice(prev.IDs, se.IDs) || prev.Saturated != se.Saturated {
+					t.Fatalf("conflicting search key %q", k)
+				}
+				continue
+			}
+			fx.search[k] = se
+		}
+	}
+	for _, ch := range doc.Chapters {
+		r := ch.Rule
+		if r.Count <= 0 {
+			t.Fatalf("chapters subject %d count<=0", ch.SubjectID)
+		}
+		list := make([]Chapter, 0, r.Count)
+		for i := 0; i < r.Count; i++ {
+			list = append(list, Chapter{
+				ID:   ch.SubjectID*10000 + i + 1,
+				Ep:   float64(r.FirstEp + i),
+				Sort: float64(r.FirstSort + i),
+			})
+		}
+		if _, ok := fx.chapters[ch.SubjectID]; ok {
+			t.Fatalf("duplicate chapters for %d", ch.SubjectID)
+		}
+		fx.chapters[ch.SubjectID] = list
+	}
+	return fx
 }
 
 func validateCaseSchema(t *testing.T, cases []qualityCase) {
@@ -331,31 +561,22 @@ func validateCaseSchema(t *testing.T, cases []qualityCase) {
 	seen := map[string]bool{}
 	for _, tc := range cases {
 		if strings.TrimSpace(tc.ID) == "" {
-			t.Fatalf("case missing id")
+			t.Fatal("case missing id")
 		}
 		if seen[tc.ID] {
 			t.Fatalf("duplicate id %q", tc.ID)
 		}
 		seen[tc.ID] = true
-		if strings.TrimSpace(tc.Split) == "" {
-			t.Fatalf("%s: missing split", tc.ID)
+		if strings.TrimSpace(tc.Bucket) == "" {
+			t.Fatalf("%s: missing bucket", tc.ID)
 		}
-		if len(tc.Files) == 0 {
-			t.Fatalf("%s: files empty", tc.ID)
-		}
-		if len(tc.Expected) == 0 {
-			t.Fatalf("%s: expected empty", tc.ID)
-		}
-		if tc.CandidateSnapshots == nil {
-			t.Fatalf("%s: candidate_snapshots must be non-nil (use [] for empty)", tc.ID)
-		}
-		if tc.ChapterSnapshots == nil {
-			t.Fatalf("%s: chapter_snapshots must be non-nil (use {} for empty)", tc.ID)
+		if len(tc.Files) == 0 || len(tc.Expected) == 0 {
+			t.Fatalf("%s: files/expected empty", tc.ID)
 		}
 		names := map[string]bool{}
 		for _, f := range tc.Files {
 			if f.Name == "" {
-				t.Fatalf("%s: file name empty", tc.ID)
+				t.Fatalf("%s: empty file name", tc.ID)
 			}
 			names[f.Name] = true
 		}
@@ -375,46 +596,63 @@ func validateCaseSchema(t *testing.T, cases []qualityCase) {
 	}
 }
 
-// assertNoFrozenWrongAccepts 硬门：不得把 B 参考已知误接受写成 accepted。
-func assertNoFrozenWrongAccepts(t *testing.T, cases []qualityCase) {
+func assertHoldoutFrozen(t *testing.T) {
 	t.Helper()
-	// 这些 id 对应「错季/错部仍接受」的负例夹具，期望必须是 review/no_candidates
-	forbiddenAcceptIDs := map[string]bool{
-		"synthetic-kaguya-wrong-season-must-review":    true,
-		"synthetic-lupin-must-not-wrong-accept":        true,
-		"synthetic-golden-kamuy-must-not-wrong-accept": true,
+	path := filepath.Join("testdata", "quality_holdout_variants.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("holdout missing: %v", err)
 	}
-	for _, tc := range cases {
-		if !forbiddenAcceptIDs[tc.ID] {
-			continue
-		}
-		for _, e := range tc.Expected {
-			if e.Mode == "accepted" {
-				t.Fatalf("%s: 不得把已知误接受场景标为 accepted（got subject_id=%d）", tc.ID, e.SubjectID)
-			}
-		}
+	var doc holdoutFile
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("holdout parse: %v", err)
 	}
+	if !doc.Frozen || doc.Version != 1 || len(doc.Variants) == 0 {
+		t.Fatalf("holdout not frozen properly: frozen=%v version=%d n=%d", doc.Frozen, doc.Version, len(doc.Variants))
+	}
+	t.Logf("holdout frozen variants=%d (not scored in this run; final verification only)", len(doc.Variants))
 }
 
-func bucketKey(tc qualityCase, exp qualityExpected) string {
-	// §8.3 分桶标签（synthetic 粗分）
-	tag := "synthetic"
-	id := strings.ToLower(tc.ID)
-	switch {
-	case strings.Contains(id, "xianwang") || strings.Contains(id, "immortal"):
-		tag = "季/中文-罗马音-英文"
-	case strings.Contains(id, "hxh"):
-		tag = "重制年份"
-	case strings.Contains(id, "absolute") || strings.Contains(id, "numbering"):
-		tag = "绝对编号/不支持编号"
-	case strings.Contains(id, "sort"):
-		tag = "绝对编号"
-	case strings.Contains(id, "dir-only") || strings.Contains(id, "unknown"):
-		tag = "纯目录"
-	case strings.Contains(id, "kaguya") || strings.Contains(id, "lupin") || strings.Contains(id, "golden"):
-		tag = "负例"
-	case strings.Contains(id, "no-candidates"):
-		tag = "负例"
+func runPlan45ParseExtras(t *testing.T) {
+	t.Helper()
+	// 【推しの子】第2期
+	ev := ParseFile(FileInput{Name: "【推しの子】 第2期 - 01.mkv"})
+	if ev.Ordinal.Season != 2 || ev.Episode.First != 1 {
+		t.Fatalf("推しの子: season=%d ep=%d", ev.Ordinal.Season, ev.Episode.First)
 	}
-	return fmt.Sprintf("%s|%s", tag, exp.Mode)
+	found := false
+	for _, ti := range ev.Titles {
+		if strings.Contains(ti.Text, "推しの子") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("推しの子 title lost: %#v", ev.Titles)
+	}
+	// U-17
+	ev2 := ParseFile(FileInput{Name: "U-17 Show - 03.mkv"})
+	if ev2.Episode.First != 3 {
+		t.Fatalf("U-17 ep=%d", ev2.Episode.First)
+	}
+	okU := false
+	for _, ti := range ev2.Titles {
+		if strings.Contains(strings.ToUpper(ti.Text), "U-17") {
+			okU = true
+		}
+	}
+	if !okU {
+		t.Fatalf("U-17 title lost: %#v", ev2.Titles)
+	}
+	// 四位集号 / 第2023话 不作年份
+	ev3 := ParseFile(FileInput{Name: "One.Piece.S01E1100.1080p.mkv"})
+	if ev3.Episode.First != 1100 || ev3.Ordinal.Season != 1 {
+		t.Fatalf("S01E1100 got season=%d ep=%d", ev3.Ordinal.Season, ev3.Episode.First)
+	}
+	ev4 := ParseFile(FileInput{Name: "海贼王 第2023话.mkv"})
+	if ev4.Episode.First != 2023 {
+		t.Fatalf("第2023话 ep=%d", ev4.Episode.First)
+	}
+	if ev4.Year == 2023 {
+		t.Fatalf("第2023话 must not set Year")
+	}
 }

@@ -1,821 +1,479 @@
-[
-  {
-    "id": "synthetic-xianwang-s4",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
-        "dir": "仙王"
-      }
-    ],
-    "expected": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
-        "subject_id": 405214,
-        "stored_number": 12,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 405214,
-        "name": "仙王的日常生活 第4季",
-        "name_cn": "仙王的日常生活 第4季",
-        "year": 2023,
-        "media": "series",
-        "aliases": [
-          "Xian Wang De Ri Chang Sheng Huo IV"
-        ],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      },
-      {
-        "id": 999001,
-        "name": "完全无关的别的动画",
-        "name_cn": "完全无关的别的动画",
-        "year": 2020,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "405214": [
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "xian-gm-s4",
+      "bucket": "chinese_blocks",
+      "files": [
         {
-          "id": 40521401,
-          "ep": 12,
-          "sort": 12
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-xianwang-s3",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
-        "dir": "仙王"
-      }
-    ],
-    "expected": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
-        "subject_id": 358742,
-        "stored_number": 9,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 358742,
-        "name": "仙王的日常生活 第3季",
-        "name_cn": "仙王的日常生活 第3季",
-        "year": 2022,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      },
-      {
-        "id": 999001,
-        "name": "完全无关的别的动画",
-        "name_cn": "完全无关的别的动画",
-        "year": 2020,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "358742": [
-        {
-          "id": 35874209,
-          "ep": 9,
-          "sort": 9
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-immortal-king-s5-en",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
-        "dir": "ImmortalKing"
-      }
-    ],
-    "expected": [
-      {
-        "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
-        "subject_id": 529875,
-        "stored_number": 3,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 529875,
-        "name": "仙王的日常生活 第5季",
-        "name_cn": "仙王的日常生活 第5季",
-        "year": 2024,
-        "media": "series",
-        "aliases": [
-          "The Daily Life of the Immortal King Season 5"
-        ],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "529875": [
-        {
-          "id": 52987503,
-          "ep": 3,
-          "sort": 3
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-xianwang-s3-s4-no-merge",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
-        "dir": "仙王混季"
-      },
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
-        "dir": "仙王混季"
-      }
-    ],
-    "expected": [
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
-        "subject_id": 405214,
-        "stored_number": 12,
-        "mode": "accepted"
-      },
-      {
-        "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
-        "subject_id": 358742,
-        "stored_number": 9,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 405214,
-        "name": "仙王的日常生活 第4季",
-        "name_cn": "仙王的日常生活 第4季",
-        "year": 2023,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      },
-      {
-        "id": 358742,
-        "name": "仙王的日常生活 第3季",
-        "name_cn": "仙王的日常生活 第3季",
-        "year": 2022,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "405214": [
-        {
-          "id": 40521401,
-          "ep": 12,
-          "sort": 12
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": ""
         }
       ],
-      "358742": [
+      "expected": [
         {
-          "id": 35874209,
-          "ep": 9,
-          "sort": 9
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-numbering-unsupported",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "Show - 01-02.mkv",
-        "dir": "num"
-      },
-      {
-        "name": "Show - 12.5.mkv",
-        "dir": "num"
-      },
-      {
-        "name": "Show 第0话.mkv",
-        "dir": "num"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Show - 01-02.mkv",
-        "subject_id": 0,
-        "stored_number": 0,
-        "mode": "review"
-      },
-      {
-        "name": "Show - 12.5.mkv",
-        "subject_id": 0,
-        "stored_number": 0,
-        "mode": "review"
-      },
-      {
-        "name": "Show 第0话.mkv",
-        "subject_id": 0,
-        "stored_number": 0,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 900001,
-        "name": "Show",
-        "name_cn": "Show",
-        "year": 2020,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "900001": [
-        {
-          "id": 90000101,
-          "ep": 1,
-          "sort": 1
-        },
-        {
-          "id": 90000102,
-          "ep": 2,
-          "sort": 2
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-dir-only-vs-unknown-title",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "05.mkv",
-        "dir": "芙莉莲"
-      },
-      {
-        "name": "Unknown Title - 05.mkv",
-        "dir": "芙莉莲"
-      }
-    ],
-    "expected": [
-      {
-        "name": "05.mkv",
-        "subject_id": 479407,
-        "stored_number": 5,
-        "mode": "accepted"
-      },
-      {
-        "name": "Unknown Title - 05.mkv",
-        "subject_id": 0,
-        "stored_number": 5,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 479407,
-        "name": "葬送のフリーレン",
-        "name_cn": "葬送的芙莉莲",
-        "year": 2023,
-        "media": "series",
-        "aliases": [
-          "芙莉莲"
-        ],
-        "platform": "TV",
-        "episode_count": 28,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "479407": [
-        {
-          "id": 47940705,
-          "ep": 5,
-          "sort": 5
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-sort-gap-review",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "续作 - 26.mkv",
-        "dir": "sortgap"
-      }
-    ],
-    "expected": [
-      {
-        "name": "续作 - 26.mkv",
-        "subject_id": 0,
-        "stored_number": 26,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 800001,
-        "name": "续作",
-        "name_cn": "续作",
-        "year": 2022,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 24,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "800001": [
-        {
-          "id": 80000125,
-          "ep": 1,
-          "sort": 25
-        },
-        {
-          "id": 80000127,
-          "ep": 2,
-          "sort": 27
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-sort-unique-accept",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "续作 - 25.mkv",
-        "dir": "sortok"
-      },
-      {
-        "name": "续作 - 26.mkv",
-        "dir": "sortok"
-      }
-    ],
-    "expected": [
-      {
-        "name": "续作 - 25.mkv",
-        "subject_id": 800002,
-        "stored_number": 25,
-        "mode": "accepted"
-      },
-      {
-        "name": "续作 - 26.mkv",
-        "subject_id": 800002,
-        "stored_number": 26,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 800002,
-        "name": "续作",
-        "name_cn": "续作",
-        "year": 2022,
-        "media": "series",
-        "aliases": [],
-        "platform": "TV",
-        "episode_count": 24,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "800002": [
-        {
-          "id": 80000225,
-          "ep": 1,
-          "sort": 25
-        },
-        {
-          "id": 80000226,
-          "ep": 2,
-          "sort": 26
-        },
-        {
-          "id": 80000227,
-          "ep": 3,
-          "sort": 27
-        },
-        {
-          "id": 80000228,
-          "ep": 4,
-          "sort": 28
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-kaguya-wrong-season-must-review",
-    "split": "synthetic",
-    "note": "B 参考曾误接受错季；本夹具不得把错季写成 accepted",
-    "files": [
-      {
-        "name": "[Subs] Kaguya-sama Season 3 - 01.mkv",
-        "dir": "kaguya"
-      }
-    ],
-    "expected": [
-      {
-        "name": "[Subs] Kaguya-sama Season 3 - 01.mkv",
-        "subject_id": 0,
-        "stored_number": 1,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 271724,
-        "name": "かぐや様は告らせたい～天才たちの恋愛頭脳戦～",
-        "name_cn": "辉夜大小姐想让我告白～天才们的恋爱头脑战～",
-        "year": 2019,
-        "media": "series",
-        "aliases": [
-          "Kaguya-sama: Love is War"
-        ],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "271724": [
-        {
-          "id": 27172401,
-          "ep": 1,
-          "sort": 1
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-lupin-must-not-wrong-accept",
-    "split": "synthetic",
-    "note": "B 参考鲁邦误接受；夹具期望 Review，不得继续 WRONG accepted",
-    "files": [
-      {
-        "name": "Lupin the Third Part 6 - 01.mkv",
-        "dir": "lupin"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Lupin the Third Part 6 - 01.mkv",
-        "subject_id": 0,
-        "stored_number": 1,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 888001,
-        "name": "ルパン三世 PART5",
-        "name_cn": "鲁邦三世 PART5",
-        "year": 2018,
-        "media": "series",
-        "aliases": [
-          "Lupin the Third Part 5"
-        ],
-        "platform": "TV",
-        "episode_count": 24,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "888001": [
-        {
-          "id": 88800101,
-          "ep": 1,
-          "sort": 1
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-golden-kamuy-must-not-wrong-accept",
-    "split": "synthetic",
-    "note": "B 参考 Golden Kamuy 误接受；夹具期望 Review",
-    "files": [
-      {
-        "name": "Golden Kamuy Season 4 - 01.mkv",
-        "dir": "gk"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Golden Kamuy Season 4 - 01.mkv",
-        "subject_id": 0,
-        "stored_number": 1,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 888002,
-        "name": "ゴールデンカムイ",
-        "name_cn": "黄金神威",
-        "year": 2018,
-        "media": "series",
-        "aliases": [
-          "Golden Kamuy"
-        ],
-        "platform": "TV",
-        "episode_count": 12,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "888002": [
-        {
-          "id": 88800201,
-          "ep": 1,
-          "sort": 1
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-no-candidates",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "Completely Unknown Obscure Show XYZ - 01.mkv",
-        "dir": "empty"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Completely Unknown Obscure Show XYZ - 01.mkv",
-        "subject_id": 0,
-        "stored_number": 1,
-        "mode": "no_candidates"
-      }
-    ],
-    "candidate_snapshots": [],
-    "chapter_snapshots": {}
-  },
-  {
-    "id": "synthetic-absolute-ep-large",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "One.Piece.S01E1100.1080p.mkv",
-        "dir": "op"
-      },
-      {
-        "name": "海贼王 第2023话.mkv",
-        "dir": "op2"
-      }
-    ],
-    "expected": [
-      {
-        "name": "One.Piece.S01E1100.1080p.mkv",
-        "subject_id": 0,
-        "stored_number": 1100,
-        "mode": "review"
-      },
-      {
-        "name": "海贼王 第2023话.mkv",
-        "subject_id": 975,
-        "stored_number": 2023,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 975,
-        "name": "ONE PIECE",
-        "name_cn": "海贼王",
-        "year": 1999,
-        "media": "series",
-        "aliases": [
-          "One Piece"
-        ],
-        "platform": "TV",
-        "episode_count": 0,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "975": [
-        {
-          "id": 9751100,
-          "ep": 1100,
-          "sort": 1100
-        },
-        {
-          "id": 9752023,
-          "ep": 2023,
-          "sort": 2023
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
         }
       ]
     },
-    "note": "S01E1100 解析 StoredNumber=1100；季号无候选解释→review。第2023话不得丢成年份且可接受 975。"
-  },
-  {
-    "id": "synthetic-hxh-1999-alone",
-    "split": "synthetic",
-    "files": [
-      {
-        "name": "Hunter x Hunter (1999) - 01.mkv",
-        "dir": "HxH"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Hunter x Hunter (1999) - 01.mkv",
-        "subject_id": 27,
-        "stored_number": 1,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 27,
-        "name": "HUNTER×HUNTER",
-        "name_cn": "全职猎人",
-        "year": 1999,
-        "media": "series",
-        "aliases": [
-          "Hunter x Hunter"
-        ],
-        "platform": "TV",
-        "episode_count": 62,
-        "detailed": true
-      },
-      {
-        "id": 110313,
-        "name": "HUNTER×HUNTER",
-        "name_cn": "全职猎人",
-        "year": 2011,
-        "media": "series",
-        "aliases": [
-          "Hunter x Hunter (2011)"
-        ],
-        "platform": "TV",
-        "episode_count": 148,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "27": [
+    {
+      "id": "xian-gm-s3",
+      "bucket": "chinese_blocks",
+      "files": [
         {
-          "id": 2701,
-          "ep": 1,
-          "sort": 1
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-hxh-2011-alone",
-    "split": "synthetic",
-    "note": "仅返回 2011 条目时应接受；与 1999 同池时 Rank 并列会误把带年份阻断的低 ID 排前（见 both 例）",
-    "files": [
-      {
-        "name": "Hunter x Hunter (2011) - 02.mkv",
-        "dir": "HxH"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Hunter x Hunter (2011) - 02.mkv",
-        "subject_id": 110313,
-        "stored_number": 2,
-        "mode": "accepted"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 110313,
-        "name": "HUNTER×HUNTER",
-        "name_cn": "全职猎人",
-        "year": 2011,
-        "media": "series",
-        "aliases": [
-          "Hunter x Hunter"
-        ],
-        "platform": "TV",
-        "episode_count": 148,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "110313": [
-        {
-          "id": 11031302,
-          "ep": 2,
-          "sort": 2
-        }
-      ]
-    }
-  },
-  {
-    "id": "synthetic-hxh-both-candidates-diagnostic",
-    "split": "synthetic",
-    "note": "4.5 要求两版候选分别绑定；当前 Rank 在 NameScore 并列时按 ID 升序，1999 条目虽年份阻断仍排前导致 2011 文件 Review。标注为 review 反映现状，不得写成错误 subject 的 accepted。",
-    "files": [
-      {
-        "name": "Hunter x Hunter (1999) - 01.mkv",
-        "dir": "HxH"
-      },
-      {
-        "name": "Hunter x Hunter (2011) - 02.mkv",
-        "dir": "HxH"
-      }
-    ],
-    "expected": [
-      {
-        "name": "Hunter x Hunter (1999) - 01.mkv",
-        "subject_id": 27,
-        "stored_number": 1,
-        "mode": "accepted"
-      },
-      {
-        "name": "Hunter x Hunter (2011) - 02.mkv",
-        "subject_id": 0,
-        "stored_number": 2,
-        "mode": "review"
-      }
-    ],
-    "candidate_snapshots": [
-      {
-        "id": 27,
-        "name": "HUNTER×HUNTER",
-        "name_cn": "全职猎人",
-        "year": 1999,
-        "media": "series",
-        "aliases": [
-          "Hunter x Hunter"
-        ],
-        "platform": "TV",
-        "episode_count": 62,
-        "detailed": true
-      },
-      {
-        "id": 110313,
-        "name": "HUNTER×HUNTER",
-        "name_cn": "全职猎人",
-        "year": 2011,
-        "media": "series",
-        "aliases": [
-          "Hunter x Hunter (2011)"
-        ],
-        "platform": "TV",
-        "episode_count": 148,
-        "detailed": true
-      }
-    ],
-    "chapter_snapshots": {
-      "27": [
-        {
-          "id": 2701,
-          "ep": 1,
-          "sort": 1
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": ""
         }
       ],
-      "110313": [
+      "expected": [
         {
-          "id": 11031302,
-          "ep": 2,
-          "sort": 2
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-en-s5",
+      "bucket": "catalog",
+      "files": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "remake-two-years",
+      "bucket": "year",
+      "files": [
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "subject_id": 910001,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "subject_id": 910002,
+          "stored_number": 2,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "scene-s2",
+      "bucket": "scene",
+      "files": [
+        {
+          "name": "Star.River.S02E03.1080p.WEB-DL.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "Star.River.S02E03.1080p.WEB-DL.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "chinese-season",
+      "bucket": "season",
+      "files": [
+        {
+          "name": "[字幕组] 星河物语 第2季 - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[字幕组] 星河物语 第2季 - 03.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "absolute",
+      "bucket": "absolute",
+      "files": [
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "dir": ""
+        },
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "subject_id": 910020,
+          "stored_number": 25,
+          "mode": "accepted"
+        },
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "subject_id": 910020,
+          "stored_number": 26,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "long-number",
+      "bucket": "long",
+      "files": [
+        {
+          "name": "[Sub] Long Tale - 1100 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Long Tale - 1100 [1080p].mkv",
+          "subject_id": 910030,
+          "stored_number": 1100,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "number-title",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Sub] 86 - 05 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] 86 - 05 [1080p].mkv",
+          "subject_id": 910070,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "ranma-correct",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Sub] Ranma1-2 (2024) - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Ranma1-2 (2024) - 03.mkv",
+          "subject_id": 910080,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "movie-series-mix",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "subject_id": 910040,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "subject_id": 910041,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "directory-only",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "05.mkv",
+          "dir": "Ordinary Show"
+        }
+      ],
+      "expected": [
+        {
+          "name": "05.mkv",
+          "subject_id": 910040,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "directory-not-identity",
+      "bucket": "negative",
+      "files": [
+        {
+          "name": "Unknown Title - 05.mkv",
+          "dir": "某部作品"
+        }
+      ],
+      "expected": [
+        {
+          "name": "Unknown Title - 05.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "no_candidates"
+        }
+      ]
+    },
+    {
+      "id": "unknown",
+      "bucket": "negative",
+      "files": [
+        {
+          "name": "[Sub] Completely Unknown Series - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Completely Unknown Series - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "no_candidates"
+        }
+      ]
+    },
+    {
+      "id": "season-ambiguity",
+      "bucket": "ambiguity",
+      "files": [
+        {
+          "name": "Golden Kamuy - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "Golden Kamuy - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "fragment-conflict",
+      "bucket": "ambiguity",
+      "files": [
+        {
+          "name": "片段甲 ／ Beta Fragment - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "片段甲 ／ Beta Fragment - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "range",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 - 01-02.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 - 01-02.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "fraction",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 - 12.5.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 - 12.5.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "special",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 第0话.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 第0话.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "cross-language-chapter-duplicate",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "续章物语 第二季 - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Sequel Tale Season 2 - 25.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        },
+        {
+          "name": "Sequel Tale Season 2 - 25.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "ordinal-conflict",
+      "bucket": "conflict",
+      "files": [
+        {
+          "name": "[星河物语 第2季][Star River III][03].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[星河物语 第2季][Star River III][03].mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "year-conflict",
+      "bucket": "conflict",
+      "files": [
+        {
+          "name": "[Hunter x Hunter][1999][2011][01].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Hunter x Hunter][1999][2011][01].mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
         }
       ]
     }
-  }
-]
+  ]
+}
