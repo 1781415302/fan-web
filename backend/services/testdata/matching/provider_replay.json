@@ -1,0 +1,164 @@
+[
+  {
+    "synthetic": true,
+    "method": "search",
+    "keyword": "仙王的日常生活",
+    "subject_id": 0,
+    "offset": 0,
+    "subjects": [
+      {
+        "id": 358742,
+        "name": "仙王的日常生活 第3季",
+        "name_cn": "仙王的日常生活 第3季",
+        "year": 2022,
+        "media": "series",
+        "aliases": [],
+        "platform": "TV",
+        "episode_count": 12,
+        "detailed": false
+      },
+      {
+        "id": 405214,
+        "name": "仙王的日常生活 第4季",
+        "name_cn": "仙王的日常生活 第4季",
+        "year": 2023,
+        "media": "series",
+        "aliases": [],
+        "platform": "TV",
+        "episode_count": 12,
+        "detailed": false
+      },
+      {
+        "id": 529875,
+        "name": "仙王的日常生活 第5季",
+        "name_cn": "仙王的日常生活 第5季",
+        "year": 2024,
+        "media": "series",
+        "aliases": [],
+        "platform": "TV",
+        "episode_count": 12,
+        "detailed": false
+      }
+    ],
+    "saturated": false,
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "search",
+    "keyword": "The Daily Life of the Immortal King",
+    "subject_id": 0,
+    "offset": 0,
+    "subjects": [
+      {
+        "id": 529875,
+        "name": "仙王的日常生活 第5季",
+        "name_cn": "仙王的日常生活 第5季",
+        "year": 2024,
+        "media": "series",
+        "aliases": ["The Daily Life of the Immortal King"],
+        "platform": "TV",
+        "episode_count": 12,
+        "detailed": false
+      }
+    ],
+    "saturated": false,
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "detail",
+    "keyword": "",
+    "subject_id": 405214,
+    "offset": 0,
+    "subject": {
+      "id": 405214,
+      "name": "仙王的日常生活 第4季",
+      "name_cn": "仙王的日常生活 第4季",
+      "year": 2023,
+      "media": "series",
+      "aliases": ["Xian Wang De Ri Chang Sheng Huo IV"],
+      "platform": "TV",
+      "episode_count": 12,
+      "summary": "synthetic fixture",
+      "cover": "",
+      "detailed": true
+    },
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "detail",
+    "keyword": "",
+    "subject_id": 358742,
+    "offset": 0,
+    "subject": {
+      "id": 358742,
+      "name": "仙王的日常生活 第3季",
+      "name_cn": "仙王的日常生活 第3季",
+      "year": 2022,
+      "media": "series",
+      "aliases": [],
+      "platform": "TV",
+      "episode_count": 12,
+      "summary": "synthetic fixture",
+      "cover": "",
+      "detailed": true
+    },
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "detail",
+    "keyword": "",
+    "subject_id": 529875,
+    "offset": 0,
+    "subject": {
+      "id": 529875,
+      "name": "仙王的日常生活 第5季",
+      "name_cn": "仙王的日常生活 第5季",
+      "year": 2024,
+      "media": "series",
+      "aliases": ["The Daily Life of the Immortal King"],
+      "platform": "TV",
+      "episode_count": 12,
+      "summary": "synthetic fixture",
+      "cover": "",
+      "detailed": true
+    },
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "chapters",
+    "keyword": "",
+    "subject_id": 405214,
+    "offset": 0,
+    "chapters": [
+      {"id": 40521401, "ep": 12, "sort": 12}
+    ],
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "chapters",
+    "keyword": "",
+    "subject_id": 358742,
+    "offset": 0,
+    "chapters": [
+      {"id": 35874209, "ep": 9, "sort": 9}
+    ],
+    "source": "synthetic"
+  },
+  {
+    "synthetic": true,
+    "method": "chapters",
+    "keyword": "",
+    "subject_id": 529875,
+    "offset": 0,
+    "chapters": [
+      {"id": 52987503, "ep": 3, "sort": 3}
+    ],
+    "source": "synthetic"
+  }
+]
