@@ -10,8 +10,9 @@ import (
 // MatchingSession 本次操作独享缓存、预算、降级状态。
 // S0 仅端口骨架；Resolve 行为属 S5。
 type MatchingSession struct {
-	runtime *MatchingRuntime
-	ctx     context.Context
+	runtime  *MatchingRuntime
+	ctx      context.Context
+	provider matchingProvider // S4：Session 独享；可由测试 helper 注入
 }
 
 // BoundMatch 目录已绑定条目的快通道证据；存在 bound 绝不能绕过结构检查。
