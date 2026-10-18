@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"fan-web/models"
 )
@@ -44,6 +45,38 @@ func ReplaceUnidentified(rows []models.UnidentifiedFile) error {
 func DeleteUnidentifiedByDir(filePath string) error {
 	_, err := DB.Exec("DELETE FROM unidentified_files WHERE file_path = ?", filePath)
 	return err
+}
+
+// DeleteUnidentifiedFiles 只删除指定目录下显式列出的文件名，不清空整个目录。
+// names 为空时为零操作。含空文件名时返回错误。
+func DeleteUnidentifiedFiles(dir string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("DeleteUnidentifiedFiles: 文件名不得为空")
+		}
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`DELETE FROM unidentified_files WHERE file_path = ? AND file_name = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, name := range names {
+		if _, err := stmt.Exec(dir, name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // NormalizePaging 夹紧分页参数：page<1 按 1；pageSize<1 按 50，>100 按 100。
