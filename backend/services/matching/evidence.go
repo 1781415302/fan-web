@@ -7,11 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // AnalyzeTitle 从标题抽取结构事实；文件与候选共用。保护标题数字。
 func AnalyzeTitle(text string) TitleFacts {
-	raw := strings.TrimSpace(text)
+	raw := CleanTitleSurface(strings.TrimSpace(text))
 	if raw == "" {
 		return TitleFacts{}
 	}
@@ -55,7 +56,7 @@ func ParseFile(input FileInput) FileEvidence {
 	stem = foldWidthAndT2S(stem)
 
 	blocks, rest := splitBracketBlocks(stem)
-	classified := classifyBlocks(blocks)
+	classified := classifyBlocks(blocks, rest)
 
 	var titlePieces []string
 	var seasons []int
@@ -162,8 +163,9 @@ func ParseFile(input FileInput) FileEvidence {
 	ev.Conflicts = uniqueStrings(conflicts)
 
 	// Pure numbering filename (05.mkv): title equals episode → clear for directory fallback.
+	// 年份形态的纯数字标题（如 1984.1080p）保留为标题，不当作裸集号。
 	if len(ev.Titles) == 1 {
-		if n, err := strconv.Atoi(strings.TrimSpace(ev.Titles[0].Text)); err == nil && n > 0 {
+		if n, err := strconv.Atoi(strings.TrimSpace(ev.Titles[0].Text)); err == nil && n > 0 && !isYearAlone(n) {
 			if isUnknownEp(ev.Episode) {
 				ev.Episode = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: ev.Titles[0].Text, Explicit: false}
 				ev.Titles = nil
@@ -244,23 +246,39 @@ type classifiedBlock struct {
 }
 
 var (
-	reBracket   = regexp.MustCompile(`[\[【]([^\]】]*)[\]】]`)
-	reSxxEyy    = regexp.MustCompile(`(?i)\bS(\d{1,2})E(\d{1,4})\b`)
-	reEpCN      = regexp.MustCompile(`第\s*(\d{1,4})\s*[集話话]`)
-	reEpZero    = regexp.MustCompile(`第\s*0+\s*[集話话]`)
-	reSeasonCN  = regexp.MustCompile(`第\s*([0-9一二三四五六七八九十百]+)\s*[季期]`)
-	reSeasonEn  = regexp.MustCompile(`(?i)\b(?:season\s*(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)\s*season|s(\d{1,2}))\b`)
-	rePart      = regexp.MustCompile(`(?i)\bpart\s*(\d{1,2})\b|第\s*([0-9一二三四五六七八九十]+)\s*部`)
-	reFinal     = regexp.MustCompile(`(?i)\bfinal\b|完结篇|最終回|最终回`)
-	reYearPar   = regexp.MustCompile(`\((19|20)\d{2}\)`)
-	reYearTok   = regexp.MustCompile(`\b((?:19|20)\d{2})\b`)
-	reRange     = regexp.MustCompile(`(?i)(?:^|[\s\-_])(\d{1,4})\s*[-~～]\s*(\d{1,4})(?:\b|$)`)
-	reFraction  = regexp.MustCompile(`(?i)(?:^|[\s\-_])(\d{1,4}\.\d+)(?:\b|$)`)
-	reDashEp    = regexp.MustCompile(`(?i)(?:^|[\s])[-–—]\s*(\d{1,4})(?:v\d+)?(?:\b|$)`)
-	reBareEp    = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(\d{1,4})(?:v\d+)?$`)
-	reCRC       = regexp.MustCompile(`(?i)^[0-9A-F]{8}$`)
-	reRes       = regexp.MustCompile(`(?i)^(?:\d{3,4}\s*[xX×]\s*\d{3,4}|\d{3,4}p|4k|2160p|1080p|720p|480p)$`)
-	reEpBracket = regexp.MustCompile(`(?i)^(?:e?(\d{1,4})(?:v\d+)?)$`)
+	reBracket          = regexp.MustCompile(`[\[【]([^\]】]*)[\]】]`)
+	reSxxEyy           = regexp.MustCompile(`(?i)\bS(\d{1,2})E(\d{1,4})\b`)
+	reEpCN             = regexp.MustCompile(`第\s*(\d{1,4})\s*[集話话]`)
+	reEpZero           = regexp.MustCompile(`第\s*0+\s*[集話话]`)
+	reSeasonCN         = regexp.MustCompile(`第\s*([0-9一二三四五六七八九十百]+)\s*[季期]`)
+	reSeasonEn         = regexp.MustCompile(`(?i)\b(?:season\s*(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)\s*season|s(\d{1,2}))\b`)
+	rePart             = regexp.MustCompile(`(?i)\bpart\s*(\d{1,2})\b|第\s*([0-9一二三四五六七八九十]+)\s*部`)
+	reFinal            = regexp.MustCompile(`(?i)\bfinal\b|完结篇|最終回|最终回`)
+	reYearPar          = regexp.MustCompile(`\((19|20)\d{2}\)`)
+	reYearTok          = regexp.MustCompile(`\b((?:19|20)\d{2})\b`)
+	reRange            = regexp.MustCompile(`(?i)(?:^|[\s\-_])(\d{1,4})\s*[-~～]\s*(\d{1,4})(?:\b|$)`)
+	reFraction         = regexp.MustCompile(`(?i)(?:^|[\s\-_])(\d{1,4}\.\d+)(?:\b|$)`)
+	reDashEp           = regexp.MustCompile(`(?i)(?:^|[\s])[-–—]\s*(\d{1,4})(?:v\d+)?(?:\b|$)`)
+	reBareEp           = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])(\d{1,4})(?:v\d+)?$`)
+	reCRC              = regexp.MustCompile(`(?i)^[0-9A-F]{8}$`)
+	reRes              = regexp.MustCompile(`(?i)^(?:\d{3,4}\s*[xX×]\s*\d{3,4}|\d{3,4}p|4k|2160p|1080p|720p|480p)$`)
+	reEpBracket        = regexp.MustCompile(`(?i)^(?:e?(\d{1,4})(?:v\d+)?)$`)
+	reFansubToken      = regexp.MustCompile(`(?i)^[A-Za-z0-9][A-Za-z0-9._\-&+]{0,22}$`)
+	reTitleDigitID     = regexp.MustCompile(`(?i)\b(?:no\.?\s*\d+|u-\d+|\d{2,})\b`)
+	reNoTitleNum       = regexp.MustCompile(`(?i)\bno\.?\s*(\d+)\b`)
+	reUTitleNum        = regexp.MustCompile(`(?i)\bu-(\d+)\b`)
+	reTrailingSeason   = regexp.MustCompile(`(?i)(?:^|[\s._])([1-9]|1[0-9]|2[0-4])\s*$`)
+	reParenMeta        = regexp.MustCompile(`\(([^)]*)\)`)
+	reFracLetterHyphen = regexp.MustCompile(`(?i)([A-Za-z]+\d+)-(\d+)\b`)
+	reFracBareHyphen   = regexp.MustCompile(`(?i)\b(\d+)-(\d+)\b`)
+	rePublishTail      = regexp.MustCompile(`(?i)\s*[-_]([A-Za-z][A-Za-z0-9]{2,24})$`)
+	reDigitDisc        = regexp.MustCompile(`(?i)(?:\b(?:no\.?\s*\d+|u-\d+)\b)`)
+	reMediaMovie       = regexp.MustCompile(`(?i)剧场版|劇場版|\bmovie\b|\bfilm\b`)
+	reMediaOVA         = regexp.MustCompile(`(?i)\bova\b|\boad\b`)
+	reMediaRecap       = regexp.MustCompile(`(?i)总集篇|總集篇|\brecap\b`)
+	reMediaPromo       = regexp.MustCompile(`(?i)\bpv\b|\bcm\b|预告|預告|\btrailer\b|\bpromo\b`)
+	reSceneResTok      = regexp.MustCompile(`(?i)^(?:\d{3,4}p|4k|2160p|1080p|720p|480p|\d{3,4}[xX×]\d{3,4})$`)
+	reDecEpisode       = regexp.MustCompile(`\b\d{1,2}\.\d{1,2}\b`)
 )
 
 var categoryExact = map[string]bool{
@@ -283,11 +301,25 @@ var sourceTokens = map[string]bool{
 
 var langTokens = map[string]bool{
 	"gb": true, "big5": true, "chs": true, "cht": true, "jpsc": true, "gbsc": true,
-	"简体": true, "繁体": true, "简繁": true, "中字": true, "内封": true, "内嵌": true, "外挂": true,
+	"简体": true, "繁体": true, "繁體": true, "简繁": true, "简繁日": true, "中字": true,
+	"内封": true, "内嵌": true, "外挂": true, "字幕": true, "日语": true, "日文": true,
 	"sc": true, "tc": true, "jp": true, "en": true,
 }
 
-var fansubHints = []string{"team", "sub", "字幕", "字幕组", "encodes", "encode"}
+// packagingTokens 封装/字幕形态，与 lang/source/codec/res 一起组成组合元数据。
+var packagingTokens = map[string]bool{
+	"bd": true, "dvd": true, "cd": true, "hdtv": true,
+	"内封字幕": true, "内嵌字幕": true, "外挂字幕": true,
+	"简体内嵌": true, "简体内封": true, "繁体内嵌": true, "繁体内封": true,
+	"简繁日内封字幕": true, "简繁内封字幕": true, "简繁内嵌": true,
+}
+
+var fansubHints = []string{"team", "fansub", "字幕组", "encodes", "encode", "subtitles"}
+
+// fansubExact 整块等于这些短标签时视为组名（避免用 sub 子串误伤标题）。
+var fansubExact = map[string]bool{
+	"sub": true, "subs": true, "raw": true, "raws": true, "encode": true, "encodes": true,
+}
 
 func splitBracketBlocks(stem string) (blocks []string, rest string) {
 	rest = stem
@@ -303,7 +335,48 @@ func splitBracketBlocks(stem string) (blocks []string, rest string) {
 	return blocks, rest
 }
 
-func classifyBlocks(blocks []string) []classifiedBlock {
+func classifyBlocks(blocks []string, rest string) []classifiedBlock {
+	restStrong := hasStrongRestTitle(rest)
+	clearEp := make([]bool, len(blocks))
+	for i, raw := range blocks {
+		b := strings.TrimSpace(raw)
+		if b == "" {
+			continue
+		}
+		clearEp[i] = isClearEpisodeBracket(b)
+	}
+	anyClearEp := false
+	for _, c := range clearEp {
+		if c {
+			anyClearEp = true
+			break
+		}
+	}
+	otherTitle := restStrong
+	for i, raw := range blocks {
+		b := strings.TrimSpace(raw)
+		if b == "" || clearEp[i] || isCompositeMetaBlock(b) || categoryExact[b] || categoryExact[strings.ToLower(b)] {
+			continue
+		}
+		if yearBracketContent(b) || reCRC.MatchString(b) || reRes.MatchString(strings.ReplaceAll(b, " ", "")) {
+			continue
+		}
+		if isAmbiguousNumericBracket(b) && anyClearEp {
+			otherTitle = true
+			continue
+		}
+		if looksLikeKnownTitleForm(b) || hasTitleDigitIdentity(b) {
+			otherTitle = true
+			continue
+		}
+		if !(isClearGroupName(b) || (i == 0 && looksLikeLeadingFansub(b))) {
+			// potential title fragment
+			if !isCompositeMetaBlock(b) && !looksLikeFansub(b) {
+				otherTitle = true
+			}
+		}
+	}
+
 	out := make([]classifiedBlock, 0, len(blocks))
 	for i, raw := range blocks {
 		b := strings.TrimSpace(raw)
@@ -334,14 +407,32 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 			out = append(out, cb)
 			continue
 		}
-		if m := reEpBracket.FindStringSubmatch(b); m != nil {
+		if isCompositeMetaBlock(b) {
+			cb.kind = blockLang
+			out = append(out, cb)
+			continue
+		}
+		if clearEp[i] {
+			m := reEpBracket.FindStringSubmatch(b)
 			n, _ := strconv.Atoi(m[1])
-			if n > 0 {
-				cb.kind = blockEpisode
-				cb.ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: b, Explicit: true}
+			cb.kind = blockEpisode
+			cb.ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: b, Explicit: true}
+			out = append(out, cb)
+			continue
+		}
+		if isAmbiguousNumericBracket(b) {
+			m := reEpBracket.FindStringSubmatch(b)
+			n, _ := strconv.Atoi(m[1])
+			if anyClearEp {
+				// 如 [86][01]：有明确集号时短数字身份保留为标题
+				cb.kind = blockTitle
 				out = append(out, cb)
 				continue
 			}
+			cb.kind = blockEpisode
+			cb.ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: b, Explicit: true}
+			out = append(out, cb)
+			continue
 		}
 		if codecTokens[lower] || hasAnyToken(lower, codecTokens) {
 			cb.kind = blockCodec
@@ -358,8 +449,7 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 			out = append(out, cb)
 			continue
 		}
-		// 纯媒体标记优先于字幕组启发式（避免 [TV] 被当成 fansub）
-		if mk, rest := stripMedia(b); mk != KindUnknown && strings.TrimSpace(rest) == "" {
+		if mk, restMedia := stripMedia(b); mk != KindUnknown && strings.TrimSpace(restMedia) == "" {
 			cb.kind = blockCategory
 			out = append(out, cb)
 			continue
@@ -369,13 +459,22 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 			out = append(out, cb)
 			continue
 		}
-		// First bracket：允许短拉丁组名（含 Dynamis One）
-		if i == 0 && looksLikeLeadingFansub(b) {
-			cb.kind = blockFansub
+		if hasTitleDigitIdentity(b) || looksLikeKnownTitleForm(b) {
+			cb.kind = blockTitle
 			out = append(out, cb)
 			continue
 		}
-		// Non-first short team tokens
+		if i == 0 {
+			if isClearGroupName(b) || (looksLikeLeadingFansub(b) && otherTitle) {
+				cb.kind = blockFansub
+				out = append(out, cb)
+				continue
+			}
+			// 无独立标题证据时，未知短拉丁首括号保留为标题
+			cb.kind = blockTitle
+			out = append(out, cb)
+			continue
+		}
 		if looksLikeFansub(b) && !hasCJK(b) && !hasTitleDigitIdentity(b) {
 			cb.kind = blockFansub
 			out = append(out, cb)
@@ -385,6 +484,181 @@ func classifyBlocks(blocks []string) []classifiedBlock {
 		out = append(out, cb)
 	}
 	return out
+}
+
+func isClearEpisodeBracket(b string) bool {
+	b = strings.TrimSpace(b)
+	// 年份括号优先，不当作明确集号（避免 [2023][12] 把 12 挤成标题）
+	if yearBracketContent(b) {
+		return false
+	}
+	m := reEpBracket.FindStringSubmatch(b)
+	if m == nil {
+		return false
+	}
+	raw := m[1]
+	if strings.HasPrefix(strings.ToLower(b), "e") {
+		return true
+	}
+	if len(raw) >= 2 && raw[0] == '0' {
+		return true
+	}
+	if len(raw) >= 3 {
+		return true
+	}
+	return false
+}
+
+func isAmbiguousNumericBracket(b string) bool {
+	m := reEpBracket.FindStringSubmatch(strings.TrimSpace(b))
+	if m == nil {
+		return false
+	}
+	raw := m[1]
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(b)), "e") {
+		return false
+	}
+	if len(raw) >= 2 && raw[0] == '0' {
+		return false
+	}
+	if len(raw) >= 3 {
+		return false
+	}
+	n, err := strconv.Atoi(raw)
+	return err == nil && n > 0
+}
+
+func hasStrongRestTitle(rest string) bool {
+	r := strings.TrimSpace(rest)
+	if r == "" {
+		return false
+	}
+	// 粗判：去掉明显 scene 元数据后仍有字母/CJK
+	r = stripParenMeta(r)
+	fields := strings.FieldsFunc(r, func(rr rune) bool {
+		return rr == '.' || rr == '_' || unicode.IsSpace(rr)
+	})
+	strong := 0
+	for _, f := range fields {
+		low := strings.ToLower(strings.Trim(f, "-"))
+		if low == "" || reSceneResTok.MatchString(low) || sourceTokens[low] || codecTokens[low] {
+			continue
+		}
+		if reYearTok.MatchString(low) && len(fields) > 1 {
+			continue
+		}
+		if reEpBracket.MatchString(low) && isClearEpisodeBracket(low) {
+			continue
+		}
+		if hasCJK(f) || hasLatinLetter(f) || hasTitleDigitIdentity(f) || isAllDigits(f) {
+			strong++
+		}
+	}
+	return strong > 0
+}
+
+func isCompositeMetaBlock(b string) bool {
+	b = strings.TrimSpace(b)
+	if b == "" {
+		return false
+	}
+	if packagingTokens[b] || packagingTokens[strings.ToLower(b)] {
+		return true
+	}
+	lower := strings.ToLower(b)
+	// 空格/标点分隔的组合：BD 1080p、GB 简体 等
+	fields := strings.FieldsFunc(lower, func(r rune) bool {
+		return r == ' ' || r == '/' || r == ',' || r == '+' || r == '&' || r == '_' || r == '-'
+	})
+	if len(fields) >= 2 {
+		meta := 0
+		for _, f := range fields {
+			if codecTokens[f] || sourceTokens[f] || langTokens[f] || packagingTokens[f] || reRes.MatchString(f) || reSceneResTok.MatchString(f) {
+				meta++
+			}
+		}
+		if meta == len(fields) {
+			return true
+		}
+	}
+	// 无空格 CJK 组合：简体内嵌、简繁日内封字幕
+	if hasCJK(b) && !hasLatinLetter(b) {
+		return matchCJKMetaTokens(b)
+	}
+	return false
+}
+
+func matchCJKMetaTokens(b string) bool {
+	tokens := cjkMetaTokenList()
+	remain := b
+	matched := 0
+	for remain != "" {
+		progress := false
+		for _, tok := range tokens {
+			if strings.HasPrefix(remain, tok) {
+				remain = remain[len(tok):]
+				matched++
+				progress = true
+				break
+			}
+		}
+		if !progress {
+			return false
+		}
+	}
+	return matched > 0 && remain == ""
+}
+
+func cjkMetaTokenList() []string {
+	// 长词优先
+	raw := []string{
+		"简繁日内封字幕", "简繁内封字幕", "简体内嵌", "简体内封", "繁体内嵌", "繁体内封",
+		"内封字幕", "内嵌字幕", "外挂字幕", "简繁日", "简繁", "简体", "繁体", "繁體",
+		"内封", "内嵌", "外挂", "字幕", "中字", "日语", "日文",
+	}
+	return raw
+}
+
+func isClearGroupName(b string) bool {
+	lower := strings.ToLower(strings.TrimSpace(b))
+	if fansubExact[lower] {
+		return true
+	}
+	for _, h := range fansubHints {
+		if strings.Contains(lower, h) {
+			// 避免“我与字幕组的故事”整句：须像组名而非叙述标题
+			if hasCJK(b) {
+				// CJK 组名通常短且以字幕组/工作室结尾
+				if strings.HasSuffix(b, "字幕组") || strings.HasSuffix(b, "字幕組") || strings.HasSuffix(lower, "team") {
+					return utf8.RuneCountInString(b) <= 16
+				}
+				return false
+			}
+			return true
+		}
+	}
+	// GM-Team / Xxx-Subs 形态
+	if !hasCJK(b) && strings.Contains(b, "-") && reFansubToken.MatchString(b) && utf8.RuneCountInString(b) <= 24 {
+		return true
+	}
+	return false
+}
+
+func looksLikeKnownTitleForm(b string) bool {
+	if strings.Contains(b, "!") || strings.Contains(b, "!!") || strings.Contains(b, ";") {
+		return true
+	}
+	if hasTitleDigitIdentity(b) {
+		return true
+	}
+	// K-ON 类带连字符的短标题
+	if strings.Contains(b, "-") && hasLatinLetter(b) && !isClearGroupName(b) {
+		fields := strings.Fields(b)
+		if len(fields) <= 3 {
+			return true
+		}
+	}
+	return false
 }
 
 func mediaBracketOnly(b string) bool {
@@ -404,11 +678,8 @@ func yearBracketContent(b string) bool {
 }
 
 func looksLikeFansub(b string) bool {
-	lower := strings.ToLower(b)
-	for _, h := range fansubHints {
-		if strings.Contains(lower, h) {
-			return true
-		}
+	if isClearGroupName(b) {
+		return true
 	}
 	if hasCJK(b) {
 		return false
@@ -417,15 +688,17 @@ func looksLikeFansub(b string) bool {
 	if strings.Contains(b, " ") {
 		return false
 	}
-	if len([]rune(b)) <= 24 && regexp.MustCompile(`(?i)^[A-Za-z0-9][A-Za-z0-9._\-&+]{0,22}$`).MatchString(b) {
+	if utf8.RuneCountInString(b) <= 24 && reFansubToken.MatchString(b) {
 		return true
 	}
 	return false
 }
 
-// looksLikeLeadingFansub 仅用于文件名首个括号：字幕组常为 1～3 个拉丁词（Dynamis One）。
-// 含罗马季号或中文季号的不视为组名。
+// looksLikeLeadingFansub 首括号组名启发：须配合独立标题证据才采用（见 classifyBlocks）。
 func looksLikeLeadingFansub(b string) bool {
+	if hasTitleDigitIdentity(b) || looksLikeKnownTitleForm(b) {
+		return false
+	}
 	if looksLikeFansub(b) {
 		return true
 	}
@@ -442,7 +715,7 @@ func looksLikeLeadingFansub(b string) bool {
 	if len(fields) == 0 || len(fields) > 3 {
 		return false
 	}
-	if len([]rune(b)) > 28 {
+	if utf8.RuneCountInString(b) > 28 {
 		return false
 	}
 	for _, f := range fields {
@@ -477,10 +750,7 @@ func hasCJK(s string) bool {
 
 func hasTitleDigitIdentity(s string) bool {
 	// 86, Ranma1-2, U-17, No.8 — treat as title not fansub
-	if regexp.MustCompile(`(?i)\b(?:no\.?\s*\d+|u-\d+|\d{2,})\b`).MatchString(s) {
-		return true
-	}
-	return false
+	return reTitleDigitID.MatchString(s) || reNoTitleNum.MatchString(s) || reUTitleNum.MatchString(s)
 }
 
 func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, title string, year, season int, media MediaKind) {
@@ -489,6 +759,12 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 
 	// Parenthetical metadata dump: (CR 1920x1080 AVC AAC MKV)
 	work = stripParenMeta(work)
+
+	// scene 年份：在点号全部转空格之前，按「强标题.年份.元数据」识别
+	if y, w, ok := extractSceneYear(work); ok {
+		year = y
+		work = w
+	}
 
 	// SxxEyy
 	if m := reSxxEyy.FindStringSubmatch(work); m != nil {
@@ -534,12 +810,12 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		}
 	}
 
-	// Year
-	if m := reYearPar.FindStringSubmatch(work); m != nil {
-		year, _ = strconv.Atoi(m[1] + m[0][3:5]) // careful
-		// better:
-		year, _ = strconv.Atoi(strings.Trim(m[0], "()"))
-		work = reYearPar.ReplaceAllString(work, " ")
+	// Parenthetical year only（删除曾被无条件覆盖的首次错误赋值）
+	if year == 0 {
+		if m := reYearPar.FindStringSubmatch(work); m != nil {
+			year, _ = strconv.Atoi(strings.Trim(m[0], "()"))
+			work = reYearPar.ReplaceAllString(work, " ")
+		}
 	}
 
 	media, work = stripMedia(work)
@@ -573,18 +849,27 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 			if n > 0 && !isTitleProtectedNumber(work, n) {
 				ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: m[1], Explicit: true}
 				work = reDashEp.ReplaceAllString(work, " ")
+				// 发布尾缀：Title - 01-SENPAI → 集号后的组名形态剥离
+				work = stripPublishSuffix(work)
 				// "Title 5 - 03" → season 5 when trailing small int remains
 				if season == 0 {
-					if sm := regexp.MustCompile(`(?i)(?:^|[\s._])([1-9]|1[0-9]|2[0-4])\s*$`).FindStringSubmatch(cleanTitleSpaces(work)); sm != nil {
+					if sm := reTrailingSeason.FindStringSubmatch(cleanTitleSpaces(work)); sm != nil {
 						sn, _ := strconv.Atoi(sm[1])
 						if sn > 0 && !isTitleProtectedNumber(work, sn) {
 							season = sn
-							work = regexp.MustCompile(`(?i)(?:^|[\s._])(?:`+sm[1]+`)\s*$`).ReplaceAllString(work, " ")
+							// 用已匹配索引切片删除，避免热路径拼正则
+							loc := reTrailingSeason.FindStringIndex(cleanTitleSpaces(work))
+							trimmed := cleanTitleSpaces(work)
+							if loc != nil {
+								work = strings.TrimSpace(trimmed[:loc[0]] + " " + trimmed[loc[1]:])
+							}
 						}
 					}
 				}
 			}
 		}
+	} else {
+		work = stripPublishSuffix(work)
 	}
 
 	// Trailing bare number last。已有明确集号时保留标题续作数字（如「悠久之翼2」「爆漫王。3」）。
@@ -599,11 +884,155 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		}
 	}
 
-	// Scene dots → spaces for latin titles
-	work = strings.ReplaceAll(work, ".", " ")
+	// Scene dots → spaces for latin titles（在年份/数字称号处理之后）
+	work = protectThenReplaceDots(work)
 	work = stripSceneNoiseTokens(work)
 	title = cleanTitleSpaces(work)
+	title = CleanTitleSurface(title)
 	return ep, title, year, season, media
+}
+
+// extractSceneYear 识别「非空强标题 . 年份 . 分辨率/来源/编码」；标题开头的年份不剥离。
+func extractSceneYear(work string) (int, string, bool) {
+	parts := splitSceneDotParts(work)
+	if len(parts) < 3 {
+		return 0, work, false
+	}
+	var yearsFound []int
+	var yearIdx = -1
+	for i := 1; i < len(parts)-1; i++ { // 须有前缀与后缀
+		p := parts[i]
+		if !reYearTok.MatchString(p) {
+			continue
+		}
+		y, err := strconv.Atoi(p)
+		if err != nil || y < 1900 || y > 2099 {
+			continue
+		}
+		before := strings.Trim(strings.Join(parts[:i], "."), ".")
+		afterParts := parts[i+1:]
+		if !hasStrongSceneTitle(before) {
+			continue
+		}
+		if !hasSceneMetaAfter(afterParts) {
+			continue
+		}
+		yearsFound = append(yearsFound, y)
+		if yearIdx < 0 {
+			yearIdx = i
+		}
+	}
+	if len(yearsFound) == 0 {
+		return 0, work, false
+	}
+	if len(uniquePositive(yearsFound)) > 1 {
+		// 多成年份互斥：不抽取，留给上层冲突
+		return 0, work, false
+	}
+	y := yearsFound[0]
+	newParts := append(append([]string{}, parts[:yearIdx]...), parts[yearIdx+1:]...)
+	return y, joinSceneDotParts(newParts), true
+}
+
+func splitSceneDotParts(s string) []string {
+	// 保护 No.8 / No. 8：先占位
+	type ph struct{ key, val string }
+	var phs []ph
+	masked := reNoTitleNum.ReplaceAllStringFunc(s, func(m string) string {
+		key := fmt.Sprintf("\x00NO%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	// 保护小数集号 12.5
+	masked = reDecEpisode.ReplaceAllStringFunc(masked, func(m string) string {
+		key := fmt.Sprintf("\x00DEC%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	rawParts := strings.Split(masked, ".")
+	parts := make([]string, 0, len(rawParts))
+	for _, p := range rawParts {
+		for _, ph := range phs {
+			p = strings.ReplaceAll(p, ph.key, ph.val)
+		}
+		parts = append(parts, p)
+	}
+	return parts
+}
+
+func joinSceneDotParts(parts []string) string {
+	return strings.Join(parts, ".")
+}
+
+func hasStrongSceneTitle(before string) bool {
+	before = strings.TrimSpace(before)
+	if before == "" {
+		return false
+	}
+	// 仅年份不行
+	if reYearTok.MatchString(before) && !hasCJK(before) && !hasLatinLetter(strings.Trim(before, "0123456789.")) {
+		return false
+	}
+	return hasCJK(before) || hasLatinLetter(before)
+}
+
+func hasSceneMetaAfter(parts []string) bool {
+	for _, p := range parts {
+		low := strings.ToLower(strings.TrimSpace(p))
+		if low == "" {
+			continue
+		}
+		if reSceneResTok.MatchString(low) || reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] {
+			return true
+		}
+		// web-dl 被拆成 web / dl 时
+		if low == "web" || low == "dl" || low == "webrip" || low == "webdl" {
+			return true
+		}
+	}
+	return false
+}
+
+func protectThenReplaceDots(work string) string {
+	type ph struct{ key, val string }
+	var phs []ph
+	masked := reNoTitleNum.ReplaceAllStringFunc(work, func(m string) string {
+		key := fmt.Sprintf("\x00NO%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	masked = strings.ReplaceAll(masked, ".", " ")
+	for _, ph := range phs {
+		masked = strings.ReplaceAll(masked, ph.key, ph.val)
+	}
+	return masked
+}
+
+func stripPublishSuffix(work string) string {
+	trimmed := cleanTitleSpaces(work)
+	m := rePublishTail.FindStringSubmatch(trimmed)
+	if m == nil {
+		return work
+	}
+	tail := m[1]
+	low := strings.ToLower(tail)
+	// 结构词不当发布组
+	switch low {
+	case "season", "part", "final", "ova", "oad", "movie", "film", "tv", "bd", "sp", "ncop", "nced":
+		return work
+	}
+	if !reFansubToken.MatchString(tail) {
+		return work
+	}
+	// 单字母或过短模糊尾缀保留
+	if utf8.RuneCountInString(tail) < 3 {
+		return work
+	}
+	loc := rePublishTail.FindStringIndex(trimmed)
+	if loc == nil {
+		return work
+	}
+	return strings.TrimSpace(trimmed[:loc[0]])
 }
 
 // stripSceneNoiseTokens 去掉 rest 中残留的分辨率/来源/编码噪声。
@@ -627,7 +1056,7 @@ func stripSceneNoiseTokens(work string) string {
 }
 
 func stripParenMeta(s string) string {
-	return regexp.MustCompile(`\(([^)]*)\)`).ReplaceAllStringFunc(s, func(m string) string {
+	return reParenMeta.ReplaceAllStringFunc(s, func(m string) string {
 		inner := strings.Trim(m, "()")
 		lower := strings.ToLower(inner)
 		// Keep (1999)/(2011) years
@@ -657,23 +1086,54 @@ func isYearAlone(n int) bool {
 // isTitleProtectedNumber: digits that are part of title identity (86, 1-2, U-17, No.8)。
 // 不把 "Title - 1100" 这种空格分隔的 dash-ep 当成标题分数。
 func isTitleProtectedNumber(title string, n int) bool {
-	t := strings.ToLower(title)
 	ns := strconv.Itoa(n)
-	// 紧凑分数 Ranma1-2 / 1-2 / 1/2：连字符两侧无空格
-	compactLeft := regexp.MustCompile(`(?i)(?:[a-z]+)?` + regexp.QuoteMeta(ns) + `[-/]\d+\b`)
-	if compactLeft.MatchString(t) {
-		return true
-	}
-	compactRight := regexp.MustCompile(`(?i)\d+[-/]` + regexp.QuoteMeta(ns) + `\b`)
-	if compactRight.MatchString(t) {
-		// 排除 "12 - 03" / "Tale - 1100" 这种两侧有空格的集号写法
-		spaced := regexp.MustCompile(`\d+\s+[-–—]\s*` + regexp.QuoteMeta(ns) + `|[-–—]\s+` + regexp.QuoteMeta(ns))
-		if !spaced.MatchString(t) {
+	for _, m := range reNoTitleNum.FindAllStringSubmatch(title, -1) {
+		if m[1] == ns {
 			return true
 		}
 	}
-	if strings.Contains(t, "u-"+ns) || strings.Contains(t, "no."+ns) || strings.Contains(t, "no "+ns) {
-		return true
+	for _, m := range reUTitleNum.FindAllStringSubmatch(title, -1) {
+		if m[1] == ns {
+			return true
+		}
+	}
+	t := strings.ToLower(title)
+	// 紧凑分数：letter+ns-digit 或 digit-ns
+	if strings.Contains(t, ns+"-") || strings.Contains(t, ns+"/") {
+		// 排除 "12 - 03" 两侧空格的 dash-ep
+		idx := strings.Index(t, ns+"-")
+		if idx < 0 {
+			idx = strings.Index(t, ns+"/")
+		}
+		if idx >= 0 {
+			after := idx + len(ns) + 1
+			if after < len(t) && t[after] >= '0' && t[after] <= '9' {
+				// 左侧紧贴字母或行首才算标题分数
+				if idx == 0 || (t[idx-1] >= 'a' && t[idx-1] <= 'z') || (t[idx-1] >= '0' && t[idx-1] <= '9') {
+					if idx == 0 || t[idx-1] != ' ' {
+						return true
+					}
+				}
+			}
+		}
+	}
+	if strings.Contains(t, "-"+ns) || strings.Contains(t, "/"+ns) {
+		sep := "-" + ns
+		idx := strings.Index(t, sep)
+		if idx < 0 {
+			idx = strings.Index(t, "/"+ns)
+			sep = "/" + ns
+		}
+		if idx > 0 && t[idx-1] >= '0' && t[idx-1] <= '9' {
+			// 右侧不是空格分隔的 " - 03"
+			left := t[:idx]
+			if !strings.HasSuffix(strings.TrimRight(left, "0123456789"), " ") {
+				end := idx + len(sep)
+				if end == len(t) || !isASCIIAlphaNum(rune(t[end])) {
+					return true
+				}
+			}
+		}
 	}
 	base := cleanTitleSpaces(reDashEp.ReplaceAllString(title, " "))
 	base = cleanTitleSpaces(base)
@@ -681,6 +1141,10 @@ func isTitleProtectedNumber(title string, n int) bool {
 		return true
 	}
 	return false
+}
+
+func isASCIIAlphaNum(r rune) bool {
+	return r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
 }
 
 func isUnknownEp(ep EpisodeToken) bool {
@@ -727,18 +1191,17 @@ func buildTitles(pieces []string, src Source) []Title {
 	var out []Title
 	seen := map[string]bool{}
 	for _, p := range pieces {
-		p = cleanTitleSpaces(p)
+		p = CleanTitleSurface(cleanTitleSpaces(p))
 		if p == "" {
 			continue
 		}
-		// Split parallel language chunks by ][ already done; also split " / " when script switch
-		for _, part := range splitLanguageParts(p) {
-			part = cleanTitleSpaces(part)
+		for _, part := range SplitParallelTitles(p) {
+			part = CleanTitleSurface(cleanTitleSpaces(part))
 			part = normalizeTitleFractionHyphen(part)
+			part = CleanTitleSurface(part)
 			if part == "" {
 				continue
 			}
-			// Remove trailing season markers from display title? Keep original for discriminators.
 			key := TitleKey(part)
 			if key == "" || seen[key] {
 				continue
@@ -757,11 +1220,9 @@ func normalizeTitleFractionHyphen(s string) string {
 		return s
 	}
 	// letter/digit glued fraction: Ranma1-2, 1-2 at word boundary after letters
-	re := regexp.MustCompile(`(?i)([A-Za-z]+\d+)-(\d+)\b`)
-	s = re.ReplaceAllString(s, `$1/$2`)
-	re2 := regexp.MustCompile(`(?i)\b(\d+)-(\d+)\b`)
+	s = reFracLetterHyphen.ReplaceAllString(s, `$1/$2`)
 	// only bare N-M when both sides are single digit (title 1/2), not episode ranges like 01-02 / 12-13
-	s = re2.ReplaceAllStringFunc(s, func(m string) string {
+	s = reFracBareHyphen.ReplaceAllStringFunc(s, func(m string) string {
 		parts := strings.Split(m, "-")
 		if len(parts) != 2 {
 			return m
@@ -1012,10 +1473,10 @@ func stripMedia(work string) (MediaKind, string) {
 		re   *regexp.Regexp
 		kind MediaKind
 	}{
-		{regexp.MustCompile(`(?i)剧场版|劇場版|\bmovie\b|\bfilm\b`), KindMovie},
-		{regexp.MustCompile(`(?i)\bova\b|\boad\b`), KindOVA},
-		{regexp.MustCompile(`(?i)总集篇|總集篇|\brecap\b`), KindRecap},
-		{regexp.MustCompile(`(?i)\bpv\b|\bcm\b|预告|預告|\btrailer\b|\bpromo\b`), KindPromo},
+		{reMediaMovie, KindMovie},
+		{reMediaOVA, KindOVA},
+		{reMediaRecap, KindRecap},
+		{reMediaPromo, KindPromo},
 	}
 	kind := KindUnknown
 	for _, p := range patterns {
@@ -1056,14 +1517,45 @@ func collectDiscriminators(raw, base string) []string {
 			out = append(out, last)
 		}
 	}
-	// numeric identity tokens
-	for _, m := range regexp.MustCompile(`(?i)(?:\b(?:no\.?\s*\d+|u-\d+)\b|\b\d+\b)`).FindAllString(base, -1) {
-		out = append(out, m)
+	// 数字称号统一为 no:N / u:N，供区分符通道消费
+	for _, m := range reNoTitleNum.FindAllStringSubmatch(raw+" "+base, -1) {
+		out = append(out, "no:"+m[1])
 	}
-	if strings.Contains(base, "1-2") || strings.Contains(base, "1/2") {
+	for _, m := range reUTitleNum.FindAllStringSubmatch(raw+" "+base, -1) {
+		out = append(out, "u:"+m[1])
+	}
+	if strings.Contains(base, "1-2") || strings.Contains(base, "1/2") || strings.Contains(raw, "1-2") || strings.Contains(raw, "1/2") {
 		out = append(out, "1-2")
 	}
 	return uniqueStrings(out)
+}
+
+// ConflictingDigitIdentities 报告双方标题中同角色数字称号冲突（no:8 vs no:9）。
+// 不把普通副标题数字、季号、年份一概视为冲突。
+func ConflictingDigitIdentities(queryDiscs, subjectDiscs []string) []string {
+	q := digitRoleMap(queryDiscs)
+	s := digitRoleMap(subjectDiscs)
+	var out []string
+	for role, qv := range q {
+		if sv, ok := s[role]; ok && qv != sv {
+			out = append(out, fmt.Sprintf("%s:%s vs %s:%s", role, qv, role, sv))
+		}
+	}
+	return out
+}
+
+func digitRoleMap(discs []string) map[string]string {
+	out := map[string]string{}
+	for _, d := range discs {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if strings.HasPrefix(d, "no:") || strings.HasPrefix(d, "u:") {
+			parts := strings.SplitN(d, ":", 2)
+			if len(parts) == 2 && parts[1] != "" {
+				out[parts[0]] = parts[1]
+			}
+		}
+	}
+	return out
 }
 
 func parseChineseOrASCIINum(s string) int {

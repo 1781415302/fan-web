@@ -106,3 +106,55 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestRecallGroupingBilingualStableAndNamePreserved(t *testing.T) {
+	dir := filepath.FromSlash("anime/迷宫饭")
+	name := "迷宫饭 ／ Dungeon Meshi - 01.mkv"
+	groups := GroupFiles([]FileInput{
+		{Name: name, Dir: dir},
+		{Name: "迷宫饭 ／ Dungeon Meshi - 02.mkv", Dir: dir},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("want 1 group got %d: %v", len(groups), summarizeGroups(groups))
+	}
+	g := groups[0]
+	if len(g.Files) != 2 {
+		t.Fatalf("files=%d", len(g.Files))
+	}
+	if g.Files[0].Name != name {
+		t.Fatalf("Name mutated: %q", g.Files[0].Name)
+	}
+	var cn, en bool
+	for _, ti := range g.Query.Titles {
+		if ti.Source != SourceFile {
+			continue
+		}
+		if containsFold(ti.Text, "迷宫饭") {
+			cn = true
+		}
+		if containsFold(ti.Text, "Dungeon Meshi") {
+			en = true
+		}
+	}
+	if !cn || !en {
+		t.Fatalf("query titles missing bilingual fragments: %#v", g.Query.Titles)
+	}
+	// 调换顺序分组键稳定
+	groups2 := GroupFiles([]FileInput{
+		{Name: "迷宫饭 ／ Dungeon Meshi - 02.mkv", Dir: dir},
+		{Name: name, Dir: dir},
+	})
+	if groups2[0].Key != g.Key {
+		t.Fatalf("group key unstable: %q vs %q", g.Key, groups2[0].Key)
+	}
+}
+
+func TestRecallGroupingSurfaceCleanedPeriod(t *testing.T) {
+	groups := GroupFiles([]FileInput{
+		{Name: "Kimi no Na wa. [01].mkv", Dir: "m"},
+		{Name: "[Kimi no Na wa.][02].mkv", Dir: "m"},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("surface-cleaned titles should group together, got %d: %v", len(groups), summarizeGroups(groups))
+	}
+}
