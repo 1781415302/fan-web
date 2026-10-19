@@ -398,7 +398,14 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 		free = append(free, name)
 	}
 
-	renames, claimedNew, _ := proveEpisodeRenames(anime.FilePath, missing, free)
+	catalog := matching.Catalog{}
+	if s.matching != nil {
+		catalog = s.matching.Catalog()
+	}
+	renames, claimedNew, _, identityConflict := proveEpisodeRenames(anime.FilePath, missing, free, catalog)
+	if identityConflict {
+		return empty, fmt.Errorf("%w: 同号文件替换无法证明作品身份", ErrMatchReviewRequired)
+	}
 	for _, r := range renames {
 		old := existingByPath[r.From]
 		ep := old
@@ -593,18 +600,21 @@ func correctExistingEpNumber(anime models.Anime, ep models.Episode) int {
 	}
 }
 
-// proveEpisodeRenames 仅在「旧不在、新在、明确集号一致、季/类型无冲突、唯一一对一」时产生 rename。
-func proveEpisodeRenames(dir string, missing []models.Episode, free []string) (renames []database.EpisodeRename, claimedNew, claimedMissing map[string]bool) {
+// proveEpisodeRenames 仅在「旧不在、新在、明确集号一致、季/类型无冲突、唯一一对一、标题身份可证」时产生 rename。
+// 同号结构唯一配对但无法证明同一作品时 identityConflict=true，调用方应零写入并 Review。
+func proveEpisodeRenames(dir string, missing []models.Episode, free []string, catalog matching.Catalog) (renames []database.EpisodeRename, claimedNew, claimedMissing map[string]bool, identityConflict bool) {
 	claimedNew = map[string]bool{}
 	claimedMissing = map[string]bool{}
 	if len(missing) == 0 || len(free) == 0 {
-		return nil, claimedNew, claimedMissing
+		return nil, claimedNew, claimedMissing, false
 	}
 
 	type cand struct {
-		old models.Episode
-		neu string
-		num int
+		old   models.Episode
+		neu   string
+		num   int
+		evOld matching.FileEvidence
+		evNew matching.FileEvidence
 	}
 	var pairs []cand
 	for _, old := range missing {
@@ -622,7 +632,7 @@ func proveEpisodeRenames(dir string, missing []models.Episode, free []string) (r
 			if evidenceStructureConflict(oldEv, newEv) {
 				continue
 			}
-			pairs = append(pairs, cand{old: old, neu: neu, num: oldNum})
+			pairs = append(pairs, cand{old: old, neu: neu, num: oldNum, evOld: oldEv, evNew: newEv})
 		}
 	}
 
@@ -633,10 +643,22 @@ func proveEpisodeRenames(dir string, missing []models.Episode, free []string) (r
 		oldCount[p.old.FilePath]++
 		newCount[p.neu]++
 	}
+	var unique []cand
 	for _, p := range pairs {
 		if oldCount[p.old.FilePath] != 1 || newCount[p.neu] != 1 {
 			continue
 		}
+		unique = append(unique, p)
+	}
+
+	for _, p := range unique {
+		if !matching.FileEvidenceShareWork(p.evOld, p.evNew, catalog) {
+			// 同号唯一替换却无法证明作品身份 → 整次改名作废并上报冲突
+			return nil, map[string]bool{}, map[string]bool{}, true
+		}
+	}
+
+	for _, p := range unique {
 		if claimedMissing[p.old.FilePath] || claimedNew[p.neu] {
 			continue
 		}
@@ -651,7 +673,7 @@ func proveEpisodeRenames(dir string, missing []models.Episode, free []string) (r
 	sort.SliceStable(renames, func(i, j int) bool {
 		return renames[i].From < renames[j].From
 	})
-	return renames, claimedNew, claimedMissing
+	return renames, claimedNew, claimedMissing, false
 }
 
 func explicitSingleNumber(ev matching.FileEvidence) (int, bool) {

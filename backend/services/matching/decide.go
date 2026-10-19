@@ -152,7 +152,8 @@ func ConfirmTarget(q Query, ranked []Candidate, targetID int) Decision {
 
 func firstNonExcluded(cs []Candidate) *Candidate {
 	for i := range cs {
-		if len(cs[i].Blockers) == 0 {
+		// Missing 与 Blockers 均不可作为自动接受的次优竞争者（避免「无法解释季号」同分卡住胜者）
+		if len(cs[i].Blockers) == 0 && len(cs[i].Missing) == 0 {
 			return &cs[i]
 		}
 	}

@@ -15,8 +15,11 @@ type MatchingSession struct {
 	ctx      context.Context
 	provider matchingProvider
 
-	// 按 ID 合并的候选池：保留已校验 Detailed，不让后到的搜索覆盖完整详情。
+	// pool 为 Session 内共享的条目缓存（搜索/详情可复用）；保留已校验 Detailed。
 	pool map[int]matching.Subject
+	// active 为当前分组候选 ID 集合：仅本组实际召回 + 本次 bound/target。
+	// 其他查询缓存过的条目不得自动进入本组评分。
+	active map[int]struct{}
 }
 
 // BoundMatch 目录已绑定条目的快通道证据；存在 bound 绝不能绕过结构检查。
@@ -54,24 +57,33 @@ func emptyMatchResult() MatchResult {
 	}
 }
 
-// preferEligibleOrder 稳定地把无 Blockers 的候选移到前面，保留相对顺序；不改分数。
+// preferEligibleOrder 稳定地把可自动接受的候选移到前面，保留相对顺序；不改分数。
+// 优先：无 Blockers 且无 Missing；其次仅 Missing；最后带 Blockers。
+// 避免同分时 ID 升序把「无法解释季号」的候选排在可接受候选之前。
 func preferEligibleOrder(ranked []matching.Candidate) []matching.Candidate {
 	if len(ranked) < 2 {
 		return ranked
 	}
-	var ok, bad []matching.Candidate
+	var ok, soft, bad []matching.Candidate
 	for _, c := range ranked {
-		if len(c.Blockers) == 0 {
-			ok = append(ok, c)
-		} else {
+		switch {
+		case len(c.Blockers) > 0:
 			bad = append(bad, c)
+		case len(c.Missing) > 0:
+			soft = append(soft, c)
+		default:
+			ok = append(ok, c)
 		}
 	}
-	if len(ok) == 0 || len(bad) == 0 {
+	if len(ok) == 0 && len(soft) == 0 {
+		return ranked
+	}
+	if len(ok) == len(ranked) {
 		return ranked
 	}
 	out := make([]matching.Candidate, 0, len(ranked))
 	out = append(out, ok...)
+	out = append(out, soft...)
 	out = append(out, bad...)
 	return out
 }
@@ -92,6 +104,26 @@ func (s *MatchingSession) ensurePool() {
 	if s.pool == nil {
 		s.pool = make(map[int]matching.Subject)
 	}
+}
+
+func (s *MatchingSession) ensureActive() {
+	if s.active == nil {
+		s.active = make(map[int]struct{})
+	}
+}
+
+func (s *MatchingSession) resetActive() {
+	s.active = make(map[int]struct{})
+}
+
+// mergeSubjectActive 写入 Session 缓存，并纳入当前分组候选集合。
+func (s *MatchingSession) mergeSubjectActive(sub matching.Subject) {
+	s.mergeSubject(sub)
+	if sub.ID <= 0 {
+		return
+	}
+	s.ensureActive()
+	s.active[sub.ID] = struct{}{}
 }
 
 func (s *MatchingSession) catalog() matching.Catalog {
@@ -184,8 +216,12 @@ func mergeAliasesStable(a, b []string) []string {
 
 func (s *MatchingSession) poolSlice() []matching.Subject {
 	s.ensurePool()
-	ids := make([]int, 0, len(s.pool))
-	for id := range s.pool {
+	s.ensureActive()
+	ids := make([]int, 0, len(s.active))
+	for id := range s.active {
+		if _, ok := s.pool[id]; !ok {
+			continue
+		}
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
@@ -240,6 +276,7 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 	group = normalizeGroupMedia(group)
 	q := group.Query
 	catalog := s.catalog()
+	s.resetActive()
 
 	// —— 快通道：bound 仅为候选证据，绝不绕过结构检查 ——
 	if bound != nil && bound.UniqueDirectory && bound.Subject.ID > 0 && !forTarget {
@@ -250,8 +287,16 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 		if ok {
 			return fast, nil
 		}
-		// 不满足安全快通道时，仍把 bound 当作已知候选进入池（不豁免结构检查）
-		s.mergeSubject(bound.Subject)
+		// 快通道不适用：bound 仅作候选进入本组，不豁免结构检查；继续召回
+		s.mergeSubjectActive(bound.Subject)
+	}
+	if forTarget && targetID > 0 {
+		// 目标在详情补全前先占位进入本组候选
+		if sub, ok := s.pool[targetID]; ok {
+			s.mergeSubjectActive(sub)
+		} else {
+			s.mergeSubjectActive(matching.Subject{ID: targetID})
+		}
 	}
 
 	terms := matching.BuildQueries(q, catalog)
@@ -404,7 +449,7 @@ func (s *MatchingSession) tryFastPath(group matching.Group, bound BoundMatch) (M
 	q := group.Query
 	catalog := s.catalog()
 	sub := bound.Subject
-	s.mergeSubject(sub)
+	s.mergeSubjectActive(sub)
 
 	// 结构检查：用 Rank 对单候选评估 Blockers/Missing（与正式路径同一套规则）
 	ranked := matching.Rank(q, []matching.Subject{sub}, catalog, nil)
@@ -413,14 +458,8 @@ func (s *MatchingSession) tryFastPath(group matching.Group, bound BoundMatch) (M
 	}
 	c := ranked[0]
 	if len(c.Blockers) > 0 {
-		// 明确冲突（如 OVA vs TV）→ 不接受快通道；返回 Review，避免继续搜索也误用旧绑定
-		out.Decision = matching.Decision{
-			Code:       matching.Review,
-			Candidates: ranked,
-			Reason:     "绑定条目存在结构冲突，不能走快通道：" + strings.Join(c.Blockers, "；"),
-		}
-		out.Queries = []matching.QueryTerm{}
-		return out, true, nil
+		// 与旧绑定冲突：只能说明不能复用该绑定，不能判定整文件失败；退出快通道继续召回。
+		return out, false, nil
 	}
 	if len(c.Missing) > 0 {
 		// 缺证据：不能把空字段填成相容；退出快通道，进入搜索
@@ -535,7 +574,7 @@ func (s *MatchingSession) runQueries(q matching.Query, terms []matching.QueryTer
 		}
 		executed++
 		for _, sub := range res.Subjects {
-			s.mergeSubject(sub)
+			s.mergeSubjectActive(sub)
 		}
 		if term.Source == matching.SourceFile || term.Source == matching.SourceCatalog {
 			anyFileOrCanonical = true
@@ -559,8 +598,8 @@ func (s *MatchingSession) runQueries(q matching.Query, terms []matching.QueryTer
 			}
 		}
 		if q.Ordinal.Season > 0 {
-			// 池中若有候选能解释该季，视为季线索可解决（用于 retrieval 判定）
-			for _, sub := range s.pool {
+			// 仅看本组候选能否解释该季（不得用其他组缓存条目）
+			for _, sub := range s.poolSlice() {
 				ranked := matching.Rank(q, []matching.Subject{sub}, catalog, nil)
 				if len(ranked) == 1 && len(ranked[0].Missing) == 0 && len(ranked[0].Blockers) == 0 && ranked[0].NameScore >= sessionNameScoreProbeMin {
 					seasonResolved = true
@@ -571,7 +610,7 @@ func (s *MatchingSession) runQueries(q matching.Query, terms []matching.QueryTer
 		}
 
 		// 找到足够候选且语言已覆盖时可提前结束
-		if len(s.pool) > 0 && langsAllCovered(neededLangs, coveredLangs) && (q.Ordinal.Season <= 0 || seasonResolved) {
+		if len(s.active) > 0 && langsAllCovered(neededLangs, coveredLangs) && (q.Ordinal.Season <= 0 || seasonResolved) {
 			// 仍须保证至少执行过一条有效文件/canonical 查询
 			if anyFileOrCanonical {
 				break

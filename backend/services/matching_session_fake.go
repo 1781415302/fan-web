@@ -14,6 +14,9 @@ type fakeSessionProvider struct {
 	detail   map[int]matching.Subject
 	chapters map[int][]matching.Chapter
 
+	// exactOnly 为 true 时禁用子串兜底，测试必须显式注册查询词。
+	exactOnly bool
+
 	searchCalls []string
 	detailCalls []int
 }
@@ -31,7 +34,10 @@ func (f *fakeSessionProvider) Search(_ context.Context, kw string) (matchingSear
 	if res, ok := f.search[kw]; ok {
 		return cloneSearchResult(res), nil
 	}
-	// 子串兜底：便于不同查询词命中同一夹具
+	if f.exactOnly {
+		return matchingSearchResult{Subjects: []matching.Subject{}, Source: "v0"}, nil
+	}
+	// 子串兜底：便于不同查询词命中同一夹具（默认开启；P2b 等确定性测试应 exactOnly）
 	for k, res := range f.search {
 		if strings.Contains(kw, k) || strings.Contains(k, kw) {
 			return cloneSearchResult(res), nil
