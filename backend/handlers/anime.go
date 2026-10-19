@@ -20,6 +20,7 @@ import (
 	"fan-web/middleware"
 	"fan-web/models"
 	"fan-web/services"
+	"fan-web/services/matching"
 	"fan-web/utils"
 )
 
@@ -381,6 +382,15 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 		utils.Error(c, utils.CodeInternal, "查询番剧失败")
 		return
 	}
+	if h.scanner.MatchEngine() == matching.EngineV2 {
+		h.scanV2(c, anime)
+		return
+	}
+	h.scanLegacy(c, anime)
+}
+
+// scanLegacy 保持原 Scan+SyncEpisodes+整目录清收件箱语义。
+func (h *AnimeHandler) scanLegacy(c *gin.Context, anime *models.Anime) {
 	episodes, err := h.scanner.Scan(anime.FilePath)
 	if err != nil {
 		log.Printf("[Anime] 扫描目录 %q 失败: %v", anime.FilePath, err)
@@ -388,7 +398,7 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 		return
 	}
 
-	existingEpisodes, err := database.ListEpisodesByAnimeID(id)
+	existingEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "读取已有集数失败")
 		return
@@ -398,12 +408,12 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 		return
 	}
 
-	if err := database.SyncEpisodes(id, episodes); err != nil {
-		log.Printf("[Anime] 保存番剧 %d 集数失败: %v", id, err)
+	if err := database.SyncEpisodes(anime.ID, episodes); err != nil {
+		log.Printf("[Anime] 保存番剧 %d 集数失败: %v", anime.ID, err)
 		utils.Error(c, utils.CodeInternal, "保存集数失败")
 		return
 	}
-	storedEpisodes, err := database.ListEpisodesByAnimeID(id)
+	storedEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "读取已保存集数失败")
 		return
@@ -414,6 +424,85 @@ func (h *AnimeHandler) Scan(c *gin.Context) {
 		}
 	}
 	utils.Success(c, gin.H{"scanned": len(storedEpisodes), "episodes": storedEpisodes})
+}
+
+// scanV2：ScanForAnime → ReconcileEpisodes(RemoveMissing=true) → 按已保存文件精确清收件箱。
+func (h *AnimeHandler) scanV2(c *gin.Context, anime *models.Anime) {
+	existing, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "读取已有集数失败")
+		return
+	}
+	dirPeers, err := database.ListAnimesByFilePath(anime.FilePath)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "读取同目录番剧失败")
+		return
+	}
+	peers := make([]models.Anime, 0, len(dirPeers))
+	for _, peer := range dirPeers {
+		if peer.ID != anime.ID {
+			peers = append(peers, peer)
+		}
+	}
+
+	expectedAnime := *anime
+	inv, err := h.scanner.ScanForAnime(*anime, existing, peers)
+	if err != nil {
+		log.Printf("[Anime] v2 扫描目录 %q 失败: %v", anime.FilePath, err)
+		utils.Error(c, utils.CodeInternal, scanV2ErrorMessage(err))
+		return
+	}
+
+	if err := database.ReconcileEpisodes(anime.ID, database.EpisodeReconcileInput{
+		ExpectedAnime: expectedAnime,
+		Expected:      existing,
+		Desired:       inv.Desired,
+		PresentFiles:  inv.PresentFiles,
+		Renames:       inv.Renames,
+		RemoveMissing: true,
+	}); err != nil {
+		log.Printf("[Anime] v2 保存番剧 %d 集数失败: %v", anime.ID, err)
+		utils.Error(c, utils.CodeInternal, scanV2ErrorMessage(err))
+		return
+	}
+
+	storedEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		utils.Error(c, utils.CodeInternal, "读取已保存集数失败")
+		return
+	}
+	names := make([]string, 0, len(storedEpisodes))
+	for _, ep := range storedEpisodes {
+		if strings.TrimSpace(ep.FilePath) == "" {
+			continue
+		}
+		names = append(names, ep.FilePath)
+	}
+	if len(names) > 0 {
+		if err := database.DeleteUnidentifiedFiles(anime.FilePath, names); err != nil {
+			log.Printf("[Anime] 精确清除目录 %q 未识别失败: %v", anime.FilePath, err)
+		}
+	}
+	utils.Success(c, gin.H{"scanned": len(storedEpisodes), "episodes": storedEpisodes})
+}
+
+func scanV2ErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, services.ErrMatchReviewRequired):
+		msg := strings.TrimSpace(err.Error())
+		if msg == "" || msg == services.ErrMatchReviewRequired.Error() {
+			return "匹配需要人工确认，未写入任何变更"
+		}
+		return msg + "（未写入任何变更）"
+	case errors.Is(err, services.ErrMatchUpstream):
+		return "匹配上游不可用，未写入任何变更"
+	case errors.Is(err, database.ErrEpisodeSnapshotChanged):
+		return "番剧或剧集快照已变更，请重试（未写入任何变更）"
+	case errors.Is(err, database.ErrEpisodeIdentityConflict):
+		return "剧集文件身份冲突，未写入任何变更"
+	default:
+		return "扫描番剧目录失败"
+	}
 }
 
 func (h *AnimeHandler) Episodes(c *gin.Context) {

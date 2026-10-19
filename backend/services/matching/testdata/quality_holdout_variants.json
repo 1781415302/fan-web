@@ -1,0 +1,787 @@
+{
+  "version": 1,
+  "frozen": true,
+  "note": "C.4 holdout variants from C.3 accepted positives; frozen for final verification only — do not repeatedly tune scores against this set.",
+  "variants": [
+    {
+      "id": "xian-gm-s4__fw_brackets_digits",
+      "base_id": "xian-gm-s4",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第４季］［Xian Wang De Ri Chang Sheng Huo Ⅳ］［２０２３］［１２］［AVC］［GB］［１０８０P］.mp４",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第４季］［Xian Wang De Ri Chang Sheng Huo Ⅳ］［２０２３］［１２］［AVC］［GB］［１０８０P］.mp４",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s4__meta_reorder_crc",
+      "base_id": "xian-gm-s4",
+      "variant": "meta_reorder_crc",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][1080P][GB][AVC].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][1080P][GB][AVC].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s4__example_subs",
+      "base_id": "xian-gm-s4",
+      "variant": "example_subs",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s3__fw_brackets_digits",
+      "base_id": "xian-gm-s3",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第３季］［Xian Wang De Ri Chang Sheng Huo Ⅲ］［２０２２］［０９］［AVC］［GB］［１０８０P］.mp４",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第３季］［Xian Wang De Ri Chang Sheng Huo Ⅲ］［２０２２］［０９］［AVC］［GB］［１０８０P］.mp４",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s3__meta_reorder_crc",
+      "base_id": "xian-gm-s3",
+      "variant": "meta_reorder_crc",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][1080P][GB][AVC].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][1080P][GB][AVC].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s3__example_subs",
+      "base_id": "xian-gm-s3",
+      "variant": "example_subs",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-en-s5__fw_brackets_digits",
+      "base_id": "xian-en-s5",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "catalog",
+      "files": [
+        {
+          "name": "［Dynamis One］ The Daily Life of the Immortal King ５ - ０３ （CR １９２０x１０８０ AVC AAC MKV） ［C４１F９AE１］.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［Dynamis One］ The Daily Life of the Immortal King ５ - ０３ （CR １９２０x１０８０ AVC AAC MKV） ［C４１F９AE１］.mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-en-s5__meta_reorder_crc",
+      "base_id": "xian-en-s5",
+      "variant": "meta_reorder_crc",
+      "bucket": "catalog",
+      "files": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [0636FF7C].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [0636FF7C].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-en-s5__example_subs",
+      "base_id": "xian-en-s5",
+      "variant": "example_subs",
+      "bucket": "catalog",
+      "files": [
+        {
+          "name": "[Example-Subs] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons__fw_brackets_digits",
+      "base_id": "xian-three-seasons",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第４季］［Xian Wang De Ri Chang Sheng Huo Ⅳ］［２０２３］［１２］［AVC］［GB］［１０８０P］.mp４",
+          "dir": "混放目录"
+        },
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第３季］［Xian Wang De Ri Chang Sheng Huo Ⅲ］［２０２２］［０９］［AVC］［GB］［１０８０P］.mp４",
+          "dir": "混放目录"
+        },
+        {
+          "name": "［Dynamis One］ The Daily Life of the Immortal King ５ - ０３ （CR １９２０x１０８０ AVC AAC MKV） ［C４１F９AE１］.mkv",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第４季］［Xian Wang De Ri Chang Sheng Huo Ⅳ］［２０２３］［１２］［AVC］［GB］［１０８０P］.mp４",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        },
+        {
+          "name": "［GM-Team］［国漫］［仙王的日常生活 第３季］［Xian Wang De Ri Chang Sheng Huo Ⅲ］［２０２２］［０９］［AVC］［GB］［１０８０P］.mp４",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "［Dynamis One］ The Daily Life of the Immortal King ５ - ０３ （CR １９２０x１０８０ AVC AAC MKV） ［C４１F９AE１］.mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons__meta_reorder_crc",
+      "base_id": "xian-three-seasons",
+      "variant": "meta_reorder_crc",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][1080P][GB][AVC].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][1080P][GB][AVC].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [0636FF7C].mkv",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][1080P][GB][AVC].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][1080P][GB][AVC].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [0636FF7C].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons__example_subs",
+      "base_id": "xian-three-seasons",
+      "variant": "example_subs",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[Example-Subs] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Example-Subs][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Example-Subs] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons__file_order_rev",
+      "base_id": "xian-three-seasons",
+      "variant": "file_order_reverse",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "remake-two-years__fw_brackets_digits",
+      "base_id": "remake-two-years",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "year",
+      "files": [
+        {
+          "name": "［Sub］ Hunter x Hunter （１９９９） - ０１.mkv",
+          "dir": ""
+        },
+        {
+          "name": "［Sub］ Hunter x Hunter （２０１１） - ０２.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［Sub］ Hunter x Hunter （１９９９） - ０１.mkv",
+          "subject_id": 910001,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "［Sub］ Hunter x Hunter （２０１１） - ０２.mkv",
+          "subject_id": 910002,
+          "stored_number": 2,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "remake-two-years__example_subs",
+      "base_id": "remake-two-years",
+      "variant": "example_subs",
+      "bucket": "year",
+      "files": [
+        {
+          "name": "[Example-Subs] Hunter x Hunter (1999) - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[Example-Subs] Hunter x Hunter (2011) - 02.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] Hunter x Hunter (1999) - 01.mkv",
+          "subject_id": 910001,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Example-Subs] Hunter x Hunter (2011) - 02.mkv",
+          "subject_id": 910002,
+          "stored_number": 2,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "remake-two-years__file_order_rev",
+      "base_id": "remake-two-years",
+      "variant": "file_order_reverse",
+      "bucket": "year",
+      "files": [
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "subject_id": 910002,
+          "stored_number": 2,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "subject_id": 910001,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "scene-s2__fw_brackets_digits",
+      "base_id": "scene-s2",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "scene",
+      "files": [
+        {
+          "name": "Star.River.S０２E０３.１０８０p.WEB-DL.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "Star.River.S０２E０３.１０８０p.WEB-DL.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "chinese-season__fw_brackets_digits",
+      "base_id": "chinese-season",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "season",
+      "files": [
+        {
+          "name": "［字幕组］ 星河物语 第２季 - ０３.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［字幕组］ 星河物语 第２季 - ０３.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "chinese-season__example_subs",
+      "base_id": "chinese-season",
+      "variant": "example_subs",
+      "bucket": "season",
+      "files": [
+        {
+          "name": "[Example-Subs] 星河物语 第2季 - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] 星河物语 第2季 - 03.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "absolute__fw_brackets_digits",
+      "base_id": "absolute",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "absolute",
+      "files": [
+        {
+          "name": "续章物语 第二季 - ２５.mkv",
+          "dir": ""
+        },
+        {
+          "name": "续章物语 第二季 - ２６.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - ２５.mkv",
+          "subject_id": 910020,
+          "stored_number": 25,
+          "mode": "accepted"
+        },
+        {
+          "name": "续章物语 第二季 - ２６.mkv",
+          "subject_id": 910020,
+          "stored_number": 26,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "absolute__file_order_rev",
+      "base_id": "absolute",
+      "variant": "file_order_reverse",
+      "bucket": "absolute",
+      "files": [
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "dir": ""
+        },
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "subject_id": 910020,
+          "stored_number": 26,
+          "mode": "accepted"
+        },
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "subject_id": 910020,
+          "stored_number": 25,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "long-number__fw_brackets_digits",
+      "base_id": "long-number",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "long",
+      "files": [
+        {
+          "name": "［Sub］ Long Tale - １１００ ［１０８０p］.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［Sub］ Long Tale - １１００ ［１０８０p］.mkv",
+          "subject_id": 910030,
+          "stored_number": 1100,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "long-number__example_subs",
+      "base_id": "long-number",
+      "variant": "example_subs",
+      "bucket": "long",
+      "files": [
+        {
+          "name": "[Example-Subs] Long Tale - 1100 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] Long Tale - 1100 [1080p].mkv",
+          "subject_id": 910030,
+          "stored_number": 1100,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "number-title__fw_brackets_digits",
+      "base_id": "number-title",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "［Sub］ ８６ - ０５ ［１０８０p］.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［Sub］ ８６ - ０５ ［１０８０p］.mkv",
+          "subject_id": 910070,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "number-title__example_subs",
+      "base_id": "number-title",
+      "variant": "example_subs",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Example-Subs] 86 - 05 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] 86 - 05 [1080p].mkv",
+          "subject_id": 910070,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "ranma-correct__fw_brackets_digits",
+      "base_id": "ranma-correct",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "［Sub］ Ranma１-２ （２０２４） - ０３.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［Sub］ Ranma１-２ （２０２４） - ０３.mkv",
+          "subject_id": 910080,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "ranma-correct__example_subs",
+      "base_id": "ranma-correct",
+      "variant": "example_subs",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Example-Subs] Ranma1-2 (2024) - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Example-Subs] Ranma1-2 (2024) - 03.mkv",
+          "subject_id": 910080,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "movie-series-mix__fw_brackets_digits",
+      "base_id": "movie-series-mix",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "［TV］ 某部作品 - ０１.mkv",
+          "dir": ""
+        },
+        {
+          "name": "［剧场版］ 某部作品 ［１０８０p］.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "［TV］ 某部作品 - ０１.mkv",
+          "subject_id": 910040,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "［剧场版］ 某部作品 ［１０８０p］.mkv",
+          "subject_id": 910041,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "movie-series-mix__example_subs",
+      "base_id": "movie-series-mix",
+      "variant": "example_subs",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[剧场版] 某部作品 [Example-Subs].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "subject_id": 910040,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[剧场版] 某部作品 [Example-Subs].mkv",
+          "subject_id": 910041,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "movie-series-mix__file_order_rev",
+      "base_id": "movie-series-mix",
+      "variant": "file_order_reverse",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "dir": ""
+        },
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "subject_id": 910041,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "subject_id": 910040,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "directory-only__fw_brackets_digits",
+      "base_id": "directory-only",
+      "variant": "fullwidth_brackets_digits",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "０５.mkv",
+          "dir": "Ordinary Show"
+        }
+      ],
+      "expected": [
+        {
+          "name": "０５.mkv",
+          "subject_id": 910040,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    }
+  ]
+}

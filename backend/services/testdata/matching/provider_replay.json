@@ -1,0 +1,634 @@
+{
+  "version": 1,
+  "provenance": "synthetic_protocol_fixture; xian-wang subject IDs/names/years verified",
+  "subjects": [
+    {
+      "id": 358742,
+      "name": "仙王的日常生活 第三季",
+      "name_cn": "仙王的日常生活 第三季",
+      "aliases": [],
+      "year": 2022,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "WEB"
+    },
+    {
+      "id": 405214,
+      "name": "仙王的日常生活 第四季",
+      "name_cn": "仙王的日常生活 第四季",
+      "aliases": [],
+      "year": 2023,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "WEB"
+    },
+    {
+      "id": 529875,
+      "name": "仙王的日常生活 第五季",
+      "name_cn": "仙王的日常生活 第五季",
+      "aliases": [],
+      "year": 2025,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "WEB"
+    },
+    {
+      "id": 910001,
+      "name": "Hunter x Hunter",
+      "name_cn": "Hunter x Hunter",
+      "aliases": [],
+      "year": 1999,
+      "media": "series",
+      "episode_count": 62,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910002,
+      "name": "Hunter x Hunter",
+      "name_cn": "Hunter x Hunter",
+      "aliases": [],
+      "year": 2011,
+      "media": "series",
+      "episode_count": 148,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910010,
+      "name": "星河物语 第二季",
+      "name_cn": "星河物语 第二季",
+      "aliases": [
+        "Star River Season 2"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910020,
+      "name": "续章物语 第二季",
+      "name_cn": "续章物语 第二季",
+      "aliases": [
+        "Sequel Tale Season 2"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 24,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910030,
+      "name": "长篇物语",
+      "name_cn": "长篇物语",
+      "aliases": [
+        "Long Tale"
+      ],
+      "year": 2000,
+      "media": "series",
+      "episode_count": 1200,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910040,
+      "name": "某部作品",
+      "name_cn": "某部作品",
+      "aliases": [
+        "Ordinary Show"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910041,
+      "name": "某部作品 剧场版",
+      "name_cn": "某部作品 剧场版",
+      "aliases": [],
+      "year": 2024,
+      "media": "movie",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "剧场版"
+    },
+    {
+      "id": 910042,
+      "name": "某部作品 OVA",
+      "name_cn": "某部作品 OVA",
+      "aliases": [],
+      "year": 2024,
+      "media": "ova",
+      "episode_count": 2,
+      "summary": "",
+      "cover": "",
+      "platform": "OVA"
+    },
+    {
+      "id": 910050,
+      "name": "Golden Kamuy",
+      "name_cn": "Golden Kamuy",
+      "aliases": [],
+      "year": 2018,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910051,
+      "name": "Golden Kamuy 第二季",
+      "name_cn": "Golden Kamuy 第二季",
+      "aliases": [
+        "Golden Kamuy"
+      ],
+      "year": 2018,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910060,
+      "name": "K-ON!",
+      "name_cn": "K-ON!",
+      "aliases": [],
+      "year": 2009,
+      "media": "series",
+      "episode_count": 13,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910061,
+      "name": "K-ON!!",
+      "name_cn": "K-ON!!",
+      "aliases": [],
+      "year": 2010,
+      "media": "series",
+      "episode_count": 26,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910070,
+      "name": "86",
+      "name_cn": "86",
+      "aliases": [],
+      "year": 2021,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910080,
+      "name": "Ranma1/2 (2024)",
+      "name_cn": "Ranma1/2 (2024)",
+      "aliases": [],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910090,
+      "name": "动画甲",
+      "name_cn": "动画甲",
+      "aliases": [
+        "Alpha Animation"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910091,
+      "name": "动画乙",
+      "name_cn": "动画乙",
+      "aliases": [
+        "Beta Animation"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910100,
+      "name": "片段甲",
+      "name_cn": "片段甲",
+      "aliases": [],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 910101,
+      "name": "片段乙",
+      "name_cn": "片段乙",
+      "aliases": [
+        "Beta Fragment"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    }
+  ],
+  "searches": [
+    {
+      "terms": [
+        "仙王的日常生活",
+        "仙王的日常生活 第3季",
+        "仙王的日常生活 第三季",
+        "仙王的日常生活 第4季",
+        "仙王的日常生活 第四季",
+        "仙王的日常生活 第5季",
+        "仙王的日常生活 第五季"
+      ],
+      "ids": [
+        358742,
+        405214,
+        529875
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "The Daily Life of the Immortal King",
+        "The Daily Life of the Immortal King 5",
+        "Xian Wang De Ri Chang Sheng Huo"
+      ],
+      "ids": [],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Hunter x Hunter",
+        "Hunter x Hunter (1999)",
+        "Hunter x Hunter (2011)"
+      ],
+      "ids": [
+        910001,
+        910002
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "星河物语",
+        "星河物语 第二季",
+        "Star River",
+        "Star River Season 2",
+        "Star River S2"
+      ],
+      "ids": [
+        910010
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "续章物语",
+        "续章物语 第二季",
+        "Sequel Tale",
+        "Sequel Tale Season 2"
+      ],
+      "ids": [
+        910020
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "长篇物语",
+        "Long Tale"
+      ],
+      "ids": [
+        910030
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "某部作品",
+        "某部作品 剧场版",
+        "某部作品 Movie",
+        "某部作品 OVA",
+        "Ordinary Show"
+      ],
+      "ids": [
+        910040,
+        910041,
+        910042
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Golden Kamuy"
+      ],
+      "ids": [
+        910050,
+        910051
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "K-ON!",
+        "K-ON!!"
+      ],
+      "ids": [
+        910060,
+        910061
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "86"
+      ],
+      "ids": [
+        910070
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Ranma1/2",
+        "Ranma1⁄2",
+        "Ranma1 2"
+      ],
+      "ids": [
+        910080
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "动画甲",
+        "Alpha Animation"
+      ],
+      "ids": [
+        910090
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "动画乙",
+        "Beta Animation"
+      ],
+      "ids": [
+        910091
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "片段甲"
+      ],
+      "ids": [
+        910100
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Beta Fragment"
+      ],
+      "ids": [
+        910101
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "片段甲 ／ Beta Fragment",
+        "片段甲 / Beta Fragment"
+      ],
+      "ids": [
+        910100,
+        910101
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Completely Unknown",
+        "Completely Unknown Series",
+        "Unknown Title"
+      ],
+      "ids": [],
+      "saturated": false
+    }
+  ],
+  "chapters": [
+    {
+      "subject_id": 358742,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 405214,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 529875,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910001,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 62
+      }
+    },
+    {
+      "subject_id": 910002,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 148
+      }
+    },
+    {
+      "subject_id": 910010,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910020,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 25,
+        "count": 24
+      }
+    },
+    {
+      "subject_id": 910030,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1200
+      }
+    },
+    {
+      "subject_id": 910040,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910041,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1
+      }
+    },
+    {
+      "subject_id": 910042,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 2
+      }
+    },
+    {
+      "subject_id": 910050,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910051,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910060,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 13
+      }
+    },
+    {
+      "subject_id": 910061,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 26
+      }
+    },
+    {
+      "subject_id": 910070,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910080,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910090,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910091,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910100,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 910101,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    }
+  ],
+  "unknown_query": "fixture_error"
+}

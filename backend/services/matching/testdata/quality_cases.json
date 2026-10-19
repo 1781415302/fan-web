@@ -1,0 +1,479 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "xian-gm-s4",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-gm-s3",
+      "bucket": "chinese_blocks",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-en-s5",
+      "bucket": "catalog",
+      "files": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "xian-three-seasons",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "dir": "混放目录"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "dir": "混放目录"
+        }
+      ],
+      "expected": [
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第4季][Xian Wang De Ri Chang Sheng Huo Ⅳ][2023][12][AVC][GB][1080P].mp4",
+          "subject_id": 405214,
+          "stored_number": 12,
+          "mode": "accepted"
+        },
+        {
+          "name": "[GM-Team][国漫][仙王的日常生活 第3季][Xian Wang De Ri Chang Sheng Huo Ⅲ][2022][09][AVC][GB][1080P].mp4",
+          "subject_id": 358742,
+          "stored_number": 9,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Dynamis One] The Daily Life of the Immortal King 5 - 03 (CR 1920x1080 AVC AAC MKV) [C41F9AE1].mkv",
+          "subject_id": 529875,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "remake-two-years",
+      "bucket": "year",
+      "files": [
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Hunter x Hunter (1999) - 01.mkv",
+          "subject_id": 910001,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[Sub] Hunter x Hunter (2011) - 02.mkv",
+          "subject_id": 910002,
+          "stored_number": 2,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "scene-s2",
+      "bucket": "scene",
+      "files": [
+        {
+          "name": "Star.River.S02E03.1080p.WEB-DL.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "Star.River.S02E03.1080p.WEB-DL.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "chinese-season",
+      "bucket": "season",
+      "files": [
+        {
+          "name": "[字幕组] 星河物语 第2季 - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[字幕组] 星河物语 第2季 - 03.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "absolute",
+      "bucket": "absolute",
+      "files": [
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "dir": ""
+        },
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - 25.mkv",
+          "subject_id": 910020,
+          "stored_number": 25,
+          "mode": "accepted"
+        },
+        {
+          "name": "续章物语 第二季 - 26.mkv",
+          "subject_id": 910020,
+          "stored_number": 26,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "long-number",
+      "bucket": "long",
+      "files": [
+        {
+          "name": "[Sub] Long Tale - 1100 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Long Tale - 1100 [1080p].mkv",
+          "subject_id": 910030,
+          "stored_number": 1100,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "number-title",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Sub] 86 - 05 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] 86 - 05 [1080p].mkv",
+          "subject_id": 910070,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "ranma-correct",
+      "bucket": "title_number",
+      "files": [
+        {
+          "name": "[Sub] Ranma1-2 (2024) - 03.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Ranma1-2 (2024) - 03.mkv",
+          "subject_id": 910080,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "movie-series-mix",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[TV] 某部作品 - 01.mkv",
+          "subject_id": 910040,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[剧场版] 某部作品 [1080p].mkv",
+          "subject_id": 910041,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "directory-only",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "05.mkv",
+          "dir": "Ordinary Show"
+        }
+      ],
+      "expected": [
+        {
+          "name": "05.mkv",
+          "subject_id": 910040,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "directory-not-identity",
+      "bucket": "negative",
+      "files": [
+        {
+          "name": "Unknown Title - 05.mkv",
+          "dir": "某部作品"
+        }
+      ],
+      "expected": [
+        {
+          "name": "Unknown Title - 05.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "no_candidates"
+        }
+      ]
+    },
+    {
+      "id": "unknown",
+      "bucket": "negative",
+      "files": [
+        {
+          "name": "[Sub] Completely Unknown Series - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Completely Unknown Series - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "no_candidates"
+        }
+      ]
+    },
+    {
+      "id": "season-ambiguity",
+      "bucket": "ambiguity",
+      "files": [
+        {
+          "name": "Golden Kamuy - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "Golden Kamuy - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "fragment-conflict",
+      "bucket": "ambiguity",
+      "files": [
+        {
+          "name": "片段甲 ／ Beta Fragment - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "片段甲 ／ Beta Fragment - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "range",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 - 01-02.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 - 01-02.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "fraction",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 - 12.5.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 - 12.5.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "special",
+      "bucket": "unsupported",
+      "files": [
+        {
+          "name": "某部作品 第0话.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "某部作品 第0话.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "cross-language-chapter-duplicate",
+      "bucket": "mixed",
+      "files": [
+        {
+          "name": "续章物语 第二季 - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Sequel Tale Season 2 - 25.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "续章物语 第二季 - 01.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        },
+        {
+          "name": "Sequel Tale Season 2 - 25.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "ordinal-conflict",
+      "bucket": "conflict",
+      "files": [
+        {
+          "name": "[星河物语 第2季][Star River III][03].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[星河物语 第2季][Star River III][03].mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "year-conflict",
+      "bucket": "conflict",
+      "files": [
+        {
+          "name": "[Hunter x Hunter][1999][2011][01].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Hunter x Hunter][1999][2011][01].mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    }
+  ]
+}

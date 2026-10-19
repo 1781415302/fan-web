@@ -157,3 +157,65 @@ func TestListUnidentifiedOverflowPageIsEmpty(t *testing.T) {
 		t.Fatalf("overflow page should be empty with real total, got total=%d len=%d", total, len(items))
 	}
 }
+
+func TestDeleteUnidentifiedFilesOnlyListedNames(t *testing.T) {
+	newUnidentifiedTestDB(t)
+
+	if err := ReplaceUnidentified([]models.UnidentifiedFile{
+		{FilePath: "Show", FileName: "01.mkv", Reason: "r"},
+		{FilePath: "Show", FileName: "02.mkv", Reason: "r"},
+		{FilePath: "Show", FileName: "03.mkv", Reason: "r"},
+		{FilePath: "Other", FileName: "01.mkv", Reason: "r"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteUnidentifiedFiles("Show", []string{"01.mkv", "03.mkv"}); err != nil {
+		t.Fatal(err)
+	}
+	items, total, err := ListUnidentified(1, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("want 2 remaining, got %d items=%#v", total, items)
+	}
+	seen := map[string]bool{}
+	for _, item := range items {
+		seen[item.FilePath+"/"+item.FileName] = true
+	}
+	if !seen["Show/02.mkv"] || !seen["Other/01.mkv"] {
+		t.Fatalf("should keep Show/02 and Other/01, got %#v", items)
+	}
+	if seen["Show/01.mkv"] || seen["Show/03.mkv"] {
+		t.Fatalf("listed names should be deleted, got %#v", items)
+	}
+}
+
+func TestDeleteUnidentifiedFilesEmptyNamesNoop(t *testing.T) {
+	newUnidentifiedTestDB(t)
+	if err := ReplaceUnidentified([]models.UnidentifiedFile{
+		{FilePath: "Show", FileName: "01.mkv", Reason: "r"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteUnidentifiedFiles("Show", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteUnidentifiedFiles("Show", []string{}); err != nil {
+		t.Fatal(err)
+	}
+	_, total, err := ListUnidentified(1, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("empty names must be noop, got total=%d", total)
+	}
+}
+
+func TestDeleteUnidentifiedFilesRejectsEmptyName(t *testing.T) {
+	newUnidentifiedTestDB(t)
+	if err := DeleteUnidentifiedFiles("Show", []string{"01.mkv", " "}); err == nil {
+		t.Fatal("expected error for blank file name")
+	}
+}
