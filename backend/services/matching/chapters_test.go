@@ -1,6 +1,7 @@
 package matching
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -215,5 +216,98 @@ func TestChaptersDuplicateStoredNumberInGroup(t *testing.T) {
 	d := InterpretChapters(files, subject, nil, true)
 	if d.State != ChapterConflict {
 		t.Fatalf("dup StoredNumber: %s %v", d.State, d.Rejected)
+	}
+}
+
+func TestChaptersIsolateFractionKeepsNormalBindings(t *testing.T) {
+	files := make([]FileEvidence, 0, 13)
+	for i := 1; i <= 12; i++ {
+		files = append(files, FileEvidence{
+			Name:    "Review Show - " + fmt.Sprintf("%02d", i) + ".mkv",
+			Episode: EpisodeToken{Kind: NumberSingle, First: i, Last: i, Explicit: true},
+		})
+	}
+	files = append(files, FileEvidence{
+		Name:    "Review Show - 06.5.mkv",
+		Episode: EpisodeToken{Kind: NumberFraction, Raw: "06.5", Explicit: true},
+	})
+	subject := Subject{ID: 1, Name: "Review Show", EpisodeCount: 12, Media: KindSeries, Detailed: true}
+	chapters := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chapters = append(chapters, Chapter{ID: 100 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("normal files must stay Confirmed, got %s rejected=%v bindings=%d", d.State, d.Rejected, len(d.Bindings))
+	}
+	if len(d.Bindings) != 12 {
+		t.Fatalf("want 12 bindings, got %d", len(d.Bindings))
+	}
+	if _, ok := d.Rejected["Review Show - 06.5.mkv"]; !ok {
+		t.Fatalf("fraction must be rejected: %v", d.Rejected)
+	}
+}
+
+func TestChaptersIsolateOutOfRangeKeepsNormalBindings(t *testing.T) {
+	files := make([]FileEvidence, 0, 13)
+	for i := 1; i <= 12; i++ {
+		files = append(files, FileEvidence{
+			Name:    "Review Show - " + fmt.Sprintf("%02d", i) + ".mkv",
+			Episode: EpisodeToken{Kind: NumberSingle, First: i, Last: i, Explicit: true},
+		})
+	}
+	files = append(files, FileEvidence{
+		Name:    "Review Show - 13.mkv",
+		Episode: EpisodeToken{Kind: NumberSingle, First: 13, Last: 13, Explicit: true},
+	})
+	subject := Subject{ID: 1, Name: "Review Show", EpisodeCount: 12, Media: KindSeries, Detailed: true}
+	chapters := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chapters = append(chapters, Chapter{ID: 200 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("got %s rejected=%v", d.State, d.Rejected)
+	}
+	if len(d.Bindings) != 12 {
+		t.Fatalf("bindings=%d", len(d.Bindings))
+	}
+	if _, ok := d.Rejected["Review Show - 13.mkv"]; !ok {
+		t.Fatalf("ep13 must be rejected: %v", d.Rejected)
+	}
+}
+
+func TestChaptersIsolateDuplicateVersionKeepsOthers(t *testing.T) {
+	files := make([]FileEvidence, 0, 13)
+	for i := 1; i <= 12; i++ {
+		if i == 5 {
+			continue
+		}
+		files = append(files, FileEvidence{
+			Name:    "Review Show - " + fmt.Sprintf("%02d", i) + ".mkv",
+			Episode: EpisodeToken{Kind: NumberSingle, First: i, Last: i, Explicit: true},
+		})
+	}
+	files = append(files,
+		FileEvidence{Name: "Review Show - 05.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Explicit: true}},
+		FileEvidence{Name: "Review Show - 05v2.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Raw: "05", Explicit: true}},
+	)
+	subject := Subject{ID: 1, Name: "Review Show", EpisodeCount: 12, Media: KindSeries, Detailed: true}
+	chapters := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chapters = append(chapters, Chapter{ID: 300 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("got %s rejected=%v bindings=%d", d.State, d.Rejected, len(d.Bindings))
+	}
+	if len(d.Bindings) != 11 {
+		t.Fatalf("want 11 bindings (exclude both 05 versions), got %d %#v", len(d.Bindings), d.Bindings)
+	}
+	if _, ok := d.Rejected["Review Show - 05.mkv"]; !ok {
+		t.Fatalf("05 must be rejected: %v", d.Rejected)
+	}
+	if _, ok := d.Rejected["Review Show - 05v2.mkv"]; !ok {
+		t.Fatalf("05v2 must be rejected: %v", d.Rejected)
 	}
 }

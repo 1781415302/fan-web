@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -20,6 +21,8 @@ type MatchingSession struct {
 	// active 为当前分组候选 ID 集合：仅本组实际召回 + 本次 bound/target。
 	// 其他查询缓存过的条目不得自动进入本组评分。
 	active map[int]struct{}
+	// unavailable 为本 Session 内条目级不可访问（如详情/章节 404），去重且不重入 active。
+	unavailable map[int]error
 }
 
 // BoundMatch 目录已绑定条目的快通道证据；存在 bound 绝不能绕过结构检查。
@@ -96,8 +99,34 @@ func (s *MatchingSession) mergeSubjectActive(sub matching.Subject) {
 	if sub.ID <= 0 {
 		return
 	}
+	if s.unavailable != nil {
+		if _, bad := s.unavailable[sub.ID]; bad {
+			return
+		}
+	}
 	s.ensureActive()
 	s.active[sub.ID] = struct{}{}
+}
+
+// markSubjectUnavailable 隔离单条目不可访问：不终止扫描，本 Session 内去重。
+func (s *MatchingSession) markSubjectUnavailable(id int, err error) {
+	if id <= 0 {
+		return
+	}
+	if s.unavailable == nil {
+		s.unavailable = map[int]error{}
+	}
+	if err == nil {
+		err = ErrBangumiNotFound
+	}
+	s.unavailable[id] = err
+	if s.active != nil {
+		delete(s.active, id)
+	}
+}
+
+func isSubjectNotFound(err error) bool {
+	return errors.Is(err, ErrBangumiNotFound)
 }
 
 func (s *MatchingSession) catalog() matching.Catalog {
@@ -283,9 +312,12 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 
 	if forTarget && targetID > 0 {
 		if err := s.ensureDetailed(targetID); err != nil {
-			// 目标详情失败：仍继续自动路径；ConfirmTarget 可能因目标不在池而 Review
-			// 但基础设施错误应上抛
-			return emptyMatchResult(), err
+			if isSubjectNotFound(err) {
+				// 目标条目级 404：不当基础设施故障；标记后继续自动路径
+				s.markSubjectUnavailable(targetID, err)
+			} else {
+				return emptyMatchResult(), err
+			}
 		}
 	}
 
@@ -309,6 +341,11 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 				}
 				dec, err := s.probeChapters(group, id)
 				if err != nil {
+					if isSubjectNotFound(err) {
+						s.markSubjectUnavailable(id, err)
+						probed[id] = true
+						continue
+					}
 					return emptyMatchResult(), err
 				}
 				chapters[id] = dec
@@ -344,6 +381,10 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 			}
 			if !sub.Detailed {
 				if err := s.ensureDetailed(decision.WinnerID); err != nil {
+					if isSubjectNotFound(err) {
+						s.markSubjectUnavailable(decision.WinnerID, err)
+						continue
+					}
 					return emptyMatchResult(), err
 				}
 				// 详情可能改变结构 → 再轮
@@ -353,6 +394,10 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 			if !probed[decision.WinnerID] {
 				dec, err := s.probeChapters(group, decision.WinnerID)
 				if err != nil {
+					if isSubjectNotFound(err) {
+						s.markSubjectUnavailable(decision.WinnerID, err)
+						continue
+					}
 					return emptyMatchResult(), err
 				}
 				chapters[decision.WinnerID] = dec

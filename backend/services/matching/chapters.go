@@ -131,11 +131,8 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 		out.Bindings = append(out.Bindings, p.bind)
 	}
 
-	if len(out.Rejected) > 0 {
-		out.State = ChapterConflict
-		return out
-	}
-
+	// 单文件编号异常（越界/小数/特别篇/重复版本等）只进入 Rejected，
+	// 不得因任一 Rejected 就把整组标成 ChapterConflict 从而否决已可解释的绑定。
 	hasConfirmed := false
 	hasCountFit := false
 	for _, b := range out.Bindings {
@@ -160,8 +157,8 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 		out.State = ChapterCountFit
 		return out
 	}
-	// 章节已知但无任何可解释编号 → Conflict（驱动 Review）
-	if hasAnyNumbering(files) {
+	// 无可用绑定：若有 Rejected 或仍有编号无法解释 → Conflict（驱动整组 Review）
+	if len(out.Rejected) > 0 || hasAnyNumbering(files) {
 		out.State = ChapterConflict
 		if len(out.Rejected) == 0 {
 			// 标记整体原因到第一个文件，便于诊断

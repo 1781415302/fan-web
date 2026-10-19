@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -746,6 +747,11 @@ func (s *LibraryService) scanV2Directory(
 
 		res, err := session.Resolve(pending, bound)
 		if err != nil {
+			// 条目级 404：隔离本组，不把整库扫描当基础设施故障终止。
+			if errors.Is(err, ErrBangumiNotFound) {
+				addPendingUnidentified(result, pending, "条目详情不可访问（可能未公开或无权查看）", nil)
+				continue
+			}
 			return err
 		}
 		if res.Decision.Candidates == nil {

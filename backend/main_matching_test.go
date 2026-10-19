@@ -10,7 +10,7 @@ import (
 	"fan-web/services/matching"
 )
 
-func TestLoadMatchingRuntimeDefaultV2Log(t *testing.T) {
+func TestLoadMatchingRuntimeDefaultLegacyLog(t *testing.T) {
 	t.Setenv("FAN_WEB_MATCH_ENGINE", "")
 	t.Setenv("FAN_WEB_MATCH_ALIASES_FILE", "")
 
@@ -23,8 +23,29 @@ func TestLoadMatchingRuntimeDefaultV2Log(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if rt.Engine() != matching.EngineLegacy {
+		t.Fatalf("default engine=%s want legacy", rt.Engine())
+	}
+	if !strings.Contains(buf.String(), "引擎=legacy") {
+		t.Fatalf("启动日志应区分 legacy（默认）, got %q", buf.String())
+	}
+}
+
+func TestLoadMatchingRuntimeExplicitV2Log(t *testing.T) {
+	t.Setenv("FAN_WEB_MATCH_ENGINE", "v2")
+	t.Setenv("FAN_WEB_MATCH_ALIASES_FILE", "")
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	rt, err := loadMatchingRuntime(services.NewBangumiService())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if rt.Engine() != matching.EngineV2 {
-		t.Fatalf("default engine=%s", rt.Engine())
+		t.Fatalf("explicit v2 engine=%s", rt.Engine())
 	}
 	if !strings.Contains(buf.String(), "引擎=v2") {
 		t.Fatalf("启动日志应区分 v2, got %q", buf.String())

@@ -2,11 +2,17 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"fan-web/database"
@@ -390,4 +396,237 @@ func summarizeUnidentified(res *LibraryScanResult) string {
 		parts = append(parts, u.FileName+":"+u.Reason)
 	}
 	return strings.Join(parts, " | ")
+}
+
+func TestLibraryMatchV2NumberAnomalyIsolatesFiles(t *testing.T) {
+	cases := []struct {
+		name      string
+		extra     string
+		wantEps   int
+		rejectSub string
+	}{
+		{"fraction", "Review Show - 06.5.mkv", 12, "06.5"},
+		{"outrange", "Review Show - 13.mkv", 12, "13"},
+		{"dupver", "Review Show - 05v2.mkv", 11, "05"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupLibraryDB(t)
+			root := t.TempDir()
+			dir := "review-" + tc.name
+			for i := 1; i <= 12; i++ {
+				writeLibFile(t, root, filepath.Join(dir, fmt.Sprintf("Review Show - %02d.mkv", i)))
+			}
+			writeLibFile(t, root, filepath.Join(dir, tc.extra))
+
+			fake := newFakeSessionProvider()
+			fake.exactOnly = true
+			sub := matching.Subject{
+				ID: 880001, Name: "Review Show", NameCn: "Review Show",
+				Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+			}
+			putSeries(fake, sub, "Review Show")
+
+			res, err := newLibraryV2Service(t, root, fake).Scan()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.NewEpisodes != tc.wantEps {
+				t.Fatalf("NewEpisodes=%d want %d unid=%s res=%#v", res.NewEpisodes, tc.wantEps, summarizeUnidentified(res), res)
+			}
+			anime, err := database.GetAnimeByBangumiID(880001)
+			if err != nil || anime == nil {
+				t.Fatalf("anime missing: %v", err)
+			}
+			eps, err := database.ListEpisodesByAnimeID(anime.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(eps) != tc.wantEps {
+				t.Fatalf("db episodes=%d want %d", len(eps), tc.wantEps)
+			}
+			foundReject := false
+			for _, u := range res.Unidentified {
+				if strings.Contains(u.FileName, tc.rejectSub) {
+					foundReject = true
+				}
+			}
+			if !foundReject {
+				t.Fatalf("expected unidentified containing %q, got %s", tc.rejectSub, summarizeUnidentified(res))
+			}
+		})
+	}
+}
+
+func TestLibraryMatchV2SequelDigitNotFirstSeason(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("ef", "[北宇治字幕组] 悠久之翼2 [01].mkv"))
+	writeLibFile(t, root, filepath.Join("bm", "爆漫王。3 [01].mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	s1 := matching.Subject{ID: 1028, Name: "悠久之翼", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	s2 := matching.Subject{ID: 1029, Name: "悠久之翼2", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	b1 := matching.Subject{ID: 3428, Name: "爆漫王。", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	b3 := matching.Subject{ID: 33352, Name: "爆漫王。3", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	putSeries(fake, s1, "悠久之翼")
+	putSeries(fake, s2, "悠久之翼2", "悠久之翼")
+	putSeries(fake, b1, "爆漫王。")
+	putSeries(fake, b3, "爆漫王。3", "爆漫王。")
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NewEpisodes < 2 {
+		t.Fatalf("want both sequels accepted, got %#v unid=%s", res, summarizeUnidentified(res))
+	}
+	for _, id := range []int{1029, 33352} {
+		a, err := database.GetAnimeByBangumiID(id)
+		if err != nil || a == nil {
+			t.Fatalf("missing sequel anime %d (res=%#v unid=%s)", id, res, summarizeUnidentified(res))
+		}
+	}
+	for _, id := range []int{1028, 3428} {
+		a, _ := database.GetAnimeByBangumiID(id)
+		if a != nil {
+			t.Fatalf("must not create first season %d", id)
+		}
+	}
+}
+
+func TestLibraryMatchV2Subject404DoesNotStarveLaterDir(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("A", "Broken Show - 01.mkv"))
+	writeLibFile(t, root, filepath.Join("B", "Healthy Show - 01.mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	fake.detailNotFound = map[int]bool{770001: true}
+
+	broken := matching.Subject{
+		ID: 770001, Name: "Broken Show", Media: matching.KindSeries, EpisodeCount: 12, Detailed: false,
+	}
+	healthy := matching.Subject{
+		ID: 770002, Name: "Healthy Show", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	// search returns stub; detail 404 for broken
+	fake.putSubject(broken, "Broken Show")
+	putSeries(fake, healthy, "Healthy Show")
+	fake.detailNotFound[770001] = true
+	delete(fake.detail, 770001) // force Detail path to hit notFound
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("404 must not abort scan: %v", err)
+	}
+	a, err := database.GetAnimeByBangumiID(770002)
+	if err != nil || a == nil {
+		t.Fatalf("healthy B must be ingested: err=%v res=%#v unid=%s", err, res, summarizeUnidentified(res))
+	}
+	eps, err := database.ListEpisodesByAnimeID(a.ID)
+	if err != nil || len(eps) != 1 {
+		t.Fatalf("healthy eps=%v err=%v", eps, err)
+	}
+	brokenAnime, _ := database.GetAnimeByBangumiID(770001)
+	if brokenAnime != nil {
+		t.Fatal("must not create anime from unverified 404 subject")
+	}
+	foundA := false
+	for _, u := range res.Unidentified {
+		if strings.Contains(u.FilePath, "A") || strings.Contains(u.FileName, "Broken") {
+			foundA = true
+		}
+	}
+	if !foundA {
+		t.Fatalf("A should be unidentified, got %s", summarizeUnidentified(res))
+	}
+	// same subject should not be re-requested endlessly
+	n770 := 0
+	for _, id := range fake.detailCalls {
+		if id == 770001 {
+			n770++
+		}
+	}
+	if n770 > 3 {
+		t.Fatalf("detail 404 should be session-deduped, calls=%d %#v", n770, fake.detailCalls)
+	}
+}
+
+func TestLibraryMatchV2Subject404ViaHTTPDoesNotStarve(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("A", "Broken HTTP - 01.mkv"))
+	writeLibFile(t, root, filepath.Join("B", "Healthy HTTP - 01.mkv"))
+
+	var detailHits sync.Map
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v0/search/subjects":
+			body, _ := io.ReadAll(r.Body)
+			kw := string(body)
+			var data []map[string]interface{}
+			if strings.Contains(kw, "Broken") {
+				data = append(data, map[string]interface{}{
+					"id": 660001, "name": "Broken HTTP", "name_cn": "", "date": "2020-01-01", "platform": "TV",
+				})
+			}
+			if strings.Contains(kw, "Healthy") {
+				data = append(data, map[string]interface{}{
+					"id": 660002, "name": "Healthy HTTP", "name_cn": "", "date": "2020-01-01", "platform": "TV",
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": data})
+		case strings.HasPrefix(r.URL.Path, "/v0/subjects/"):
+			id := strings.TrimPrefix(r.URL.Path, "/v0/subjects/")
+			if v, _ := detailHits.LoadOrStore(id, new(int32)); true {
+				atomic.AddInt32(v.(*int32), 1)
+			}
+			if id == "660001" {
+				http.Error(w, "gone", http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id": 660002, "name": "Healthy HTTP", "name_cn": "", "date": "2020-01-01",
+				"platform": "TV", "eps": 12, "total_episodes": 12, "images": map[string]string{}, "infobox": []interface{}{},
+			})
+		case r.URL.Path == "/v0/episodes":
+			sid := r.URL.Query().Get("subject_id")
+			if sid == "660001" {
+				http.Error(w, "gone", http.StatusNotFound)
+				return
+			}
+			data := make([]map[string]interface{}, 0, 12)
+			for i := 1; i <= 12; i++ {
+				data = append(data, map[string]interface{}{"id": 66000200 + i, "ep": i, "sort": i})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": data})
+		default:
+			http.Error(w, "bad "+r.URL.Path, http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	bangumi := NewBangumiService()
+	bangumi.SetBaseURL(srv.URL)
+	rt, err := NewMatchingRuntime(bangumi, matching.EngineV2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewLibraryService(bangumi, root, WithLibraryMatching(rt))
+	res, err := svc.Scan()
+	if err != nil {
+		t.Fatalf("HTTP 404 must not abort library scan: %v", err)
+	}
+	a, err := database.GetAnimeByBangumiID(660002)
+	if err != nil || a == nil {
+		t.Fatalf("healthy B missing: %v res=%#v unid=%s", err, res, summarizeUnidentified(res))
+	}
+	if v, ok := detailHits.Load("660001"); ok {
+		if atomic.LoadInt32(v.(*int32)) > 3 {
+			t.Fatalf("404 subject detail over-fetched: %d", atomic.LoadInt32(v.(*int32)))
+		}
+	}
 }

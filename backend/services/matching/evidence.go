@@ -107,7 +107,15 @@ func ParseFile(input FileInput) FileEvidence {
 	// Rest outside brackets: scene / English titles / - ep
 	rest = strings.TrimSpace(rest)
 	if rest != "" {
-		rEp, rRest, rYear, rSeason, rMedia := parseRest(rest)
+		// 方括号等已给出明确集号时，不再把标题末尾续作数字当裸集号剥掉。
+		hasExplicitEp := false
+		for _, e := range epCandidates {
+			if e.Explicit && !isUnknownEp(e) {
+				hasExplicitEp = true
+				break
+			}
+		}
+		rEp, rRest, rYear, rSeason, rMedia := parseRest(rest, hasExplicitEp)
 		if !isUnknownEp(rEp) {
 			epCandidates = append(epCandidates, rEp)
 		}
@@ -475,7 +483,7 @@ func hasTitleDigitIdentity(s string) bool {
 	return false
 }
 
-func parseRest(rest string) (ep EpisodeToken, title string, year, season int, media MediaKind) {
+func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, title string, year, season int, media MediaKind) {
 	ep = EpisodeToken{Kind: NumberUnknown}
 	work := rest
 
@@ -579,8 +587,8 @@ func parseRest(rest string) (ep EpisodeToken, title string, year, season int, me
 		}
 	}
 
-	// Trailing bare number last
-	if isUnknownEp(ep) {
+	// Trailing bare number last。已有明确集号时保留标题续作数字（如「悠久之翼2」「爆漫王。3」）。
+	if isUnknownEp(ep) && !keepTrailingTitleNumber {
 		workTrim := cleanTitleSpaces(work)
 		if m := reBareEp.FindStringSubmatch(workTrim); m != nil {
 			n, _ := strconv.Atoi(m[1])

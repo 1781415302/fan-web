@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"fan-web/database"
 	"fan-web/models"
 	"fan-web/services/matching"
 )
@@ -470,5 +471,78 @@ func TestScannerScanForAnimePresentFilesExactNames(t *testing.T) {
 	}
 	if len(inv.PresentFiles) != 1 || inv.PresentFiles[0] != "Show - 01.mkv" {
 		t.Fatalf("PresentFiles=%v", inv.PresentFiles)
+	}
+}
+
+func TestScanForAnimeSnapshotChangedZeroWriteViaOpenHook(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	relDir := "cas"
+	f01 := "CAS Show - 01.mkv"
+	f02 := "CAS Show - 02.mkv"
+	writeScanVideos(t, filepath.Join(root, relDir), f01, f02)
+
+	anime, err := database.CreateAnime(&models.Anime{
+		Title: "CAS Show", BangumiID: 9401, EpCount: 12, FilePath: relDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateEpisode(&models.Episode{
+		AnimeID: anime.ID, EpNumber: 1, FilePath: f01,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restore := InstallFakeScanSessionWithOpenHook(func() {
+		if _, err := database.DB.Exec(`UPDATE animes SET ep_count = ep_count + 1 WHERE id = ?`, anime.ID); err != nil {
+			t.Errorf("mutate: %v", err)
+		}
+	}, FakeMatchSeed{
+		Subject: matching.Subject{
+			ID: 9401, Name: "CAS Show", NameCn: "CAS Show",
+			Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+		},
+		SearchKeys: []string{"CAS Show"},
+		Chapters: []matching.Chapter{
+			{ID: 940101, Ep: 1, Sort: 1}, {ID: 940102, Ep: 2, Sort: 2},
+		},
+	})
+	t.Cleanup(restore)
+
+	sc := newV2Scanner(t, root)
+	existing, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := database.GetAnimeByID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := sc.ScanForAnime(*fresh, existing, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = database.ReconcileEpisodes(anime.ID, database.EpisodeReconcileInput{
+		ExpectedAnime: *fresh,
+		Expected:      existing,
+		Desired:       inv.Desired,
+		PresentFiles:  inv.PresentFiles,
+		Renames:       inv.Renames,
+		RemoveMissing: true,
+	})
+	if !errors.Is(err, database.ErrEpisodeSnapshotChanged) {
+		t.Fatalf("want snapshot changed, got %v", err)
+	}
+	after, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].ID != before[0].ID || after[0].FilePath != f01 {
+		t.Fatalf("CAS zero write failed before=%#v after=%#v", before, after)
 	}
 }

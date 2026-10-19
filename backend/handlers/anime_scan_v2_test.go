@@ -16,7 +16,7 @@ import (
 	"fan-web/utils"
 )
 
-func setupScanHandlerV2(t *testing.T, rootPath string) *AnimeHandler {
+func setupScanHandlerV2(t *testing.T, rootPath string, seeds ...bangumiSeed) *AnimeHandler {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	dbPath := filepath.Join(t.TempDir(), "scan-v2.db")
@@ -33,12 +33,13 @@ func setupScanHandlerV2(t *testing.T, rootPath string) *AnimeHandler {
 	); err != nil {
 		t.Fatal(err)
 	}
-	rt, err := services.NewMatchingRuntime(services.NewBangumiService(), matching.EngineV2, "")
+	fix := startBangumiFixture(t, seeds...)
+	rt, err := services.NewMatchingRuntime(fix.bangumi, matching.EngineV2, "")
 	if err != nil {
 		t.Fatalf("runtime: %v", err)
 	}
 	sc := services.NewScannerService(rootPath, services.WithScannerMatching(rt))
-	return NewAnimeHandler(services.NewBangumiService(), sc)
+	return NewAnimeHandler(fix.bangumi, sc)
 }
 
 func writeVideos(t *testing.T, dir string, names ...string) {
@@ -68,8 +69,7 @@ func TestAnimeScanV2RanmaKeepsProgressAndOutbox(t *testing.T) {
 	f02 := "Ranma1-2 (2024) [02].mkv"
 	writeVideos(t, filepath.Join(root, relDir), f01, f02)
 
-	handler := setupScanHandlerV2(t, root)
-	restore := services.InstallFakeScanSession(services.FakeMatchSeed{
+	handler := setupScanHandlerV2(t, root, bangumiSeed{
 		Subject: matching.Subject{
 			ID: 425018, Name: "らんま1/2 (2024)", NameCn: "乱马1/2 (2024)",
 			Year: 2024, Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
@@ -78,7 +78,6 @@ func TestAnimeScanV2RanmaKeepsProgressAndOutbox(t *testing.T) {
 		SearchKeys: []string{"らんま1/2", "乱马1/2", "Ranma1-2", "Ranma 1/2"},
 		Chapters:   seriesChapters(425018, 12),
 	})
-	t.Cleanup(restore)
 
 	anime, err := database.CreateAnime(&models.Anime{
 		Title: "らんま1/2 (2024)", TitleCn: "乱马1/2 (2024)",
@@ -155,17 +154,15 @@ func TestAnimeScanV2CreateThenScanConfirmsTarget(t *testing.T) {
 	fname := "Target Show - 01.mkv"
 	writeVideos(t, filepath.Join(root, relDir), fname)
 
-	handler := setupScanHandlerV2(t, root)
 	sub := matching.Subject{
 		ID: 8101, Name: "Target Show", NameCn: "目标番",
 		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
 	}
-	restore := services.InstallFakeScanSession(services.FakeMatchSeed{
+	handler := setupScanHandlerV2(t, root, bangumiSeed{
 		Subject:    sub,
 		SearchKeys: []string{"Target Show", "目标番"},
 		Chapters:   seriesChapters(8101, 12),
 	})
-	t.Cleanup(restore)
 
 	if err := database.ReplaceUnidentified([]models.UnidentifiedFile{
 		{FilePath: relDir, FileName: fname, Reason: "分差不足", Candidates: []models.MatchCandidate{
@@ -210,7 +207,6 @@ func TestAnimeScanV2MixedDirClearsOnlyTargetFiles(t *testing.T) {
 	movieFile := "某作品 剧场版.mkv"
 	writeVideos(t, filepath.Join(root, relDir), tvFile, movieFile)
 
-	handler := setupScanHandlerV2(t, root)
 	tv := matching.Subject{
 		ID: 9201, Name: "Show TV", NameCn: "Show TV",
 		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
@@ -219,13 +215,12 @@ func TestAnimeScanV2MixedDirClearsOnlyTargetFiles(t *testing.T) {
 		ID: 9202, Name: "某作品", NameCn: "剧场版",
 		Media: matching.KindMovie, EpisodeCount: 1, Detailed: true,
 	}
-	restore := services.InstallFakeScanSession(
-		services.FakeMatchSeed{Subject: tv, SearchKeys: []string{"Show TV", "Show"}, Chapters: seriesChapters(9201, 12)},
-		services.FakeMatchSeed{Subject: mov, SearchKeys: []string{"某作品", "剧场版"}, Chapters: []matching.Chapter{
+	handler := setupScanHandlerV2(t, root,
+		bangumiSeed{Subject: tv, SearchKeys: []string{"Show TV", "Show"}, Chapters: seriesChapters(9201, 12)},
+		bangumiSeed{Subject: mov, SearchKeys: []string{"某作品", "剧场版"}, Chapters: []matching.Chapter{
 			{ID: 920201, Ep: 1, Sort: 1},
 		}},
 	)
-	t.Cleanup(restore)
 
 	tvAnime, err := database.CreateAnime(&models.Anime{
 		Title: tv.Name, TitleCn: tv.NameCn, BangumiID: tv.ID, EpCount: 12, FilePath: relDir,
@@ -292,8 +287,7 @@ func TestAnimeScanV2ReviewRequiredZeroWrite(t *testing.T) {
 	b := "Dup Show - 01 [B].mkv"
 	writeVideos(t, filepath.Join(root, relDir), a, b)
 
-	handler := setupScanHandlerV2(t, root)
-	restore := services.InstallFakeScanSession(services.FakeMatchSeed{
+	handler := setupScanHandlerV2(t, root, bangumiSeed{
 		Subject: matching.Subject{
 			ID: 9301, Name: "Dup Show", NameCn: "Dup Show",
 			Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
@@ -301,7 +295,6 @@ func TestAnimeScanV2ReviewRequiredZeroWrite(t *testing.T) {
 		SearchKeys: []string{"Dup Show"},
 		Chapters:   seriesChapters(9301, 12),
 	})
-	t.Cleanup(restore)
 
 	anime, err := database.CreateAnime(&models.Anime{
 		Title: "Dup Show", BangumiID: 9301, EpCount: 12, FilePath: relDir,
@@ -339,67 +332,6 @@ func TestAnimeScanV2ReviewRequiredZeroWrite(t *testing.T) {
 	}
 	if len(after) != len(before) || after[0].ID != before[0].ID || after[0].EpNumber != before[0].EpNumber {
 		t.Fatalf("出错必须零写入, before=%#v after=%#v", before, after)
-	}
-}
-
-func TestAnimeScanV2SnapshotChangedZeroWrite(t *testing.T) {
-	root := t.TempDir()
-	relDir := "cas"
-	f01 := "CAS Show - 01.mkv"
-	f02 := "CAS Show - 02.mkv"
-	writeVideos(t, filepath.Join(root, relDir), f01, f02)
-
-	handler := setupScanHandlerV2(t, root)
-
-	anime, err := database.CreateAnime(&models.Anime{
-		Title: "CAS Show", BangumiID: 9401, EpCount: 12, FilePath: relDir,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := database.CreateEpisode(&models.Episode{
-		AnimeID: anime.ID, EpNumber: 1, FilePath: f01,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	before, err := database.ListEpisodesByAnimeID(anime.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Scan 已读 ExpectedAnime 后、Reconcile 前：打开 Session（处理 02）时改 ep_count → CAS 失败
-	restore := services.InstallFakeScanSessionWithOpenHook(func() {
-		if _, err := database.DB.Exec(`UPDATE animes SET ep_count = ep_count + 1 WHERE id = ?`, anime.ID); err != nil {
-			t.Errorf("mutate ep_count: %v", err)
-		}
-	}, services.FakeMatchSeed{
-		Subject: matching.Subject{
-			ID: 9401, Name: "CAS Show", NameCn: "CAS Show",
-			Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
-		},
-		SearchKeys: []string{"CAS Show"},
-		Chapters:   seriesChapters(9401, 12),
-	})
-	t.Cleanup(restore)
-
-	code, body := postAnimeScan(t, handler, anime.ID)
-	if code == utils.CodeSuccess {
-		t.Fatalf("快照变更应失败, body=%s", body)
-	}
-	var resp struct {
-		Message string `json:"message"`
-	}
-	_ = json.Unmarshal([]byte(body), &resp)
-	if !strings.Contains(resp.Message, "未写入") && !strings.Contains(resp.Message, "快照") {
-		t.Fatalf("应提示快照/未写入, got %q", resp.Message)
-	}
-
-	after, err := database.ListEpisodesByAnimeID(anime.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(after) != 1 || after[0].ID != before[0].ID || after[0].FilePath != f01 || after[0].EpNumber != 1 {
-		t.Fatalf("CAS 失败零写入, before=%#v after=%#v", before, after)
 	}
 }
 

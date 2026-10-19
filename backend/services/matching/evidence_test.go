@@ -197,3 +197,48 @@ func indexBytes(s, sub string) int {
 	}
 	return -1
 }
+
+func TestParseSequelDigitKeptWhenBracketEpisodePresent(t *testing.T) {
+	cases := []struct {
+		name      string
+		wantTitle string
+		wantEp    int
+	}{
+		{"[北宇治字幕组] 悠久之翼2 [01].mkv", "悠久之翼2", 1},
+		{"爆漫王。3 [01].mkv", "爆漫王。3", 1},
+	}
+	for _, tc := range cases {
+		ev := ParseFile(FileInput{Name: tc.name})
+		if ev.Episode.Kind != NumberSingle || ev.Episode.First != tc.wantEp || !ev.Episode.Explicit {
+			t.Fatalf("%s episode=%+v want explicit single %d", tc.name, ev.Episode, tc.wantEp)
+		}
+		if ev.Ordinal.Season != 0 {
+			t.Fatalf("%s season=%d want 0 (digit stays in title)", tc.name, ev.Ordinal.Season)
+		}
+		found := false
+		for _, ti := range ev.Titles {
+			if ti.Text == tc.wantTitle {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s titles=%#v want %q retained", tc.name, ev.Titles, tc.wantTitle)
+		}
+	}
+}
+
+func TestParseBareEpisodeStillWorksWithoutBracket(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Review Show 05.mkv"})
+	if ev.Episode.Kind != NumberSingle || ev.Episode.First != 5 {
+		t.Fatalf("bare ep lost: %+v titles=%v", ev.Episode, ev.Titles)
+	}
+	ok := false
+	for _, ti := range ev.Titles {
+		if containsFold(ti.Text, "Review Show") {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Fatalf("title lost: %#v", ev.Titles)
+	}
+}

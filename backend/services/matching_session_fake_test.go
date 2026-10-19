@@ -16,6 +16,8 @@ type fakeSessionProvider struct {
 
 	// exactOnly 为 true 时禁用子串兜底，测试必须显式注册查询词。
 	exactOnly bool
+	// detailNotFound 模拟条目级 404（ErrBangumiNotFound）。
+	detailNotFound map[int]bool
 
 	searchCalls []string
 	detailCalls []int
@@ -48,6 +50,9 @@ func (f *fakeSessionProvider) Search(_ context.Context, kw string) (matchingSear
 
 func (f *fakeSessionProvider) Detail(_ context.Context, id int) (matching.Subject, error) {
 	f.detailCalls = append(f.detailCalls, id)
+	if f.detailNotFound != nil && f.detailNotFound[id] {
+		return matching.Subject{}, fmt.Errorf("条目不存在: %w", ErrBangumiNotFound)
+	}
 	sub, ok := f.detail[id]
 	if !ok {
 		return matching.Subject{}, fmt.Errorf("no detail for %d: %w", id, ErrMatchUpstream)

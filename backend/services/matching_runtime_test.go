@@ -78,7 +78,7 @@ func TestMatchingRuntimeMatchEngineFromEnv(t *testing.T) {
 		in   string
 		want matching.Engine
 	}{
-		{"", matching.EngineV2},
+		{"", matching.EngineLegacy},
 		{"v2", matching.EngineV2},
 		{"V2", matching.EngineV2},
 		{"legacy", matching.EngineLegacy},

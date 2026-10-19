@@ -271,3 +271,71 @@ func summarizeCands(cs []matching.Candidate) string {
 	}
 	return strings.Join(parts, " ")
 }
+
+func TestMatchingSessionSequelDigitPrefersCorrectSubject(t *testing.T) {
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+	s1 := matching.Subject{ID: 1028, Name: "悠久之翼", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	s2 := matching.Subject{ID: 1029, Name: "悠久之翼2", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	f.putSubject(s1, "悠久之翼", "悠久之翼2")
+	f.putSubject(s2, "悠久之翼", "悠久之翼2")
+	for _, id := range []int{1028, 1029} {
+		chs := make([]matching.Chapter, 0, 12)
+		for i := 1; i <= 12; i++ {
+			chs = append(chs, matching.Chapter{ID: id*100 + i, Ep: float64(i), Sort: float64(i)})
+		}
+		f.chapters[id] = chs
+	}
+	rt, err := NewMatchingRuntime(nil, matching.EngineV2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	groups := matching.GroupFiles([]matching.FileInput{{Name: "[北宇治字幕组] 悠久之翼2 [01].mkv", Dir: "ef"}})
+	if len(groups) != 1 {
+		t.Fatalf("groups=%d", len(groups))
+	}
+	res, err := sess.Resolve(groups[0], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Decision.Code != matching.Accepted || res.Decision.WinnerID != 1029 {
+		t.Fatalf("want accept 1029, got code=%s winner=%d reason=%s cands=%v",
+			res.Decision.Code, res.Decision.WinnerID, res.Decision.Reason, summarizeCands(res.Decision.Candidates))
+	}
+}
+
+func TestMatchingSessionSubject404ContinuesOtherCandidates(t *testing.T) {
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+	f.detailNotFound = map[int]bool{501: true}
+	bad := matching.Subject{ID: 501, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12}
+	good := matching.Subject{ID: 502, Name: "Shared Title", NameCn: "共享标题好", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	f.putSubject(bad, "Shared Title")
+	f.putSubject(good, "Shared Title")
+	delete(f.detail, 501)
+	f.detailNotFound[501] = true
+	chs := make([]matching.Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chs = append(chs, matching.Chapter{ID: 50200 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	f.chapters[502] = chs
+
+	rt, err := NewMatchingRuntime(nil, matching.EngineV2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	groups := matching.GroupFiles([]matching.FileInput{{Name: "Shared Title - 01.mkv", Dir: "x"}})
+	res, err := sess.Resolve(groups[0], nil)
+	if err != nil {
+		t.Fatalf("404 must not fail Resolve: %v", err)
+	}
+	// May Accept 502 or Review if scores tie awkwardly; must not error and must not accept 501.
+	if res.Decision.WinnerID == 501 {
+		t.Fatal("must not accept 404 subject")
+	}
+	if _, badActive := sess.active[501]; badActive {
+		t.Fatal("404 subject must leave active set")
+	}
+}
