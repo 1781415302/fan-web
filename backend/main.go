@@ -190,12 +190,12 @@ func loadMatchingRuntime(bangumi *services.BangumiService) (*services.MatchingRu
 	switch engine {
 	case matching.EngineV2:
 		if aliasFile == "" {
-			log.Printf("[Matching] 引擎=v2（显式开启），使用内置系列别名 catalog")
+			log.Printf("[Matching] 引擎=v2（默认），使用内置系列别名 catalog")
 		} else {
-			log.Printf("[Matching] 引擎=v2（显式开启），内置 catalog + 覆盖文件 %s", aliasFile)
+			log.Printf("[Matching] 引擎=v2（默认），内置 catalog + 覆盖文件 %s", aliasFile)
 		}
 	case matching.EngineLegacy:
-		log.Printf("[Matching] 引擎=legacy（默认），全库与单番扫描使用原流程")
+		log.Printf("[Matching] 引擎=legacy（回退），全库与单番扫描使用原流程")
 	default:
 		log.Printf("[Matching] 引擎=%s，全库与单番扫描使用原流程", engine)
 	}

@@ -55,13 +55,12 @@ func NewMatchingRuntime(b *BangumiService, engine matching.Engine, aliasFile str
 	}, nil
 }
 
-// MatchEngineFromEnv 解析 MATCH_ENGINE：空/legacy→Legacy；显式 v2→V2；未知→Legacy 并警告。
-// 本次合入默认 legacy；v2 须环境变量显式开启。
+// MatchEngineFromEnv 解析 FAN_WEB_MATCH_ENGINE：空/v2→V2；legacy→Legacy；未知→Legacy 并警告。
 func MatchEngineFromEnv(raw string) matching.Engine {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "v2":
+	case "", "v2":
 		return matching.EngineV2
-	case "", "legacy":
+	case "legacy":
 		return matching.EngineLegacy
 	default:
 		log.Printf("[Matching] 未知引擎 %q，回退 legacy", raw)
