@@ -30,31 +30,31 @@ const (
 	nameScoreProbeMin      = 0.80 // Session 探测章节用；本包仅集中声明
 )
 
-type nameHitKind int
-
-const (
-	hitNone nameHitKind = iota
-	hitStrict
-	hitNormal
-	hitCatalog
-	hitFuzzy
-	hitWeak // 副标题包含 / Loose 单独命中
-)
-
 type nameHit struct {
-	score    float64
-	kind     nameHitKind
-	support  string
-	titleIdx int // 查询标题下标；-1 表示无
+	score       float64
+	kind        NameMatchKind
+	support     string
+	titleIdx    int // 查询标题下标；-1 表示无
+	queryText   string
+	subjectText string
+	querySource Source
+	subjectRole SubjectNameRole
 }
 
 // Rank 对 subjects 评分并稳定排序。chapters 按 subject ID 读取；nil/缺项=Unchecked。
+// 次序：名称证据 → 硬结构/区分符 → 章节状态 → 单候选策略 → Missing → 并列标题冲突 → 参考项偏好 → 稳定排序。
 func Rank(q Query, subjects []Subject, catalog Catalog, chapters map[int]ChapterDecision) []Candidate {
 	if len(subjects) == 0 {
 		return []Candidate{}
 	}
 	idents := scoreIdentityTitles(q, catalog)
-	out := make([]Candidate, 0, len(subjects))
+
+	type scored struct {
+		c    Candidate
+		hits []nameHit
+		ch   ChapterDecision
+	}
+	tmp := make([]scored, 0, len(subjects))
 
 	// 每条查询标题对每个 subject 的最佳身份分（片段冲突检测）
 	fragBest := make([]struct {
@@ -62,15 +62,10 @@ func Rank(q Query, subjects []Subject, catalog Catalog, chapters map[int]Chapter
 		score float64
 	}, len(idents))
 
-	type scored struct {
-		c    Candidate
-		hits []nameHit // 与 idents 对齐
-	}
-	tmp := make([]scored, 0, len(subjects))
-
 	for _, sub := range subjects {
-		c, hits := scoreSubject(q, sub, catalog, idents, chapterStateOf(chapters, sub.ID))
-		tmp = append(tmp, scored{c: c, hits: hits})
+		ch := chapterStateOf(chapters, sub.ID)
+		c, hits := scoreSubject(q, sub, catalog, idents, ch)
+		tmp = append(tmp, scored{c: c, hits: hits, ch: ch})
 		for i, h := range hits {
 			if h.score >= fragBest[i].score {
 				fragBest[i].score = h.score
@@ -79,14 +74,21 @@ func Rank(q Query, subjects []Subject, catalog Catalog, chapters map[int]Chapter
 		}
 	}
 
-	// 并列语言片段：各自 ≥0.88 支持不同 subject → 相关候选 Missing
 	conflictIDs := fragmentConflictIDs(fragBest)
+
+	out := make([]Candidate, 0, len(tmp))
 	for i := range tmp {
-		if conflictIDs[tmp[i].c.Subject.ID] {
-			tmp[i].c.Missing = appendUniqueString(tmp[i].c.Missing, "并列语言片段支持不同作品")
+		c := tmp[i].c
+		frag := conflictIDs[c.Subject.ID]
+		pol := evaluateCandidatePolicy(q, c.Subject, c.NameEvidence, tmp[i].ch)
+		mergePolicyIntoCandidate(&c, pol, q, frag, tmp[i].ch)
+		if frag {
+			c.Missing = appendUniqueString(c.Missing, "并列语言片段支持不同作品")
 		}
-		out = append(out, tmp[i].c)
+		out = append(out, c)
 	}
+
+	out = applyVariantPreference(q, out)
 
 	sort.SliceStable(out, func(i, j int) bool {
 		bi, bj := len(out[i].Blockers) > 0, len(out[j].Blockers) > 0
@@ -106,11 +108,11 @@ func Rank(q Query, subjects []Subject, catalog Catalog, chapters map[int]Chapter
 
 func chapterStateOf(chapters map[int]ChapterDecision, id int) ChapterDecision {
 	if chapters == nil {
-		return ChapterDecision{State: ChapterUnchecked, Rejected: map[string]string{}}
+		return ChapterDecision{State: ChapterUnchecked, Rejected: map[string]string{}, Coverage: emptyChapterCoverage(nil)}
 	}
 	d, ok := chapters[id]
 	if !ok {
-		return ChapterDecision{State: ChapterUnchecked, Rejected: map[string]string{}}
+		return ChapterDecision{State: ChapterUnchecked, Rejected: map[string]string{}, Coverage: emptyChapterCoverage(nil)}
 	}
 	return d
 }
@@ -140,6 +142,7 @@ type identityTitle struct {
 	source Source
 	facts  TitleFacts
 	forms  TextForms
+	role   SubjectNameRole // 仅条目侧有意义
 }
 
 func scoreIdentityTitles(q Query, catalog Catalog) []identityTitle {
@@ -150,7 +153,6 @@ func scoreIdentityTitles(q Query, catalog Catalog) []identityTitle {
 				continue
 			}
 			if t.Source == SourceCatalog {
-				// 已是扩展结果，直接可用
 				raw = append(raw, t)
 				continue
 			}
@@ -169,7 +171,6 @@ func scoreIdentityTitles(q Query, catalog Catalog) []identityTitle {
 				raw = append(raw, et)
 			}
 		}
-		// HasFileTitle=false 且未标 SourceDirectory 时，全部视为目录线索
 		if len(raw) == 0 {
 			for _, t := range q.Titles {
 				raw = append(raw, t)
@@ -216,13 +217,13 @@ func scoreSubject(q Query, sub Subject, catalog Catalog, idents []identityTitle,
 	hits := make([]nameHit, len(idents))
 
 	subNames := subjectNameList(sub)
-	best := nameHit{score: 0, kind: hitNone, titleIdx: -1}
+	best := nameHit{score: 0, kind: NameNone, titleIdx: -1}
 
 	for i, id := range idents {
-		h := bestNameAgainst(id, subNames, catalog)
+		h := bestNameAgainst(id, subNames, catalog, q.HasFileTitle)
 		h.titleIdx = i
 		hits[i] = h
-		if h.score > best.score || (h.score == best.score && h.kind < best.kind) {
+		if betterNameHit(h, best, q.HasFileTitle) {
 			best = h
 		}
 	}
@@ -231,29 +232,18 @@ func scoreSubject(q Query, sub Subject, catalog Catalog, idents []identityTitle,
 	if best.support != "" {
 		c.Support = append(c.Support, best.support)
 	}
+	c.NameEvidence = nameEvidenceFromHit(best, idents, q)
+	c.NameEvidence.DirectSupport = computeDirectSupport(idents, subNames, catalog, q)
 
-	// 短标题：仅严格/常规/catalog 可自动接受
-	if best.kind == hitFuzzy || best.kind == hitWeak {
-		if isShortTitle(bestBase(idents, best)) {
-			c.Missing = appendUniqueString(c.Missing, "短标题仅允许精确或catalog等价")
-		}
-	}
-	if best.kind == hitWeak {
-		c.Missing = appendUniqueString(c.Missing, "弱形态身份支持不能自动接受")
-	}
+	// 短标题检查在 mergePolicy 中按 Kind 处理；此处仅结构/区分符/章节
 
-	// 查询冲突 → 阻断
 	for _, conf := range q.Conflicts {
 		c.Blockers = appendUniqueString(c.Blockers, conf)
 	}
 
-	// 结构：季/Part/Final/媒体/年份
 	applyStructure(&c, q, sub)
-
-	// 区分符冲突
 	applyDiscriminatorConflicts(&c, idents, subNames)
 
-	// 章节
 	switch ch.State {
 	case ChapterConflict:
 		c.Blockers = appendUniqueString(c.Blockers, "章节解释冲突")
@@ -263,12 +253,78 @@ func scoreSubject(q Query, sub Subject, catalog Catalog, idents []identityTitle,
 		c.Support = appendUniqueString(c.Support, "章节按话数拟合")
 	}
 
-	// Score = NameScore + 结构支持
 	score := c.NameScore
 	score += structureBonus(q, sub, ch)
 	c.Score = clamp01(score)
 
 	return c, hits
+}
+
+func betterNameHit(h, best nameHit, hasFileTitle bool) bool {
+	if h.kind == NameNone {
+		return false
+	}
+	if best.kind == NameNone {
+		return true
+	}
+	if h.score != best.score {
+		return h.score > best.score
+	}
+	hr, br := nameKindRank(h.kind), nameKindRank(best.kind)
+	if hr != br {
+		return hr < br
+	}
+	hs, bs := sourcePreferRank(h.querySource, hasFileTitle), sourcePreferRank(best.querySource, hasFileTitle)
+	if hs != bs {
+		return hs < bs
+	}
+	if subjectRoleRank(h.subjectRole) != subjectRoleRank(best.subjectRole) {
+		return subjectRoleRank(h.subjectRole) < subjectRoleRank(best.subjectRole)
+	}
+	if h.titleIdx >= 0 && best.titleIdx >= 0 && h.titleIdx != best.titleIdx {
+		return h.titleIdx < best.titleIdx
+	}
+	return false
+}
+
+func nameEvidenceFromHit(best nameHit, idents []identityTitle, q Query) NameEvidence {
+	if best.kind == NameNone {
+		return NameEvidence{}
+	}
+	ev := NameEvidence{
+		Kind:        best.kind,
+		QueryText:   best.queryText,
+		SubjectText: best.subjectText,
+		QuerySource: best.querySource,
+		SubjectRole: best.subjectRole,
+	}
+	if ev.QueryText == "" && best.titleIdx >= 0 && best.titleIdx < len(idents) {
+		ev.QueryText = idents[best.titleIdx].text
+		ev.QuerySource = idents[best.titleIdx].source
+	}
+	_ = q
+	return ev
+}
+
+func computeDirectSupport(idents []identityTitle, subNames []identityTitle, catalog Catalog, q Query) bool {
+	for _, id := range idents {
+		if id.source == SourceCatalog {
+			continue
+		}
+		if q.HasFileTitle && id.source != SourceFile {
+			continue
+		}
+		if !q.HasFileTitle && id.source != SourceDirectory && id.source != SourceFile {
+			continue
+		}
+		for _, sn := range subNames {
+			h := compareNames(id, sn, catalog)
+			if nameKindStrongIdentity(h.kind) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func bestBase(idents []identityTitle, best nameHit) string {
@@ -283,18 +339,24 @@ func bestBase(idents []identityTitle, best nameHit) string {
 }
 
 func subjectNameList(sub Subject) []identityTitle {
-	raw := make([]string, 0, 2+len(sub.Aliases))
+	type named struct {
+		text string
+		role SubjectNameRole
+	}
+	raw := make([]named, 0, 2+len(sub.Aliases))
 	if strings.TrimSpace(sub.Name) != "" {
-		raw = append(raw, sub.Name)
+		raw = append(raw, named{sub.Name, SubjectPrimary})
 	}
 	if strings.TrimSpace(sub.NameCn) != "" {
-		raw = append(raw, sub.NameCn)
+		raw = append(raw, named{sub.NameCn, SubjectPrimary})
 	}
-	raw = append(raw, sub.Aliases...)
+	for _, a := range sub.Aliases {
+		raw = append(raw, named{a, SubjectAlias})
+	}
 	out := make([]identityTitle, 0, len(raw))
 	seen := map[string]struct{}{}
-	for _, text := range raw {
-		text = strings.TrimSpace(text)
+	for _, n := range raw {
+		text := strings.TrimSpace(n.text)
 		if text == "" {
 			continue
 		}
@@ -308,18 +370,21 @@ func subjectNameList(sub Subject) []identityTitle {
 			source: SourceSubject,
 			facts:  AnalyzeTitle(text),
 			forms:  Normalize(text),
+			role:   n.role,
 		})
 	}
 	return out
 }
 
-func bestNameAgainst(query identityTitle, subjects []identityTitle, catalog Catalog) nameHit {
-	best := nameHit{kind: hitNone}
+func bestNameAgainst(query identityTitle, subjects []identityTitle, catalog Catalog, hasFileTitle bool) nameHit {
+	best := nameHit{kind: NameNone, titleIdx: -1}
 	for _, sub := range subjects {
 		h := compareNames(query, sub, catalog)
-		if h.score > best.score {
-			best = h
-		} else if h.score == best.score && h.kind != hitNone && (best.kind == hitNone || h.kind < best.kind) {
+		h.queryText = query.text
+		h.querySource = query.source
+		h.subjectText = sub.text
+		h.subjectRole = sub.role
+		if betterNameHit(h, best, hasFileTitle) {
 			best = h
 		}
 	}
@@ -327,13 +392,17 @@ func bestNameAgainst(query identityTitle, subjects []identityTitle, catalog Cata
 }
 
 func compareNames(q, s identityTitle, catalog Catalog) nameHit {
+	mk := func(score float64, kind NameMatchKind, support string) nameHit {
+		return nameHit{score: score, kind: kind, support: support}
+	}
+
 	// 1. 严格全名
 	if q.forms.Strict != "" && q.forms.Strict == s.forms.Strict {
-		return nameHit{score: nameScoreStrictEqual, kind: hitStrict, support: "严格全名相等"}
+		return mk(nameScoreStrictEqual, NameFullStrict, "严格全名相等")
 	}
 	// 2. 常规全名
 	if q.forms.Normal != "" && q.forms.Normal == s.forms.Normal {
-		return nameHit{score: nameScoreNormalEqual, kind: hitNormal, support: "常规全名相等"}
+		return mk(nameScoreNormalEqual, NameFullNormal, "常规全名相等")
 	}
 
 	qBase := strings.TrimSpace(q.facts.Base)
@@ -349,41 +418,63 @@ func compareNames(q, s identityTitle, catalog Catalog) nameHit {
 
 	// base 级严格/常规（剥季后的全名）
 	if qBaseForms.Strict != "" && qBaseForms.Strict == sBaseForms.Strict {
-		return nameHit{score: nameScoreStrictEqual, kind: hitStrict, support: "严格base相等"}
+		// 若 base 与原全名相同，仍算 full；否则 base
+		if qBaseForms.Strict == q.forms.Strict && sBaseForms.Strict == s.forms.Strict {
+			return mk(nameScoreStrictEqual, NameFullStrict, "严格全名相等")
+		}
+		return mk(nameScoreStrictEqual, NameBaseStrict, "严格base相等")
 	}
 	if qBaseForms.Normal != "" && qBaseForms.Normal == sBaseForms.Normal {
-		return nameHit{score: nameScoreNormalEqual, kind: hitNormal, support: "常规base相等"}
+		if qBaseForms.Normal == q.forms.Normal && sBaseForms.Normal == s.forms.Normal {
+			return mk(nameScoreNormalEqual, NameFullNormal, "常规全名相等")
+		}
+		return mk(nameScoreNormalEqual, NameBaseNormal, "常规base相等")
 	}
 
 	// 3. catalog 精确系列 base 等价
 	if catalogBaseEquiv(qBase, sBase, catalog) || catalogBaseEquiv(q.text, s.text, catalog) {
-		return nameHit{score: nameScoreCatalogEquiv, kind: hitCatalog, support: "catalog系列base等价"}
+		return mk(nameScoreCatalogEquiv, NameCatalog, "catalog系列base等价")
 	}
 
-	// 4. Loose 单独命中
+	// 4. 副标题（完整主标题段 + 认可边界）
+	if detectSubtitleMain(qBase, sBase) || detectSubtitleMain(q.text, s.text) {
+		return mk(nameScoreWeakCap, NameSubtitle, "完整主标题副标题命中")
+	}
+
+	// 5. Loose
+	looseHit := nameHit{kind: NameNone}
 	if qBaseForms.Loose != "" && qBaseForms.Loose == sBaseForms.Loose {
-		return nameHit{score: nameScoreWeakCap, kind: hitWeak, support: "Loose命中"}
-	}
-	if q.forms.Loose != "" && q.forms.Loose == s.forms.Loose {
-		return nameHit{score: nameScoreWeakCap, kind: hitWeak, support: "Loose全名命中"}
+		looseHit = mk(nameScoreWeakCap, NameLoose, "Loose命中")
+	} else if q.forms.Loose != "" && q.forms.Loose == s.forms.Loose {
+		looseHit = mk(nameScoreWeakCap, NameLoose, "Loose全名命中")
 	}
 
-	// 5. 模糊：Dice + LCS；副标题/前缀包含封顶
+	// 6. 模糊 / 普通前缀
 	fuzzy := diceWeight*multisetDiceBigram(qBaseForms.Normal, sBaseForms.Normal) +
 		lcsWeight*lcsRatio(qBaseForms.Normal, sBaseForms.Normal)
-	kind := hitFuzzy
-	support := "模糊名称"
-	if isPrefixOrSubtitleContain(qBaseForms.Normal, sBaseForms.Normal) {
-		if fuzzy > nameScoreWeakCap {
-			fuzzy = nameScoreWeakCap
+	prefixHit := nameHit{kind: NameNone}
+	if isOrdinaryPrefixContain(qBaseForms.Normal, sBaseForms.Normal) {
+		capScore := fuzzy
+		if capScore > nameScoreWeakCap {
+			capScore = nameScoreWeakCap
 		}
-		kind = hitWeak
-		support = "副标题或前缀包含"
+		if capScore <= 0 {
+			capScore = nameScoreWeakCap * 0.5
+		}
+		prefixHit = mk(capScore, NamePrefix, "普通前缀包含")
 	}
-	if fuzzy <= 0 {
-		return nameHit{kind: hitNone}
+	fuzzyHit := nameHit{kind: NameNone}
+	if fuzzy > 0 && prefixHit.kind == NameNone {
+		fuzzyHit = mk(fuzzy, NameFuzzy, "模糊名称")
 	}
-	return nameHit{score: fuzzy, kind: kind, support: support}
+
+	best := nameHit{kind: NameNone}
+	for _, h := range []nameHit{prefixHit, fuzzyHit, looseHit} {
+		if betterNameHit(h, best, true) {
+			best = h
+		}
+	}
+	return best
 }
 
 func catalogBaseEquiv(a, b string, catalog Catalog) bool {
@@ -403,7 +494,6 @@ func catalogBaseEquiv(a, b string, catalog Catalog) bool {
 	if aok && bok && ai == bi {
 		return true
 	}
-	// 一侧是 family 内别名、另一侧直接命中
 	if aok {
 		for _, t := range familyTitles(catalog.families[ai]) {
 			if TitleKey(t) == TitleKey(bBase) || TitleKey(t) == TitleKey(b) {
@@ -425,7 +515,7 @@ func applyStructure(c *Candidate, q Query, sub Subject) {
 	subOrd := subjectOrdinal(sub)
 	subMedia := sub.Media
 
-	// 季
+	// 季：S01 对未知季号的 Missing 由策略层按规则许可生成，此处 defer
 	if q.Ordinal.Season > 0 {
 		if subOrd.Season > 0 {
 			if q.Ordinal.Season != subOrd.Season {
@@ -434,8 +524,7 @@ func applyStructure(c *Candidate, q Query, sub Subject) {
 			} else {
 				c.Support = appendUniqueString(c.Support, "季号相容")
 			}
-		} else {
-			// 无标记 ≠ 第一季
+		} else if q.Ordinal.Season != 1 {
 			c.Missing = appendUniqueString(c.Missing, "候选无法解释查询季号")
 		}
 	}
@@ -453,17 +542,14 @@ func applyStructure(c *Candidate, q Query, sub Subject) {
 	// Final
 	if q.Ordinal.Final {
 		if !subOrd.Final {
-			// 候选名称未标 Final：缺证据而非硬冲突
 			c.Missing = appendUniqueString(c.Missing, "候选无法解释Final")
 		} else {
 			c.Support = appendUniqueString(c.Support, "Final相容")
 		}
 	} else if subOrd.Final && (q.Ordinal.Season > 0 || q.Media == KindSeries) {
-		// 查询非 Final 却命中 Final 条目：明确结构不符
 		c.Blockers = appendUniqueString(c.Blockers, "候选为Final与查询结构不符")
 	}
 
-	// 媒体：TV/WEB 同属 Series，不互相否定；空串视同 unknown
 	qMedia := q.Media
 	if qMedia == "" {
 		qMedia = KindUnknown
@@ -480,7 +566,6 @@ func applyStructure(c *Candidate, q Query, sub Subject) {
 		}
 	}
 
-	// 年份
 	if q.Year > 0 && sub.Year > 0 {
 		diff := q.Year - sub.Year
 		if diff < 0 {
@@ -560,13 +645,11 @@ func subjectOrdinal(sub Subject) Ordinal {
 	if len(su) == 1 {
 		ord.Season = su[0]
 	}
-	// 多值歧义：保留未知（0），不任选
 	pu := uniquePositive(parts)
 	if len(pu) == 1 {
 		ord.Part = pu[0]
 	}
 	if finals > 0 && finals == 1+len(sub.Aliases) || (finals > 0 && len(su) <= 1) {
-		// 任一名称标 Final 即认为候选带 Final 标记
 		ord.Final = finals > 0
 	}
 	return ord
@@ -576,7 +659,6 @@ func mediaCompatible(a, b MediaKind) bool {
 	if a == b {
 		return true
 	}
-	// TV/WEB 均 KindSeries
 	if a == KindSeries && b == KindSeries {
 		return true
 	}
@@ -584,24 +666,34 @@ func mediaCompatible(a, b MediaKind) bool {
 }
 
 func applyDiscriminatorConflicts(c *Candidate, idents []identityTitle, subNames []identityTitle) {
-	// 收集查询侧与候选侧区分符；数字/字母冲突 → Blockers
 	qDisc := map[string]struct{}{}
+	var qDiscList []string
 	for _, id := range idents {
-		if id.source == SourceDirectory && c.Subject.ID != 0 {
-			// 目录区分符不单独制造身份阻断（HasFileTitle 时）
-		}
 		for _, d := range id.facts.Discriminators {
-			qDisc[normalizeDisc(d)] = struct{}{}
+			nd := normalizeDisc(d)
+			if _, ok := qDisc[nd]; !ok {
+				qDiscList = append(qDiscList, d)
+			}
+			qDisc[nd] = struct{}{}
 		}
 	}
 	sDisc := map[string]struct{}{}
+	var sDiscList []string
 	for _, sn := range subNames {
 		for _, d := range sn.facts.Discriminators {
-			sDisc[normalizeDisc(d)] = struct{}{}
+			nd := normalizeDisc(d)
+			if _, ok := sDisc[nd]; !ok {
+				sDiscList = append(sDiscList, d)
+			}
+			sDisc[nd] = struct{}{}
 		}
 	}
 	if len(qDisc) == 0 || len(sDisc) == 0 {
 		return
+	}
+	// 数字称号冲突（No.8 vs No.9 / U-17 vs U-18）
+	for _, conf := range ConflictingDigitIdentities(qDiscList, sDiscList) {
+		c.Blockers = appendUniqueString(c.Blockers, formatDigitConflictBlocker(conf))
 	}
 	// bang 冲突
 	if _, q1 := qDisc["!"]; q1 {
@@ -616,7 +708,6 @@ func applyDiscriminatorConflicts(c *Candidate, idents []identityTitle, subNames 
 			}
 		}
 	}
-	// 单字母季标
 	qLetters := letterDiscs(qDisc)
 	sLetters := letterDiscs(sDisc)
 	if len(qLetters) > 0 && len(sLetters) > 0 {
@@ -657,32 +748,8 @@ func isShortTitle(text string) bool {
 	if hasCJK(text) {
 		return n <= shortCJKMaxRunes
 	}
-	// 纯拉丁：去空白后计数
 	compact := strings.ReplaceAll(TitleKey(text), " ", "")
 	return utf8.RuneCountInString(compact) <= shortLatinMaxRunes
-}
-
-func isPrefixOrSubtitleContain(a, b string) bool {
-	if a == "" || b == "" || a == b {
-		return false
-	}
-	shorter, longer := a, b
-	if len(a) > len(b) {
-		shorter, longer = b, a
-	}
-	if strings.HasPrefix(longer, shorter) {
-		return true
-	}
-	// 副标题：冒号/破折号后
-	for _, sep := range []string{":", "：", " - ", "-"} {
-		if i := strings.Index(longer, sep); i > 0 {
-			main := strings.TrimSpace(longer[:i])
-			if main == shorter {
-				return true
-			}
-		}
-	}
-	return strings.Contains(longer, shorter) && utf8.RuneCountInString(shorter)*2 >= utf8.RuneCountInString(longer)
 }
 
 func multisetDiceBigram(a, b string) float64 {
@@ -736,7 +803,6 @@ func lcsLen(a, b []rune) int {
 	if n == 0 || m == 0 {
 		return 0
 	}
-	// 滚动数组，Go 1.21 兼容
 	prev := make([]int, m+1)
 	cur := make([]int, m+1)
 	for i := 1; i <= n; i++ {
@@ -764,7 +830,6 @@ func clamp01(v float64) float64 {
 	if v > 1 {
 		return 1
 	}
-	// 避免 -0 / NaN
 	if math.IsNaN(v) {
 		return 0
 	}

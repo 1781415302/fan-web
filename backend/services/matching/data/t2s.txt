@@ -1,7 +1,8 @@
 # OpenCC-derived traditional→simplified single-character map
 # Source: https://github.com/BYVoid/OpenCC data/dictionary/TSCharacters.txt
 # License: Apache-2.0 — see OPENCC-LICENSE.txt in this directory
-# Format: <trad> <simpl> per line; identity pairs omitted
+# Format: <trad> <simpl> [more single-char targets...] per line; identity pairs omitted
+# Ambiguous rows (multiple distinct targets) keep the source character unmapped, e.g. 乾 干 乾
 㑯 㑔
 㑳 㑇
 㑶 㐹
@@ -50,7 +51,7 @@
 䴉 鹮
 丟 丢
 並 并
-乾 干
+乾 干 乾
 亂 乱
 亙 亘
 亞 亚

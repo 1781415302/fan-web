@@ -188,3 +188,58 @@ func TestQueriesConstantsCentralized(t *testing.T) {
 	}
 	_ = utf8.RuneCountInString
 }
+
+func TestRecallQueriesBilingualWithinBudget(t *testing.T) {
+	cat, err := LoadCatalog(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := ParseFile(FileInput{Name: "迷宫饭 ／ Dungeon Meshi - 01.mkv", Dir: "anime"})
+	if len(ev.Titles) < 2 {
+		t.Fatalf("parse titles=%#v", ev.Titles)
+	}
+	q := Query{Titles: ev.Titles, HasFileTitle: true}
+	terms := BuildQueries(q, cat)
+	if len(terms) == 0 {
+		t.Fatal("empty terms")
+	}
+	if len(terms) > queryTermBudget {
+		t.Fatalf("len=%d > %d: %#v", len(terms), queryTermBudget, terms)
+	}
+	var cn, en bool
+	for _, term := range terms {
+		if strings.Contains(term.Text, "迷宫饭") {
+			cn = true
+		}
+		if strings.Contains(strings.ToLower(term.Text), "dungeon") {
+			en = true
+		}
+	}
+	if !cn || !en {
+		t.Fatalf("both languages must be queried within budget: %#v", terms)
+	}
+}
+
+func TestRecallQueriesKaijuNo8(t *testing.T) {
+	cat, err := LoadCatalog(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := ParseFile(FileInput{Name: "Kaiju No. 8 - 01.mkv"})
+	terms := BuildQueries(Query{Titles: ev.Titles, HasFileTitle: true}, cat)
+	if len(terms) == 0 || len(terms) > queryTermBudget {
+		t.Fatalf("terms=%#v", terms)
+	}
+	ok := false
+	for _, term := range terms {
+		if strings.Contains(strings.ToLower(term.Text), "kaiju") {
+			ok = true
+		}
+		if strings.Contains(term.Text, "No.9") || strings.Contains(term.Text, "No. 9") {
+			t.Fatalf("must not query No.9: %#v", terms)
+		}
+	}
+	if !ok {
+		t.Fatalf("kaiju missing: %#v", terms)
+	}
+}

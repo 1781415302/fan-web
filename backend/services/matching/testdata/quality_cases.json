@@ -333,9 +333,9 @@
       "expected": [
         {
           "name": "Golden Kamuy - 01.mkv",
-          "subject_id": 0,
-          "stored_number": 0,
-          "mode": "review"
+          "subject_id": 910050,
+          "stored_number": 1,
+          "mode": "accepted"
         }
       ]
     },

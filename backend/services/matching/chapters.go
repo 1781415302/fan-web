@@ -9,12 +9,15 @@ import (
 // 只将 Single 的原始正整数写入 StoredNumber。
 // 先找远端 Ep 精确等于原始号的唯一章节，再找 Sort 精确相等的唯一章节。
 func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter, chaptersKnown bool) ChapterDecision {
+	required := collectRequiredSingles(files)
 	out := ChapterDecision{
 		State:    ChapterUnchecked,
 		Bindings: nil,
 		Rejected: map[string]string{},
+		Coverage: emptyChapterCoverage(required),
 	}
 	if !chaptersKnown {
+		// 未知章节：仍填 Required，Matched 空，不伪造覆盖。
 		return out
 	}
 
@@ -131,6 +134,9 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 		out.Bindings = append(out.Bindings, p.bind)
 	}
 
+	// Coverage 在重复/冲突检测结束后计算：仅最终 Bindings 的真实 ep/sort 计入 Matched。
+	out.Coverage = buildChapterCoverage(required, out.Bindings)
+
 	// 单文件编号异常（越界/小数/特别篇/重复版本等）只进入 Rejected，
 	// 不得因任一 Rejected 就把整组标成 ChapterConflict 从而否决已可解释的绑定。
 	hasConfirmed := false
@@ -173,6 +179,74 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 	}
 	out.State = ChapterUnchecked
 	return out
+}
+
+func collectRequiredSingles(files []FileEvidence) []int {
+	seen := map[int]struct{}{}
+	var nums []int
+	for _, f := range files {
+		if f.Episode.Kind != NumberSingle || f.Episode.First <= 0 {
+			continue
+		}
+		n := f.Episode.First
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	if nums == nil {
+		return []int{}
+	}
+	return nums
+}
+
+func emptyChapterCoverage(required []int) ChapterCoverage {
+	if required == nil {
+		required = []int{}
+	}
+	missing := append([]int(nil), required...)
+	if missing == nil {
+		missing = []int{}
+	}
+	return ChapterCoverage{
+		Required: required,
+		Matched:  []int{},
+		Missing:  missing,
+	}
+}
+
+// buildChapterCoverage：Matched 仅含最终 Bindings 中 Basis=ep/sort 且 ChapterID>0 的 StoredNumber；
+// CountFit/movie 占位不计入；Missing = Required − Matched。切片字段始终非 nil。
+func buildChapterCoverage(required []int, bindings []EpisodeBinding) ChapterCoverage {
+	if required == nil {
+		required = []int{}
+	}
+	matchedSet := map[int]struct{}{}
+	for _, b := range bindings {
+		if b.StoredNumber <= 0 || b.ChapterID <= 0 {
+			continue
+		}
+		if b.Basis != "ep" && b.Basis != "sort" {
+			continue
+		}
+		matchedSet[b.StoredNumber] = struct{}{}
+	}
+	matched := make([]int, 0, len(required))
+	missing := make([]int, 0, len(required))
+	for _, n := range required {
+		if _, ok := matchedSet[n]; ok {
+			matched = append(matched, n)
+		} else {
+			missing = append(missing, n)
+		}
+	}
+	return ChapterCoverage{
+		Required: required,
+		Matched:  matched,
+		Missing:  missing,
+	}
 }
 
 func hasAnyNumbering(files []FileEvidence) bool {

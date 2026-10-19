@@ -163,3 +163,18 @@ func TestPreferEligibleOrderMovesOrdinalStructureBehind(t *testing.T) {
 		t.Fatalf("ordinal-structure Missing should move behind, got %d then %d", out[0].Subject.ID, out[1].Subject.ID)
 	}
 }
+
+func TestDecidePartAffiliationCompetesInGap(t *testing.T) {
+	q := Query{HasFileTitle: true}
+	ranked := []Candidate{
+		{Subject: Subject{ID: 1}, NameScore: 0.97, Score: 0.97},
+		{Subject: Subject{ID: 2}, NameScore: 1, Score: 1, Missing: []string{missingPartAffiliation}},
+	}
+	d := Decide(q, ranked, true)
+	if d.Code != Review || d.WinnerID != 0 {
+		t.Fatalf("Part归属 Missing must compete in gap: %+v", d)
+	}
+	if OnlyOrdinalStructureMissing(ranked[1]) {
+		t.Fatal("Part归属 must not be ordinal-only")
+	}
+}

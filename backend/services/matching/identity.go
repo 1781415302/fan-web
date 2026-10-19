@@ -14,7 +14,7 @@ func TitlesShareStrongIdentity(a, b string, catalog Catalog) bool {
 	sb := identityTitle{text: b, source: SourceFile, facts: AnalyzeTitle(b), forms: Normalize(b)}
 	h := compareNames(qa, sb, catalog)
 	switch h.kind {
-	case hitStrict, hitNormal, hitCatalog:
+	case NameFullStrict, NameFullNormal, NameBaseStrict, NameBaseNormal, NameCatalog:
 		return true
 	default:
 		return false

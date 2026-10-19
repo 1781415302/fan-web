@@ -121,12 +121,61 @@ type QueryTerm struct {
 	Shortened bool
 }
 
+// NameMatchKind 名称命中种类（由评分选择最佳命中时填写）。
+type NameMatchKind string
+
+const (
+	NameNone       NameMatchKind = "none"
+	NameFullStrict NameMatchKind = "full_strict"
+	NameFullNormal NameMatchKind = "full_normal"
+	NameBaseStrict NameMatchKind = "base_strict"
+	NameBaseNormal NameMatchKind = "base_normal"
+	NameCatalog    NameMatchKind = "catalog"
+	NameSubtitle   NameMatchKind = "subtitle"
+	NamePrefix     NameMatchKind = "prefix"
+	NameFuzzy      NameMatchKind = "fuzzy"
+	NameLoose      NameMatchKind = "loose"
+)
+
+// SubjectNameRole 区分条目主名与别名。
+type SubjectNameRole string
+
+const (
+	SubjectPrimary SubjectNameRole = "primary" // Name 或 NameCn
+	SubjectAlias   SubjectNameRole = "alias"
+)
+
+// NameEvidence 最佳名称命中的来源与种类；零值表示尚未填写。
+// QueryText/SubjectText 保存实际参与最佳命中的输入标题文本，不保存剥离后的 base。
+type NameEvidence struct {
+	Kind          NameMatchKind
+	QueryText     string
+	SubjectText   string
+	QuerySource   Source
+	SubjectRole   SubjectNameRole
+	DirectSupport bool // 至少一个原始文件标题/合法目录兜底以 full/base/catalog 强等价支持本候选
+}
+
+// MatchRule 已满足条件的特殊推论标签；不表示已通过其他安全门。
+type MatchRule string
+
+const (
+	RuleFirstSeasonCompat MatchRule = "first_season_compat"
+	RuleSubtitleVerified  MatchRule = "subtitle_verified"
+	RulePartByChapters    MatchRule = "part_by_chapters"
+	RuleVariantPreference MatchRule = "variant_preference"
+)
+
 // Candidate 排序后的候选；Blockers 不可忽略，Missing 为缺证据。
+// NameEvidence/NeedsChapterProof/AppliedRules 为零值时不得单独导致拒绝。
 type Candidate struct {
 	Subject           Subject
 	NameScore, Score  float64
 	Blockers, Missing []string
 	Support           []string
+	NameEvidence      NameEvidence // 最佳名称命中的来源和种类
+	NeedsChapterProof bool         // 新规则尚需真实章节或可信编号绑定才能成立
+	AppliedRules      []MatchRule  // 已满足条件的特殊推论；不表示已通过其他安全门
 }
 
 // DecisionCode 统一决策结果码。
@@ -164,11 +213,27 @@ const (
 	ChapterConflict  ChapterState = "conflict"
 )
 
+// ChapterCoverage 组内集号覆盖；未知章节时 Required 可填、Matched 空。
+// count/movie 占位不能填入 Matched。
+type ChapterCoverage struct {
+	Required []int // 当前组所有 NumberSingle 正整数编号，去重升序，含越界或重复版本对应号
+	Matched  []int // 有唯一且未被拒绝的真实 ep/sort + 正 ChapterID 绑定的编号，去重升序
+	Missing  []int // Required - Matched
+}
+
 // ChapterDecision 目录级章节核对结果。
 type ChapterDecision struct {
 	State    ChapterState
 	Bindings []EpisodeBinding
 	Rejected map[string]string // 文件名→原因
+	Coverage ChapterCoverage   // 未知章节时 Required 可填、Matched 空
+}
+
+// CandidatePolicy 纯策略评估结果（由 policy 填充；零值不改变既有决策）。
+type CandidatePolicy struct {
+	Blockers, Missing, Support []string
+	AppliedRules               []MatchRule // 本阶段已证明可用的规则许可
+	NeedsChapterProof          bool
 }
 
 // BindingBatch 一批绑定（全库扫描只能保护，不能删除/改号）。

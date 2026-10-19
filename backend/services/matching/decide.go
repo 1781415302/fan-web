@@ -130,18 +130,8 @@ func ConfirmTarget(q Query, ranked []Candidate, targetID int) Decision {
 			Reason:     "目标存在明确冲突，不能确认：" + strings.Join(target.Blockers, "；"),
 		}
 	}
-	// 章节可解释：ChapterConflict 已体现为 Blockers；此处再保险
-	for _, b := range target.Blockers {
-		if strings.Contains(b, "章节") {
-			return Decision{
-				Code:       Review,
-				Candidates: cands,
-				Reason:     "章节不可解释：" + b,
-			}
-		}
-	}
-	// Missing 中的硬章节/不支持编号已不应出现在无 Blockers 路径；
-	// 纯名称低分/分差/未知季的 Missing 可消解。
+	// Missing 中的硬章节/不支持编号已体现为 Blockers；
+	// 纯名称低分/分差/未知季的 Missing 可消解。不把未知 Missing 改为可任意消除。
 	return Decision{
 		Code:       Accepted,
 		WinnerID:   targetID,

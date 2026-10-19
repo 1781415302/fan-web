@@ -311,3 +311,200 @@ func TestChaptersIsolateDuplicateVersionKeepsOthers(t *testing.T) {
 		t.Fatalf("05v2 must be rejected: %v", d.Rejected)
 	}
 }
+
+func assertCoverage(t *testing.T, got ChapterCoverage, required, matched, missing []int) {
+	t.Helper()
+	if required == nil {
+		required = []int{}
+	}
+	if matched == nil {
+		matched = []int{}
+	}
+	if missing == nil {
+		missing = []int{}
+	}
+	if got.Required == nil || got.Matched == nil || got.Missing == nil {
+		t.Fatalf("Coverage slices must be non-nil: %+v", got)
+	}
+	if !intSlicesEqual(got.Required, required) {
+		t.Fatalf("Required=%v want %v", got.Required, required)
+	}
+	if !intSlicesEqual(got.Matched, matched) {
+		t.Fatalf("Matched=%v want %v", got.Matched, matched)
+	}
+	if !intSlicesEqual(got.Missing, missing) {
+		t.Fatalf("Missing=%v want %v", got.Missing, missing)
+	}
+}
+
+func intSlicesEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestRecallCoverageComplete：4.7 完整覆盖 51/52。
+func TestRecallCoverageComplete(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "Show - 51.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 51, Last: 51, Explicit: true}},
+		{Name: "Show - 52.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 52, Last: 52, Explicit: true}},
+	}
+	subject := Subject{ID: 1, Name: "Show", EpisodeCount: 8, Media: KindSeries, Detailed: true}
+	chapters := []Chapter{
+		{ID: 501, Ep: 51, Sort: 1},
+		{ID: 502, Ep: 52, Sort: 2},
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("State=%s want confirmed rejected=%v", d.State, d.Rejected)
+	}
+	if len(d.Bindings) != 2 {
+		t.Fatalf("bindings=%v", d.Bindings)
+	}
+	for _, b := range d.Bindings {
+		if b.StoredNumber != 51 && b.StoredNumber != 52 {
+			t.Fatalf("StoredNumber must stay original: %+v", b)
+		}
+		if b.ChapterID == 0 || (b.Basis != "ep" && b.Basis != "sort") {
+			t.Fatalf("want real ep/sort binding: %+v", b)
+		}
+	}
+	assertCoverage(t, d.Coverage, []int{51, 52}, []int{51, 52}, []int{})
+}
+
+// TestRecallCoveragePartial：仅命中 51 时 Confirmed 但 Missing=[52]。
+func TestRecallCoveragePartial(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "Show - 51.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 51, Last: 51, Explicit: true}},
+		{Name: "Show - 52.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 52, Last: 52, Explicit: true}},
+	}
+	subject := Subject{ID: 1, Name: "Show", EpisodeCount: 8, Media: KindSeries, Detailed: true}
+	chapters := []Chapter{
+		{ID: 501, Ep: 51, Sort: 1},
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("partial real hit still Confirmed, got %s rejected=%v bindings=%v", d.State, d.Rejected, d.Bindings)
+	}
+	assertCoverage(t, d.Coverage, []int{51, 52}, []int{51}, []int{52})
+	if _, ok := d.Rejected["Show - 52.mkv"]; !ok {
+		t.Fatalf("52 must be rejected when no exact chapter: %v", d.Rejected)
+	}
+}
+
+// TestRecallCoverageDuplicateVersion：05/05v2 使 Required 含 5 但不计入 Matched。
+func TestRecallCoverageDuplicateVersion(t *testing.T) {
+	files := make([]FileEvidence, 0, 13)
+	for i := 1; i <= 12; i++ {
+		if i == 5 {
+			continue
+		}
+		files = append(files, FileEvidence{
+			Name:    "Review Show - " + fmt.Sprintf("%02d", i) + ".mkv",
+			Episode: EpisodeToken{Kind: NumberSingle, First: i, Last: i, Explicit: true},
+		})
+	}
+	files = append(files,
+		FileEvidence{Name: "Review Show - 05.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Explicit: true}},
+		FileEvidence{Name: "Review Show - 05v2.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Raw: "05", Explicit: true}},
+	)
+	subject := Subject{ID: 1, Name: "Review Show", EpisodeCount: 12, Media: KindSeries, Detailed: true}
+	chapters := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chapters = append(chapters, Chapter{ID: 300 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("got %s", d.State)
+	}
+	wantRequired := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	wantMatched := []int{1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12}
+	assertCoverage(t, d.Coverage, wantRequired, wantMatched, []int{5})
+}
+
+// TestRecallCoverageCountFitDoesNotMatch：CountFit 填 Required，Matched 空。
+func TestRecallCoverageCountFitDoesNotMatch(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "05.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5}},
+	}
+	subject := Subject{ID: 1, EpisodeCount: 12, Media: KindSeries}
+	d := InterpretChapters(files, subject, nil, true)
+	if d.State != ChapterCountFit {
+		t.Fatalf("got %s", d.State)
+	}
+	if len(d.Bindings) != 1 || d.Bindings[0].Basis != "count" {
+		t.Fatalf("bindings=%v", d.Bindings)
+	}
+	assertCoverage(t, d.Coverage, []int{5}, []int{}, []int{5})
+}
+
+// TestRecallCoverageUnknownChapters：chaptersKnown=false 仍填 Required，Matched 空。
+func TestRecallCoverageUnknownChapters(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "05.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 5, Last: 5}},
+		{Name: "13.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 13, Last: 13}},
+	}
+	d := InterpretChapters(files, Subject{ID: 1}, nil, false)
+	if d.State != ChapterUnchecked {
+		t.Fatalf("got %s", d.State)
+	}
+	if len(d.Bindings) != 0 {
+		t.Fatalf("bindings must be empty: %v", d.Bindings)
+	}
+	assertCoverage(t, d.Coverage, []int{5, 13}, []int{}, []int{5, 13})
+}
+
+// TestRecallCoverageOutOfRangeAndFraction：越界进 Required；小数/范围/特别篇不进。
+func TestRecallCoverageOutOfRangeAndFraction(t *testing.T) {
+	files := make([]FileEvidence, 0, 14)
+	for i := 1; i <= 12; i++ {
+		files = append(files, FileEvidence{
+			Name:    "Review Show - " + fmt.Sprintf("%02d", i) + ".mkv",
+			Episode: EpisodeToken{Kind: NumberSingle, First: i, Last: i, Explicit: true},
+		})
+	}
+	files = append(files,
+		FileEvidence{Name: "Review Show - 13.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 13, Last: 13, Explicit: true}},
+		FileEvidence{Name: "Review Show - 06.5.mkv", Episode: EpisodeToken{Kind: NumberFraction, Raw: "06.5", Explicit: true}},
+		FileEvidence{Name: "Review Show - 01-02.mkv", Episode: EpisodeToken{Kind: NumberRange, First: 1, Last: 2, Raw: "01-02"}},
+		FileEvidence{Name: "Review Show - SP.mkv", Episode: EpisodeToken{Kind: NumberSpecial, Raw: "第0话"}},
+	)
+	subject := Subject{ID: 1, Name: "Review Show", EpisodeCount: 12, Media: KindSeries, Detailed: true}
+	chapters := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chapters = append(chapters, Chapter{ID: 200 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	d := InterpretChapters(files, subject, chapters, true)
+	if d.State != ChapterConfirmed {
+		t.Fatalf("got %s rejected=%v", d.State, d.Rejected)
+	}
+	wantRequired := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+	wantMatched := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	assertCoverage(t, d.Coverage, wantRequired, wantMatched, []int{13})
+}
+
+// TestRecallCoverageEmptySinglesNonNil：无正整数 Single 时切片仍非 nil。
+func TestRecallCoverageEmptySinglesNonNil(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "f.mkv", Episode: EpisodeToken{Kind: NumberFraction, Raw: "12.5"}},
+	}
+	d := InterpretChapters(files, Subject{ID: 1, EpisodeCount: 12}, nil, true)
+	assertCoverage(t, d.Coverage, []int{}, []int{}, []int{})
+}
+
+// TestRecallCoverageMoviePlaceholderNotMatched：movie 占位不因 Basis=movie 计入 Matched。
+func TestRecallCoverageMoviePlaceholderNotMatched(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "Movie.mkv", Media: KindMovie, Episode: EpisodeToken{Kind: NumberUnknown}},
+	}
+	subject := Subject{ID: 1, Media: KindMovie, EpisodeCount: 1}
+	d := InterpretChapters(files, subject, nil, true)
+	// 无 NumberSingle → Required 空；即便有 movie 绑定也不能伪造 Matched
+	assertCoverage(t, d.Coverage, []int{}, []int{}, []int{})
+}

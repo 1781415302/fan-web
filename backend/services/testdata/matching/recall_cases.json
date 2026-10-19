@@ -1,0 +1,7689 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "R01",
+      "files": [
+        {
+          "name": "[BD 1080p][简体内嵌] 葬送的芙莉莲 [01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910001,
+          "name": "葬送的芙莉莲",
+          "name_cn": "葬送的芙莉莲",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910001001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910001002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910001003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910001004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910001005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910001006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910001007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910001008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910001009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910001010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910001011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910001012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "葬送的芙莉莲"
+          ],
+          "ids": [
+            910001
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "[BD 1080p][简体内嵌] 葬送的芙莉莲 [01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910001,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R02",
+      "files": [
+        {
+          "name": "[简繁日内封字幕][Dungeon Meshi][01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910002,
+          "name": "Dungeon Meshi",
+          "name_cn": "迷宫饭",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910002001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910002002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910002003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910002004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910002005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910002006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910002007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910002008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910002009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910002010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910002011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910002012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Dungeon Meshi"
+          ],
+          "ids": [
+            910002
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "[简繁日内封字幕][Dungeon Meshi][01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910002,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R03",
+      "files": [
+        {
+          "name": "Sousou no Frieren - 01-SENPAI.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910003,
+          "name": "Sousou no Frieren",
+          "name_cn": "葬送的芙莉莲",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910003001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910003002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910003003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910003004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910003005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910003006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910003007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910003008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910003009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910003010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910003011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910003012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Sousou no Frieren"
+          ],
+          "ids": [
+            910003
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Sousou no Frieren - 01-SENPAI.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910003,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R04",
+      "files": [
+        {
+          "name": "铃芽之旅.2022.1080p.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910004,
+          "name": "铃芽之旅",
+          "name_cn": "铃芽之旅",
+          "aliases": [],
+          "year": 2022,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910004001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "铃芽之旅"
+          ],
+          "ids": [
+            910004
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "铃芽之旅.2022.1080p.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910004,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R05-plain",
+      "files": [
+        {
+          "name": "Kimi no Na wa. [01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910005,
+          "name": "Kimi no Na wa.",
+          "name_cn": "你的名字。",
+          "aliases": [],
+          "year": 2016,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910005001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kimi no Na wa."
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Kimi no Na wa"
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Kimi no Na wa. [01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910005,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R05-bracket",
+      "files": [
+        {
+          "name": "[Kimi no Na wa.][01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910005,
+          "name": "Kimi no Na wa.",
+          "name_cn": "你的名字。",
+          "aliases": [],
+          "year": 2016,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910005001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kimi no Na wa."
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Kimi no Na wa"
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Kimi no Na wa.][01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910005,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R06-dash",
+      "files": [
+        {
+          "name": "Kaiju No. 8 - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910006,
+          "name": "Kaiju No. 8",
+          "name_cn": "怪兽8号",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910006001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910006002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910006003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910006004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910006005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910006006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910006007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910006008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910006009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910006010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910006011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910006012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910007,
+          "name": "Kaiju No. 9",
+          "name_cn": "怪兽9号",
+          "aliases": [],
+          "year": 2025,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910007001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910007002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910007003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910007004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910007005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910007006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910007007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910007008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910007009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910007010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910007011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910007012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kaiju No. 8"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Kaiju No"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Kaiju No. 8 - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910006,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R06-bracket",
+      "files": [
+        {
+          "name": "[Kaiju No. 8][01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910006,
+          "name": "Kaiju No. 8",
+          "name_cn": "怪兽8号",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910006001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910006002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910006003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910006004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910006005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910006006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910006007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910006008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910006009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910006010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910006011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910006012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910007,
+          "name": "Kaiju No. 9",
+          "name_cn": "怪兽9号",
+          "aliases": [],
+          "year": 2025,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910007001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910007002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910007003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910007004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910007005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910007006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910007007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910007008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910007009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910007010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910007011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910007012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kaiju No. 8"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Kaiju No"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Kaiju No. 8][01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910006,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R07",
+      "files": [
+        {
+          "name": "迷宫饭 ／ Dungeon Meshi - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910008,
+          "name": "Dungeon Meshi",
+          "name_cn": "迷宫饭",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910008001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910008002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910008003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910008004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910008005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910008006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910008007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910008008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910008009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910008010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910008011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910008012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "迷宫饭"
+          ],
+          "ids": [
+            910008
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Dungeon Meshi"
+          ],
+          "ids": [
+            910008
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "迷宫饭 ／ Dungeon Meshi - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910008,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R08",
+      "files": [
+        {
+          "name": "星河深处共同旅行 ／ Unexpected Chronicle Stars - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910009,
+          "name": "星河深处共同旅行",
+          "name_cn": "星河深处共同旅行",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910009001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910009002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910009003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910009004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910009005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910009006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910009007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910009008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910009009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910009010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910009011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910009012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910010,
+          "name": "Unexpected Chronicle Stars",
+          "name_cn": "Unexpected Chronicle Stars",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910010001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910010002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910010003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910010004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910010005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910010006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910010007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910010008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910010009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910010010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910010011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910010012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910011,
+          "name": "星河远处共同旅行",
+          "name_cn": "星河远处共同旅行",
+          "aliases": [
+            "Unexpected Chronicla Stars"
+          ],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910011001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910011002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910011003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910011004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910011005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910011006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910011007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910011008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910011009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910011010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910011011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910011012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "星河深处共同旅行"
+          ],
+          "ids": [
+            910009,
+            910011
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Unexpected Chronicle Stars"
+          ],
+          "ids": [
+            910010,
+            910011
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "星河深处共同旅行 ／ Unexpected Chronicle Stars - 01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910012,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910012001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910012002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910012003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910012004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910012005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910012006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910012007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910012008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910012009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910012010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910012011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910012012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910012
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910012,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-over",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E13.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910013,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910013001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910013002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910013003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910013004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910013005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910013006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910013007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910013008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910013009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910013010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910013011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910013012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910013
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 5
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910013,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes S01E13.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-v2",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910014,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910014001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910014002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910014003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910014004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910014005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910014006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910014007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910014008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910014009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910014010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910014011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910014012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910014
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-v2-solo",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910014,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910014001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910014002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910014003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910014004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910014005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910014006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910014007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910014008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910014009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910014010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910014011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910014012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910014
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 5
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-v2-cn",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes 第1季 - 05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910014,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910014001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910014002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910014003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910014004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910014005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910014006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910014007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910014008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910014009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910014010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910014011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910014012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910014
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes 第1季 - 05v2.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R10-alias-s2",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910015,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [
+            "Campus Notes Season 2"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910015001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910015002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910015003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910015004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910015005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910015006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910015007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910015008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910015009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910015010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910015011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910015012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910015
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R10-query-s02",
+      "files": [
+        {
+          "name": "Campus Notes S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910016,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910016001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910016002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910016003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910016004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910016005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910016006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910016007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910016008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910016009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910016010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910016011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910016012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910016
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R10-catalog-s01",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910017,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [
+            "Campus Notes TV"
+          ],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910017001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910017002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910017003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910017004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910017005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910017006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910017007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910017008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910017009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910017010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910017011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910017012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910017
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910017,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R11",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910018,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910018001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910018002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910018003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910018004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910018005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910018006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910018007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910018008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910018009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910018010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910018011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910018012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910019,
+          "name": "Campus Notes Season 2",
+          "name_cn": "校园笔记 第2季",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910019001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910019002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910019003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910019004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910019005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910019006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910019007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910019008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910019009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910019010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910019011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910019012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910018,
+            910019
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910018,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R11-swap",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910019,
+          "name": "Campus Notes Season 2",
+          "name_cn": "校园笔记 第2季",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910019001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910019002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910019003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910019004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910019005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910019006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910019007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910019008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910019009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910019010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910019011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910019012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910018,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910018001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910018002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910018003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910018004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910018005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910018006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910018007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910018008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910018009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910018010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910018011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910018012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910019,
+            910018
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910018,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R11-alias-ref",
+      "files": [
+        {
+          "name": "Campus Notes Official - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910020,
+          "name": "Campus Notes JP",
+          "name_cn": "校园笔记",
+          "aliases": [
+            "Campus Notes Official"
+          ],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910020001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910020002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910020003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910020004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910020005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910020006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910020007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910020008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910020009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910020010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910020011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910020012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910021,
+          "name": "Campus Notes Official Season 2",
+          "name_cn": "校园笔记官译 第2季",
+          "aliases": [
+            "Campus Notes Official"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910021001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910021002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910021003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910021004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910021005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910021006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910021007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910021008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910021009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910021010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910021011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910021012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes Official"
+          ],
+          "ids": [
+            910020,
+            910021
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes Official - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910020,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R11b",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910022,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 13,
+          "chapters": [
+            {
+              "id": 910022001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910022002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910022003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910022004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910022005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910022006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910022007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910022008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910022009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910022010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910022011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910022012,
+              "ep": 12.0,
+              "sort": 12.0
+            },
+            {
+              "id": 910022013,
+              "ep": 13.0,
+              "sort": 13.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910023,
+          "name": "Campus Notes Season 2",
+          "name_cn": "校园笔记 第2季",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910023001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910023002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910023003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910023004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910023005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910023006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910023007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910023008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910023009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910023010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910023011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910023012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910022,
+            910023
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910022,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R12-part2",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910024,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910024001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910024002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910024003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910024004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910024005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910024006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910024007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910024008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910024009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910024010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910024011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910024012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910025,
+          "name": "Campus Notes Part 2",
+          "name_cn": "Campus Notes Part 2",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910025001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910025002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910025003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910025004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910025005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910025006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910025007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910025008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910025009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910025010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910025011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910025012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910024,
+            910025
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910024,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R12-movie",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910026,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910026001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910026002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910026003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910026004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910026005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910026006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910026007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910026008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910026009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910026010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910026011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910026012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910027,
+          "name": "Campus Notes The Movie",
+          "name_cn": "Campus Notes The Movie",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910027001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910026,
+            910027
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910026,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R12-recap",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910028,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910028001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910028002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910028003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910028004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910028005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910028006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910028007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910028008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910028009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910028010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910028011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910028012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910029,
+          "name": "Campus Notes Recap",
+          "name_cn": "Campus Notes Recap",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "recap",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910029001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910029002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910029003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910029004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910029005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910029006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910029007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910029008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910029009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910029010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910029011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910029012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910028,
+            910029
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910028,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R12-multi",
+      "files": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910030,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910030001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910030002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910030003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910030004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910030005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910030006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910030007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910030008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910030009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910030010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910030011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910030012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910031,
+          "name": "Campus Notes Part 2",
+          "name_cn": "",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910031001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910031002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910031003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910031004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910031005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910031006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910031007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910031008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910031009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910031010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910031011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910031012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910032,
+          "name": "Campus Notes The Movie",
+          "name_cn": "",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910032001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910033,
+          "name": "Campus Notes Recap",
+          "name_cn": "",
+          "aliases": [
+            "Campus Notes"
+          ],
+          "year": 2022,
+          "media": "recap",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910033001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910033002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910033003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910033004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910033005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910033006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910033007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910033008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910033009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910033010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910033011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910033012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910030,
+            910031,
+            910032,
+            910033
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910030,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R13-movie",
+      "files": [
+        {
+          "name": "Campus Notes Movie [01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910034,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910034001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910034002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910034003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910034004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910034005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910034006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910034007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910034008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910034009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910034010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910034011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910034012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910035,
+          "name": "Campus Notes Movie",
+          "name_cn": "校园笔记剧场版",
+          "aliases": [],
+          "year": 2022,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910035001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes Movie"
+          ],
+          "ids": [
+            910034,
+            910035
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910034,
+            910035
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes Movie [01].mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910035,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R13-s02",
+      "files": [
+        {
+          "name": "Campus Notes S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910036,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910036001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910036002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910036003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910036004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910036005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910036006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910036007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910036008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910036009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910036010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910036011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910036012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910037,
+          "name": "Campus Notes Season 2",
+          "name_cn": "校园笔记 第2季",
+          "aliases": [],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910037001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910037002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910037003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910037004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910037005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910037006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910037007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910037008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910037009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910037010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910037011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910037012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910036,
+            910037
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S02E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910037,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R14",
+      "files": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910038,
+          "name": "Shared Title",
+          "name_cn": "同名作品",
+          "aliases": [],
+          "year": 2020,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910038001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910038002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910038003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910038004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910038005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910038006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910038007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910038008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910038009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910038010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910038011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910038012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910039,
+          "name": "Shared Title",
+          "name_cn": "同名作品",
+          "aliases": [],
+          "year": 2020,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910039001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910039002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910039003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910039004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910039005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910039006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910039007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910039008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910039009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910039010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910039011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910039012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Shared Title"
+          ],
+          "ids": [
+            910038,
+            910039
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R15",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910040,
+          "name": "Mushoku Tensei Season 2: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第2季",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910040001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910040002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910040003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910040004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910040005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910040006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910040007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910040008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910040009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910040010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910040011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910040012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910040
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910040,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R16-empty-chapters",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910041,
+          "name": "Mushoku Tensei Season 2: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第2季",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910041
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R16-partial-chapters",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Mushoku Tensei S02E02.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910042,
+          "name": "Mushoku Tensei Season 2: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第2季",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910042001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910042
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Mushoku Tensei S02E02.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R17-prefix",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910043,
+          "name": "Mushoku Tensei Another Story Season 2",
+          "name_cn": "无职转生另一物语 第2季",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910043001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910043002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910043003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910043004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910043005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910043006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910043007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910043008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910043009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910043010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910043011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910043012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910043
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R17-season3",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910044,
+          "name": "Mushoku Tensei Season 3: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第3季",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910044001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910044002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910044003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910044004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910044005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910044006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910044007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910044008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910044009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910044010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910044011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910044012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910044
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R18",
+      "files": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910045,
+          "name": "Mushoku Tensei Season 2: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第2季 A",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910045001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910045002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910045003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910045004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910045005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910045006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910045007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910045008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910045009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910045010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910045011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910045012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910046,
+          "name": "Mushoku Tensei Season 2: Isekai Ittara Honki Dasu",
+          "name_cn": "无职转生 第2季 B",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910046001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910046002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910046003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910046004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910046005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910046006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910046007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910046008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910046009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910046010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910046011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910046012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Mushoku Tensei"
+          ],
+          "ids": [
+            910045,
+            910046
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Mushoku Tensei S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R19",
+      "files": [
+        {
+          "name": "Arc Show S03E51.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Arc Show S03E52.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910047,
+          "name": "Arc Show Season 3 Part 1",
+          "name_cn": "弧光秀 第3季 Part1",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910047001,
+              "ep": 51.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910047002,
+              "ep": 52.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910047003,
+              "ep": 53.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910047004,
+              "ep": 54.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910047005,
+              "ep": 55.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910047006,
+              "ep": 56.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910047007,
+              "ep": 57.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910047008,
+              "ep": 58.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910048,
+          "name": "Arc Show Season 3 Part 2",
+          "name_cn": "弧光秀 第3季 Part2",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910048001,
+              "ep": 59.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910048002,
+              "ep": 60.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910048003,
+              "ep": 61.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910048004,
+              "ep": 62.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910048005,
+              "ep": 63.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910048006,
+              "ep": 64.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910048007,
+              "ep": 65.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910048008,
+              "ep": 66.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Arc Show"
+          ],
+          "ids": [
+            910047,
+            910048
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Arc Show S03E51.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910047,
+          "stored_number": 51
+        },
+        {
+          "name": "Arc Show S03E52.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910047,
+          "stored_number": 52
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R20",
+      "files": [
+        {
+          "name": "Arc Show S03E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Arc Show S03E02.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910049,
+          "name": "Arc Show Season 3 Part 1",
+          "name_cn": "",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910049001,
+              "ep": 51.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910049002,
+              "ep": 52.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910049003,
+              "ep": 53.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910049004,
+              "ep": 54.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910049005,
+              "ep": 55.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910049006,
+              "ep": 56.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910049007,
+              "ep": 57.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910049008,
+              "ep": 58.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910050,
+          "name": "Arc Show Season 3 Part 2",
+          "name_cn": "",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910050001,
+              "ep": 59.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910050002,
+              "ep": 60.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910050003,
+              "ep": 61.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910050004,
+              "ep": 62.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910050005,
+              "ep": 63.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910050006,
+              "ep": 64.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910050007,
+              "ep": 65.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910050008,
+              "ep": 66.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Arc Show"
+          ],
+          "ids": [
+            910049,
+            910050
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Arc Show S03E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Arc Show S03E02.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R21",
+      "files": [
+        {
+          "name": "Arc Show S03E51.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Arc Show S03E59.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910051,
+          "name": "Arc Show Season 3 Part 1",
+          "name_cn": "",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910051001,
+              "ep": 51.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910051002,
+              "ep": 52.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910051003,
+              "ep": 53.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910051004,
+              "ep": 54.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910051005,
+              "ep": 55.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910051006,
+              "ep": 56.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910051007,
+              "ep": 57.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910051008,
+              "ep": 58.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910052,
+          "name": "Arc Show Season 3 Part 2",
+          "name_cn": "",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910052001,
+              "ep": 59.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910052002,
+              "ep": 60.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910052003,
+              "ep": 61.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910052004,
+              "ep": 62.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910052005,
+              "ep": 63.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910052006,
+              "ep": 64.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910052007,
+              "ep": 65.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910052008,
+              "ep": 66.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Arc Show"
+          ],
+          "ids": [
+            910051,
+            910052
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Arc Show S03E51.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Arc Show S03E59.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R22",
+      "files": [
+        {
+          "name": "Arc Show S03 Part2 - 59.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910053,
+          "name": "Arc Show Season 3",
+          "name_cn": "弧光秀 第3季",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910053001,
+              "ep": 59.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910053002,
+              "ep": 60.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910053003,
+              "ep": 61.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910053004,
+              "ep": 62.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910053005,
+              "ep": 63.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910053006,
+              "ep": 64.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910053007,
+              "ep": 65.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910053008,
+              "ep": 66.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910053009,
+              "ep": 50.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910053010,
+              "ep": 51.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910053011,
+              "ep": 52.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910053012,
+              "ep": 53.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Arc Show"
+          ],
+          "ids": [
+            910053
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Arc Show S03 Part2 - 59.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R23",
+      "files": [
+        {
+          "name": "Arc Show - 51.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Arc Show - 52.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910054,
+          "name": "Arc Show",
+          "name_cn": "弧光秀",
+          "aliases": [],
+          "year": 2020,
+          "media": "series",
+          "episode_count": 25,
+          "chapters": [
+            {
+              "id": 910054001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910054002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910054003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910054004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910054005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910054006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910054007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910054008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910054009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910054010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910054011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910054012,
+              "ep": 12.0,
+              "sort": 12.0
+            },
+            {
+              "id": 910054013,
+              "ep": 13.0,
+              "sort": 13.0
+            },
+            {
+              "id": 910054014,
+              "ep": 14.0,
+              "sort": 14.0
+            },
+            {
+              "id": 910054015,
+              "ep": 15.0,
+              "sort": 15.0
+            },
+            {
+              "id": 910054016,
+              "ep": 16.0,
+              "sort": 16.0
+            },
+            {
+              "id": 910054017,
+              "ep": 17.0,
+              "sort": 17.0
+            },
+            {
+              "id": 910054018,
+              "ep": 18.0,
+              "sort": 18.0
+            },
+            {
+              "id": 910054019,
+              "ep": 19.0,
+              "sort": 19.0
+            },
+            {
+              "id": 910054020,
+              "ep": 20.0,
+              "sort": 20.0
+            },
+            {
+              "id": 910054021,
+              "ep": 21.0,
+              "sort": 21.0
+            },
+            {
+              "id": 910054022,
+              "ep": 22.0,
+              "sort": 22.0
+            },
+            {
+              "id": 910054023,
+              "ep": 23.0,
+              "sort": 23.0
+            },
+            {
+              "id": 910054024,
+              "ep": 24.0,
+              "sort": 24.0
+            },
+            {
+              "id": 910054025,
+              "ep": 25.0,
+              "sort": 25.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910055,
+          "name": "Arc Show Season 3 Part 1",
+          "name_cn": "",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 8,
+          "chapters": [
+            {
+              "id": 910055001,
+              "ep": 51.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910055002,
+              "ep": 52.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910055003,
+              "ep": 53.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910055004,
+              "ep": 54.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910055005,
+              "ep": 55.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910055006,
+              "ep": 56.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910055007,
+              "ep": 57.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910055008,
+              "ep": 58.0,
+              "sort": 8.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Arc Show"
+          ],
+          "ids": [
+            910054,
+            910055
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Arc Show - 51.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910055,
+          "stored_number": 51
+        },
+        {
+          "name": "Arc Show - 52.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910055,
+          "stored_number": 52
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R24-frac",
+      "files": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 06.5.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910056,
+          "name": "Review Show",
+          "name_cn": "评审秀",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910056001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910056002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910056003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910056004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910056005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910056006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910056007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910056008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910056009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910056010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910056011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910056012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Review Show"
+          ],
+          "ids": [
+            910056
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 1
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 2
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 3
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 4
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 5
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 6
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 7
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 8
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 9
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 10
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 11
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910056,
+          "stored_number": 12
+        },
+        {
+          "name": "Review Show - 06.5.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R24-over",
+      "files": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 13.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910057,
+          "name": "Review Show",
+          "name_cn": "评审秀",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910057001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910057002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910057003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910057004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910057005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910057006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910057007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910057008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910057009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910057010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910057011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910057012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Review Show"
+          ],
+          "ids": [
+            910057
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 1
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 2
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 3
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 4
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 5
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 6
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 7
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 8
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 9
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 10
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 11
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910057,
+          "stored_number": 12
+        },
+        {
+          "name": "Review Show - 13.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R24-v2",
+      "files": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Review Show - 05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910058,
+          "name": "Review Show",
+          "name_cn": "评审秀",
+          "aliases": [],
+          "year": 2023,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910058001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910058002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910058003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910058004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910058005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910058006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910058007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910058008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910058009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910058010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910058011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910058012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Review Show"
+          ],
+          "ids": [
+            910058
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Review Show - 01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 1
+        },
+        {
+          "name": "Review Show - 02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 2
+        },
+        {
+          "name": "Review Show - 03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 3
+        },
+        {
+          "name": "Review Show - 04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 4
+        },
+        {
+          "name": "Review Show - 05.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Review Show - 06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 6
+        },
+        {
+          "name": "Review Show - 07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 7
+        },
+        {
+          "name": "Review Show - 08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 8
+        },
+        {
+          "name": "Review Show - 09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 9
+        },
+        {
+          "name": "Review Show - 10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 10
+        },
+        {
+          "name": "Review Show - 11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 11
+        },
+        {
+          "name": "Review Show - 12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910058,
+          "stored_number": 12
+        },
+        {
+          "name": "Review Show - 05v2.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R25-detail404",
+      "files": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A"
+        },
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B"
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910059,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "not_found",
+          "chapters_error": ""
+        },
+        {
+          "id": 910060,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910060001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910060002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910060003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910060004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910060005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910060006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910060007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910060008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910060009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910060010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910060011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910060012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910061,
+          "name": "Healthy Show",
+          "name_cn": "健康秀",
+          "aliases": [],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910061001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910061002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910061003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910061004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910061005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910061006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910061007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910061008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910061009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910061010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910061011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910061012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Shared Title"
+          ],
+          "ids": [
+            910059,
+            910060
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Healthy Show"
+          ],
+          "ids": [
+            910061
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B",
+          "mode": "accepted",
+          "subject_id": 910061,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R25-chapters404",
+      "files": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A"
+        },
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B"
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910062,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": "not_found"
+        },
+        {
+          "id": 910063,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910063001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910063002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910063003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910063004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910063005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910063006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910063007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910063008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910063009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910063010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910063011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910063012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910064,
+          "name": "Healthy Show",
+          "name_cn": "健康秀",
+          "aliases": [],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910064001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910064002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910064003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910064004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910064005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910064006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910064007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910064008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910064009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910064010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910064011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910064012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Shared Title"
+          ],
+          "ids": [
+            910062,
+            910063
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Healthy Show"
+          ],
+          "ids": [
+            910064
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B",
+          "mode": "accepted",
+          "subject_id": 910064,
+          "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R25-dir-swap",
+      "files": [
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B"
+        },
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A"
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910065,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "not_found",
+          "chapters_error": ""
+        },
+        {
+          "id": 910066,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910066001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910066002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910066003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910066004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910066005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910066006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910066007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910066008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910066009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910066010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910066011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910066012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910067,
+          "name": "Healthy Show",
+          "name_cn": "健康秀",
+          "aliases": [],
+          "year": 2022,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910067001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910067002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910067003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910067004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910067005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910067006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910067007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910067008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910067009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910067010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910067011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910067012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Shared Title"
+          ],
+          "ids": [
+            910065,
+            910066
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Healthy Show"
+          ],
+          "ids": [
+            910067
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Healthy Show - 01.mkv",
+          "dir": "B",
+          "mode": "accepted",
+          "subject_id": 910067,
+          "stored_number": 1
+        },
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "A",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R25-detail-ok-chapters404",
+      "files": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910068,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910068001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910068002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910068003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910068004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910068005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910068006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910068007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910068008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910068009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910068010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910068011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910068012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910069,
+          "name": "Shared Title",
+          "name_cn": "同名",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": "not_found"
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Shared Title"
+          ],
+          "ids": [
+            910068,
+            910069
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Shared Title - 01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R26",
+      "files": [
+        {
+          "name": "Probe Show S02E01.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910070,
+          "name": "Probe Show Season 2: Variant 0 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体0",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910070001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910070002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910070003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910070004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910070005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910070006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910070007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910070008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910070009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910070010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910070011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910070012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910071,
+          "name": "Probe Show Season 2: Variant 1 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体1",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910071001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910071002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910071003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910071004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910071005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910071006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910071007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910071008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910071009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910071010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910071011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910071012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910072,
+          "name": "Probe Show Season 2: Variant 2 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体2",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910073,
+          "name": "Probe Show Season 2: Variant 3 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体3",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910074,
+          "name": "Probe Show Season 2: Variant 4 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体4",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910075,
+          "name": "Probe Show Season 2: Variant 5 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体5",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        },
+        {
+          "id": 910076,
+          "name": "Probe Show Season 2: Variant 6 Extended Subtitle Title",
+          "name_cn": "探测秀 第2季 变体6",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Probe Show"
+          ],
+          "ids": [
+            910070,
+            910071,
+            910072,
+            910073,
+            910074,
+            910075,
+            910076
+          ],
+          "saturated": true
+        }
+      ],
+      "expected": [
+        {
+          "name": "Probe Show S02E01.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    }
+  ]
+}
