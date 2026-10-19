@@ -512,3 +512,157 @@ func TestMatchingSessionResolveForTargetRejectsUnavailable(t *testing.T) {
 		t.Fatal("must not bind unavailable target")
 	}
 }
+
+// TestRecallSessionPolicyBudgetForcesReview（R26）：>6 高身份副标题竞争者时请求有界，
+// 拟接受胜者若 AppliedRules 非空且仍有未探测 NeedsChapterProof，必须 Review。
+func TestRecallSessionPolicyBudgetForcesReview(t *testing.T) {
+	rt := testSessionRuntime(t)
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+
+	// 完整主标题首季候选：探测后可获 RuleFirstSeasonCompat
+	primary := matching.Subject{
+		ID: 910001, Name: "Hero Tale", Media: matching.KindSeries,
+		EpisodeCount: 12, Detailed: true,
+	}
+	f.putSubject(primary, "Hero Tale")
+	chs := make([]matching.Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chs = append(chs, matching.Chapter{ID: primary.ID*100 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	f.chapters[primary.ID] = chs
+
+	// 7 个高身份副标题竞争者（NeedsChapterProof）；合计 >6
+	for i := 0; i < 7; i++ {
+		id := 910100 + i
+		sub := matching.Subject{
+			ID: id, Name: fmt.Sprintf("Hero Tale Season 1: Variant %d", i),
+			Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+		}
+		f.putSubject(sub, "Hero Tale")
+		cchs := make([]matching.Chapter, 0, 12)
+		for ep := 1; ep <= 12; ep++ {
+			cchs = append(cchs, matching.Chapter{ID: id*100 + ep, Ep: float64(ep), Sort: float64(ep)})
+		}
+		f.chapters[id] = cchs
+	}
+
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	g := groupFromFile(t, "Hero Tale Season 1 - 01.mkv", "budget")
+	if g.Query.Ordinal.Season != 1 {
+		t.Fatalf("fixture season want 1, got %+v", g.Query.Ordinal)
+	}
+	res, err := sess.Resolve(g, nil)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if res.Decision.Code != matching.Review {
+		t.Fatalf("R26 want Review, got code=%s winner=%d reason=%s cands=%v",
+			res.Decision.Code, res.Decision.WinnerID, res.Decision.Reason, summarizeCands(res.Decision.Candidates))
+	}
+	if res.Decision.WinnerID != 0 || res.Subject != nil {
+		t.Fatalf("Review must not bind, winner=%d subject=%v", res.Decision.WinnerID, res.Subject)
+	}
+	// 章节探测有界：不超过 sessionChapterProbeBudget
+	if n := len(f.chaptersCalls); n > sessionChapterProbeBudget {
+		t.Fatalf("chapter probes=%d want <= %d calls=%v", n, sessionChapterProbeBudget, f.chaptersCalls)
+	}
+}
+
+// TestRecallSessionPolicyNeedsProofProbesOutsideTop3：>3 个高身份 NeedsChapterProof 时，
+// 探测数应超过仅 Top3 近接受逻辑（在 6 预算内调度）。
+func TestRecallSessionPolicyNeedsProofProbesOutsideTop3(t *testing.T) {
+	rt := testSessionRuntime(t)
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+
+	for i := 0; i < 8; i++ {
+		id := 920100 + i
+		sub := matching.Subject{
+			ID: id, Name: fmt.Sprintf("Hero Tale Season 1: Outside %d", i),
+			Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+		}
+		f.putSubject(sub, "Hero Tale")
+		cchs := make([]matching.Chapter, 0, 12)
+		for ep := 1; ep <= 12; ep++ {
+			cchs = append(cchs, matching.Chapter{ID: id*100 + ep, Ep: float64(ep), Sort: float64(ep)})
+		}
+		f.chapters[id] = cchs
+	}
+
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	g := groupFromFile(t, "Hero Tale Season 1 - 01.mkv", "out3")
+	_, err := sess.Resolve(g, nil)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	seen := map[int]bool{}
+	for _, id := range f.chaptersCalls {
+		seen[id] = true
+	}
+	if len(seen) <= 3 {
+		t.Fatalf("NeedsChapterProof outside Top3 must expand probes, unique=%d calls=%v (want >3 within budget 6)",
+			len(seen), f.chaptersCalls)
+	}
+	if len(seen) > sessionChapterProbeBudget {
+		t.Fatalf("probes=%d exceed budget %d", len(seen), sessionChapterProbeBudget)
+	}
+}
+
+// TestRecallSessionPolicyFastPathExitsOnNeedsChapterProof：S01/副标题/Part 新晋升不得走离线快通道。
+func TestRecallSessionPolicyFastPathExitsOnNeedsChapterProof(t *testing.T) {
+	rt := testSessionRuntime(t)
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+
+	bound := matching.Subject{
+		ID: 930001, Name: "Hero Tale", Media: matching.KindSeries,
+		EpisodeCount: 12, Detailed: true,
+	}
+	f.putSubject(bound, "Hero Tale")
+	chs := make([]matching.Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chs = append(chs, matching.Chapter{ID: bound.ID*100 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	f.chapters[bound.ID] = chs
+
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	g := groupFromFile(t, "Hero Tale Season 1 - 01.mkv", "fast")
+	res, err := sess.Resolve(g, &BoundMatch{Subject: bound, UniqueDirectory: true})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if res.FromExistingBound {
+		t.Fatal("NeedsChapterProof 新晋升不得 FromExistingBound 离线快通道")
+	}
+	// 退出快通道后应走统一召回；本夹具可最终接受，但必须经过探测（有 chapters 调用）
+	if len(f.chaptersCalls) == 0 && len(f.detailCalls) == 0 && len(f.searchCalls) == 0 {
+		t.Fatal("exiting fast path must continue unified recall/probe")
+	}
+}
+
+// TestRecallSessionPolicyFastPathStillAllowsOrdinaryOffline：无新晋升时既有离线追加仍允许。
+func TestRecallSessionPolicyFastPathStillAllowsOrdinaryOffline(t *testing.T) {
+	rt := testSessionRuntime(t)
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+
+	bound := matching.Subject{
+		ID: 930010, Name: "Plain Show", Media: matching.KindSeries,
+		EpisodeCount: 12, Detailed: true,
+	}
+	// 不注册搜索：纯快通道
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	g := groupFromFile(t, "Plain Show - 01.mkv", "plain")
+	res, err := sess.Resolve(g, &BoundMatch{Subject: bound, UniqueDirectory: true})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !res.FromExistingBound || res.Decision.Code != matching.Accepted || res.Decision.WinnerID != 930010 {
+		t.Fatalf("ordinary offline fast path want Accept bound, got code=%s winner=%d fromBound=%v reason=%s",
+			res.Decision.Code, res.Decision.WinnerID, res.FromExistingBound, res.Decision.Reason)
+	}
+	if len(f.searchCalls) != 0 {
+		t.Fatalf("ordinary fast path must not search, got %v", f.searchCalls)
+	}
+}

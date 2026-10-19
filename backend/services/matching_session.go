@@ -357,10 +357,17 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 	probed := map[int]bool{}
 	var winnerChapters matching.ChapterDecision
 
-	// 收敛：初排 → 章节探测/详情补全 → 再排 → Decide；最多 sessionChapterProbeBudget 次探测
-	for round := 0; round < sessionChapterProbeBudget+3; round++ {
+	// 收敛：初排 → 高身份详情补全 → 章节探测 → 再排 → Decide；最多 sessionChapterProbeBudget 次探测
+	for round := 0; round < sessionChapterProbeBudget+8; round++ {
 		subjects := s.poolSlice()
 		ranked := matching.Rank(q, subjects, catalog, chapters)
+
+		// 高身份先补详情（不计章节预算），使策略能写出 NeedsChapterProof
+		if filled, err := s.ensureDetailsForHighIdentity(ranked); err != nil {
+			return emptyMatchResult(), err
+		} else if filled {
+			continue
+		}
 
 		needProbe := s.selectChapterProbes(q, ranked, probed, chapters)
 		if len(needProbe) > 0 {
@@ -430,53 +437,65 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 		}
 
 		if decision.Code == matching.Accepted && decision.WinnerID > 0 {
-			if s.isUnavailable(decision.WinnerID) {
+			if s.shouldReviewUnprobedChapterProof(ranked, decision.WinnerID, probed) {
+				// 拟接受胜者 AppliedRules 非空，但仍有高身份 NeedsChapterProof 因预算未探测
+				cands := preferEligibleOrder(ranked)
+				if len(cands) > 3 {
+					cands = cands[:3]
+				}
+				decision = matching.Decision{
+					Code:       matching.Review,
+					Candidates: cands,
+					Reason:     "拟接受胜者依赖新规则，但仍有高身份候选因探测预算未完成章节证明",
+				}
+			} else if s.isUnavailable(decision.WinnerID) {
 				// 安全网：不可访问 ID 绝不能成为写入目标
 				s.markSubjectUnavailable(decision.WinnerID, s.unavailable[decision.WinnerID])
 				continue
-			}
-			sub, ok := s.pool[decision.WinnerID]
-			if !ok {
-				return emptyMatchResult(), fmt.Errorf("胜者 %d 不在候选池: %w", decision.WinnerID, ErrMatchUpstream)
-			}
-			if !sub.Detailed {
-				if err := s.ensureDetailed(decision.WinnerID); err != nil {
-					if isSubjectNotFound(err) {
-						s.markSubjectUnavailable(decision.WinnerID, err)
-						continue
-					}
-					return emptyMatchResult(), err
+			} else {
+				sub, ok := s.pool[decision.WinnerID]
+				if !ok {
+					return emptyMatchResult(), fmt.Errorf("胜者 %d 不在候选池: %w", decision.WinnerID, ErrMatchUpstream)
 				}
-				// 详情可能改变结构 → 再轮
-				continue
-			}
-			// 胜者章节：若未探测且有编号，做一次解释（详情话数 / 已缓存章节）
-			if !probed[decision.WinnerID] {
-				dec, err := s.probeChapters(group, decision.WinnerID)
-				if err != nil {
-					if isSubjectNotFound(err) {
-						s.markSubjectUnavailable(decision.WinnerID, err)
-						continue
+				if !sub.Detailed {
+					if err := s.ensureDetailed(decision.WinnerID); err != nil {
+						if isSubjectNotFound(err) {
+							s.markSubjectUnavailable(decision.WinnerID, err)
+							continue
+						}
+						return emptyMatchResult(), err
 					}
-					return emptyMatchResult(), err
-				}
-				chapters[decision.WinnerID] = dec
-				probed[decision.WinnerID] = true
-				// 若章节引入 Conflict，必须重新判断，不可先接受再探测
-				if dec.State == matching.ChapterConflict {
+					// 详情可能改变结构 → 再轮
 					continue
 				}
-				winnerChapters = dec
-			} else {
-				winnerChapters = chapters[decision.WinnerID]
-			}
+				// 胜者章节：若未探测且有编号，做一次解释（详情话数 / 已缓存章节）
+				if !probed[decision.WinnerID] {
+					dec, err := s.probeChapters(group, decision.WinnerID)
+					if err != nil {
+						if isSubjectNotFound(err) {
+							s.markSubjectUnavailable(decision.WinnerID, err)
+							continue
+						}
+						return emptyMatchResult(), err
+					}
+					chapters[decision.WinnerID] = dec
+					probed[decision.WinnerID] = true
+					// 若章节引入 Conflict，必须重新判断，不可先接受再探测
+					if dec.State == matching.ChapterConflict {
+						continue
+					}
+					winnerChapters = dec
+				} else {
+					winnerChapters = chapters[decision.WinnerID]
+				}
 
-			out.Decision = decision
-			cloned := cloneSubject(s.pool[decision.WinnerID])
-			out.Subject = &cloned
-			out.Chapters = normalizeChapterDecision(winnerChapters)
-			out.ManuallyConfirmed = forTarget
-			return out, nil
+				out.Decision = decision
+				cloned := cloneSubject(s.pool[decision.WinnerID])
+				out.Subject = &cloned
+				out.Chapters = normalizeChapterDecision(winnerChapters)
+				out.ManuallyConfirmed = forTarget
+				return out, nil
+			}
 		}
 
 		out.Decision = decision
@@ -542,6 +561,10 @@ func (s *MatchingSession) tryFastPath(group matching.Group, bound BoundMatch) (M
 	}
 	if len(c.Missing) > 0 {
 		// 缺证据：不能把空字段填成相容；退出快通道，进入搜索
+		return out, false, nil
+	}
+	if c.NeedsChapterProof || hasSessionPromotionRules(c.AppliedRules) {
+		// 新晋升（S01/副标题/Part）不得离线执行：退出快通道进入统一召回/探测
 		return out, false, nil
 	}
 	if c.NameScore < sessionNameScoreAcceptMin {
@@ -811,11 +834,37 @@ func queryHasSeasonHint(text string, season int) bool {
 	return strings.HasSuffix(t, fmt.Sprintf(" %d", season))
 }
 
+// ensureDetailsForHighIdentity 为 NameScore>=0.88 且无硬冲突的候选补详情。
+// 详情补全不计入章节探测预算；404 记 unavailable 并保留身份歧义。
+func (s *MatchingSession) ensureDetailsForHighIdentity(ranked []matching.Candidate) (filled bool, err error) {
+	for _, c := range ranked {
+		id := c.Subject.ID
+		if id <= 0 || c.NameScore < sessionNameScoreAcceptMin || len(c.Blockers) > 0 {
+			continue
+		}
+		if s.isUnavailable(id) {
+			continue
+		}
+		if sub, ok := s.pool[id]; ok && sub.Detailed {
+			continue
+		}
+		if err := s.ensureDetailed(id); err != nil {
+			if isSubjectNotFound(err) {
+				s.markSubjectUnavailable(id, err)
+				filled = true
+				continue
+			}
+			return false, err
+		}
+		filled = true
+	}
+	return filled, nil
+}
+
 func (s *MatchingSession) selectChapterProbes(q matching.Query, ranked []matching.Candidate, probed map[int]bool, chapters map[int]matching.ChapterDecision) []int {
 	if len(ranked) == 0 {
 		return nil
 	}
-	var out []int
 	budgetLeft := sessionChapterProbeBudget - len(probed)
 	if budgetLeft <= 0 {
 		return nil
@@ -830,21 +879,20 @@ func (s *MatchingSession) selectChapterProbes(q matching.Query, ranked []matchin
 		}
 	}
 
+	selected := map[int]bool{}
+	var out []int
+
+	// 阶段一：原近接受 / 绝对编号逻辑（Top3）
 	for i, c := range ranked {
 		if budgetLeft <= 0 {
 			break
 		}
-		id := c.Subject.ID
-		if id <= 0 || probed[id] || s.isUnavailable(id) {
-			continue
-		}
-		if _, done := chapters[id]; done {
+		if !s.chapterProbeBaseEligible(c, probed, chapters) {
 			continue
 		}
 		if c.NameScore < sessionNameScoreProbeMin {
 			continue
 		}
-		// 可能进入前三
 		inTop3 := i < 3
 		nearAccept := c.NameScore >= sessionNameScoreAcceptMin &&
 			c.Score >= sessionScoreAcceptMin-sessionAcceptDistance &&
@@ -864,11 +912,114 @@ func (s *MatchingSession) selectChapterProbes(q matching.Query, ranked []matchin
 			}
 		}
 		if inTop3 && (nearAccept || needExplain) {
-			out = append(out, id)
+			out = append(out, c.Subject.ID)
+			selected[c.Subject.ID] = true
 			budgetLeft--
 		}
 	}
+
+	// 阶段二：高身份 NeedsChapterProof——不因初排在 Top3 外忽略；按身份分、稳定名次调度
+	type proofProbe struct {
+		id        int
+		rankIdx   int
+		nameScore float64
+	}
+	var extra []proofProbe
+	for i, c := range ranked {
+		id := c.Subject.ID
+		if selected[id] {
+			continue
+		}
+		if !s.chapterProbeBaseEligible(c, probed, chapters) {
+			continue
+		}
+		if !c.NeedsChapterProof {
+			continue
+		}
+		// 高身份：NameScore>=0.88 且无硬冲突；Missing 本身不等于排除
+		if c.NameScore < sessionNameScoreAcceptMin {
+			continue
+		}
+		extra = append(extra, proofProbe{id: id, rankIdx: i, nameScore: c.NameScore})
+	}
+	sort.SliceStable(extra, func(i, j int) bool {
+		if extra[i].nameScore != extra[j].nameScore {
+			return extra[i].nameScore > extra[j].nameScore
+		}
+		return extra[i].rankIdx < extra[j].rankIdx
+	})
+	for _, e := range extra {
+		if budgetLeft <= 0 {
+			break
+		}
+		out = append(out, e.id)
+		budgetLeft--
+	}
 	return out
+}
+
+// chapterProbeBaseEligible：已 probed / unavailable / 已有章节 / 硬冲突 / 无效 ID 不入队。
+// 未知季/Part 等 Missing 本身不在此排除。
+func (s *MatchingSession) chapterProbeBaseEligible(c matching.Candidate, probed map[int]bool, chapters map[int]matching.ChapterDecision) bool {
+	id := c.Subject.ID
+	if id <= 0 || probed[id] || s.isUnavailable(id) {
+		return false
+	}
+	if _, done := chapters[id]; done {
+		return false
+	}
+	if len(c.Blockers) > 0 {
+		return false
+	}
+	return true
+}
+
+// hasSessionPromotionRules 报告是否含本阶段新晋升规则（S01/副标题/Part）。
+func hasSessionPromotionRules(rules []matching.MatchRule) bool {
+	for _, r := range rules {
+		switch r {
+		case matching.RuleFirstSeasonCompat, matching.RuleSubtitleVerified, matching.RulePartByChapters:
+			return true
+		}
+	}
+	return false
+}
+
+// shouldReviewUnprobedChapterProof：拟接受胜者 AppliedRules 非空，且仍有高身份 NeedsChapterProof 因预算未探测。
+func (s *MatchingSession) shouldReviewUnprobedChapterProof(ranked []matching.Candidate, winnerID int, probed map[int]bool) bool {
+	var winnerRules []matching.MatchRule
+	for _, c := range ranked {
+		if c.Subject.ID == winnerID {
+			winnerRules = c.AppliedRules
+			break
+		}
+	}
+	if len(winnerRules) == 0 {
+		return false
+	}
+	for _, c := range ranked {
+		id := c.Subject.ID
+		if id <= 0 || id == winnerID {
+			continue
+		}
+		if !c.NeedsChapterProof {
+			continue
+		}
+		if c.NameScore < sessionNameScoreAcceptMin {
+			continue
+		}
+		if len(c.Blockers) > 0 {
+			continue
+		}
+		if s.isUnavailable(id) {
+			continue // 不可访问不是「因预算未探测」
+		}
+		if probed[id] {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func (s *MatchingSession) probeChapters(group matching.Group, id int) (matching.ChapterDecision, error) {
