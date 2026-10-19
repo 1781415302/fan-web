@@ -114,3 +114,52 @@ func TestDecideConfirmTargetDoesNotOverrideAutoAccept(t *testing.T) {
 		t.Fatalf("must keep auto winner 1, got %+v", d)
 	}
 }
+
+func TestDecideIdentityMissingStillCompetesInGap(t *testing.T) {
+	q := Query{HasFileTitle: true}
+	// 模拟 prefer 后：近似第三作被提前，精确 A/B 带身份 Missing。
+	ranked := []Candidate{
+		{Subject: Subject{ID: 830003}, NameScore: 0.97, Score: 0.97},
+		{Subject: Subject{ID: 830001}, NameScore: 1, Score: 1, Missing: []string{"并列语言片段支持不同作品"}},
+		{Subject: Subject{ID: 830002}, NameScore: 1, Score: 1, Missing: []string{"并列语言片段支持不同作品"}},
+	}
+	d := Decide(q, ranked, true)
+	if d.Code != Review || d.WinnerID != 0 {
+		t.Fatalf("identity Missing peers must block approx third: %+v", d)
+	}
+}
+
+func TestDecideOrdinalStructureMissingExcludedFromGap(t *testing.T) {
+	q := Query{HasFileTitle: true}
+	ranked := []Candidate{
+		{Subject: Subject{ID: 62002}, NameScore: 1, Score: 1},
+		{Subject: Subject{ID: 62001}, NameScore: 1, Score: 1, Missing: []string{"候选无法解释查询季号"}},
+	}
+	d := Decide(q, ranked, true)
+	if d.Code != Accepted || d.WinnerID != 62002 {
+		t.Fatalf("ordinal-structure Missing must not block gap: %+v", d)
+	}
+}
+
+func TestPreferEligibleOrderKeepsIdentityMissingAheadOfApprox(t *testing.T) {
+	ranked := []Candidate{
+		{Subject: Subject{ID: 830001}, NameScore: 1, Score: 1, Missing: []string{"并列语言片段支持不同作品"}},
+		{Subject: Subject{ID: 830002}, NameScore: 1, Score: 1, Missing: []string{"并列语言片段支持不同作品"}},
+		{Subject: Subject{ID: 830003}, NameScore: 0.97, Score: 0.97},
+	}
+	out := PreferEligibleOrder(ranked)
+	if out[0].Subject.ID != 830001 || out[1].Subject.ID != 830002 || out[2].Subject.ID != 830003 {
+		t.Fatalf("identity Missing must keep score order, got %v", []int{out[0].Subject.ID, out[1].Subject.ID, out[2].Subject.ID})
+	}
+}
+
+func TestPreferEligibleOrderMovesOrdinalStructureBehind(t *testing.T) {
+	ranked := []Candidate{
+		{Subject: Subject{ID: 62001}, NameScore: 1, Score: 1, Missing: []string{"候选无法解释查询季号"}},
+		{Subject: Subject{ID: 62002}, NameScore: 1, Score: 1},
+	}
+	out := PreferEligibleOrder(ranked)
+	if out[0].Subject.ID != 62002 || out[1].Subject.ID != 62001 {
+		t.Fatalf("ordinal-structure Missing should move behind, got %d then %d", out[0].Subject.ID, out[1].Subject.ID)
+	}
+}

@@ -150,12 +150,75 @@ func ConfirmTarget(q Query, ranked []Candidate, targetID int) Decision {
 	}
 }
 
+// ordinalStructureMissing 为「查询有序数要求、候选无法解释」的缺证。
+// 这类候选不能自动接受，也不应挡住已能解释该序数的竞争者；
+// 但身份类 Missing（并列语言片段等）必须继续参与分差竞争。
+func ordinalStructureMissing(m string) bool {
+	switch m {
+	case "候选无法解释查询季号", "候选无法解释Part", "候选无法解释Final":
+		return true
+	default:
+		return false
+	}
+}
+
+// OnlyOrdinalStructureMissing 报告候选的 Missing 是否全部为序数结构缺证（无身份歧义类）。
+func OnlyOrdinalStructureMissing(c Candidate) bool {
+	if len(c.Missing) == 0 {
+		return false
+	}
+	for _, m := range c.Missing {
+		if !ordinalStructureMissing(m) {
+			return false
+		}
+	}
+	return true
+}
+
+// PreferEligibleOrder 稳定重排，不改分数：
+//  1) 无 Blockers 且非「仅序数结构 Missing」（含完全可证与身份类 Missing）— 保留相对分序；
+//  2) 仅序数结构 Missing；
+//  3) 带 Blockers。
+// 这样「无法解释季号」不会因 ID 升序卡在可接受者前，
+// 同时身份歧义的高分候选不会被沉到近似第三作之后。
+func PreferEligibleOrder(ranked []Candidate) []Candidate {
+	if len(ranked) < 2 {
+		return ranked
+	}
+	var primary, structMiss, blocked []Candidate
+	for _, c := range ranked {
+		switch {
+		case len(c.Blockers) > 0:
+			blocked = append(blocked, c)
+		case OnlyOrdinalStructureMissing(c):
+			structMiss = append(structMiss, c)
+		default:
+			primary = append(primary, c)
+		}
+	}
+	if len(structMiss) == 0 && len(blocked) == 0 {
+		return ranked
+	}
+	if len(primary) == len(ranked) {
+		return ranked
+	}
+	out := make([]Candidate, 0, len(ranked))
+	out = append(out, primary...)
+	out = append(out, structMiss...)
+	out = append(out, blocked...)
+	return out
+}
+
 func firstNonExcluded(cs []Candidate) *Candidate {
 	for i := range cs {
-		// Missing 与 Blockers 均不可作为自动接受的次优竞争者（避免「无法解释季号」同分卡住胜者）
-		if len(cs[i].Blockers) == 0 && len(cs[i].Missing) == 0 {
-			return &cs[i]
+		if len(cs[i].Blockers) > 0 {
+			continue
 		}
+		// 仅序数结构缺证可排除出分差；身份类 Missing 必须参与，避免近似第三作绕过歧义。
+		if OnlyOrdinalStructureMissing(cs[i]) {
+			continue
+		}
+		return &cs[i]
 	}
 	return nil
 }

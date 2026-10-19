@@ -57,35 +57,9 @@ func emptyMatchResult() MatchResult {
 	}
 }
 
-// preferEligibleOrder 稳定地把可自动接受的候选移到前面，保留相对顺序；不改分数。
-// 优先：无 Blockers 且无 Missing；其次仅 Missing；最后带 Blockers。
-// 避免同分时 ID 升序把「无法解释季号」的候选排在可接受候选之前。
+// preferEligibleOrder 委托 matching.PreferEligibleOrder：统一「可用候选」边界。
 func preferEligibleOrder(ranked []matching.Candidate) []matching.Candidate {
-	if len(ranked) < 2 {
-		return ranked
-	}
-	var ok, soft, bad []matching.Candidate
-	for _, c := range ranked {
-		switch {
-		case len(c.Blockers) > 0:
-			bad = append(bad, c)
-		case len(c.Missing) > 0:
-			soft = append(soft, c)
-		default:
-			ok = append(ok, c)
-		}
-	}
-	if len(ok) == 0 && len(soft) == 0 {
-		return ranked
-	}
-	if len(ok) == len(ranked) {
-		return ranked
-	}
-	out := make([]matching.Candidate, 0, len(ranked))
-	out = append(out, ok...)
-	out = append(out, soft...)
-	out = append(out, bad...)
-	return out
+	return matching.PreferEligibleOrder(ranked)
 }
 
 func normalizeGroupMedia(g matching.Group) matching.Group {
@@ -345,8 +319,8 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 
 		// 接受前确保胜者详情（非 FromExistingBound）
 		ranked = matching.Rank(q, s.poolSlice(), catalog, chapters)
-		// 同分时 Rank 按 ID 升序，可能把「季冲突」候选排在可接受候选前；
-		// Decide 以 ranked[0] 为 best，故在不改 Score/Blockers 的前提下稳定前移无 Blockers 者。
+		// Rank 同分按 ID 升序可能把「仅无法解释季号」排在可接受者前；
+		// PreferEligibleOrder 只后置序数结构 Missing/Blockers，不沉身份歧义高分候选。
 		ranked = preferEligibleOrder(ranked)
 		var decision matching.Decision
 		if forTarget {

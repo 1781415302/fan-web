@@ -207,3 +207,43 @@ func dumpCand(cs []Candidate) string {
 	}
 	return s
 }
+
+func TestRankDecideFragmentConflictNotBypassedByApproxThird(t *testing.T) {
+	q := Query{
+		Titles: []Title{
+			{Text: "关于我们在星河深处共同旅行并寻找故乡的漫长故事", Source: SourceFile},
+			{Text: "The Unexpected Chronicle of a Journey Across the Stars", Source: SourceFile},
+		},
+		HasFileTitle: true,
+	}
+	a := Subject{ID: 830001, Name: "关于我们在星河深处共同旅行并寻找故乡的漫长故事", Media: KindSeries, EpisodeCount: 12}
+	b := Subject{ID: 830002, Name: "The Unexpected Chronicle of a Journey Across the Stars", Media: KindSeries, EpisodeCount: 12}
+	c := Subject{ID: 830003, Name: "关于我们在星河远处共同旅行并寻找故乡的漫长故事", Aliases: []string{"The Unexpected Chronicla of a Journey Across the Stars"}, Media: KindSeries, EpisodeCount: 12}
+
+	orders := [][]Subject{
+		{a, b, c},
+		{c, a, b},
+		{b, c, a},
+		{c, b, a},
+	}
+	for i, subs := range orders {
+		ranked := PreferEligibleOrder(Rank(q, subs, Catalog{}, nil))
+		d := Decide(q, ranked, true)
+		if d.Code != Review || d.WinnerID != 0 {
+			t.Fatalf("order %d: want Review/0, got code=%s winner=%d reason=%s cands=%s",
+				i, d.Code, d.WinnerID, d.Reason, dumpCand(ranked))
+		}
+		// A/B 须带并列片段 Missing，且不能被 C 自动接受绕过
+		var fragMarked int
+		for _, cand := range ranked {
+			for _, m := range cand.Missing {
+				if m == "并列语言片段支持不同作品" {
+					fragMarked++
+				}
+			}
+		}
+		if fragMarked < 2 {
+			t.Fatalf("order %d: expected fragment Missing on A/B, ranked=%s", i, dumpCand(ranked))
+		}
+	}
+}

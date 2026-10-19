@@ -487,3 +487,118 @@ func TestMatchingSessionPoolCacheHitStillMergesQueryResults(t *testing.T) {
 		t.Fatalf("want S1, got code=%s id=%d", res.Decision.Code, res.Decision.WinnerID)
 	}
 }
+
+// ---- 并列语言片段歧义不得被近似第三作绕过 ----
+
+func starAmbiguityFixtures(f *fakeSessionProvider) {
+	f.exactOnly = true
+	a := matching.Subject{
+		ID: 830001, Name: "关于我们在星河深处共同旅行并寻找故乡的漫长故事",
+		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	b := matching.Subject{
+		ID: 830002, Name: "The Unexpected Chronicle of a Journey Across the Stars",
+		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	c := matching.Subject{
+		ID: 830003, Name: "关于我们在星河远处共同旅行并寻找故乡的漫长故事",
+		Aliases: []string{"The Unexpected Chronicla of a Journey Across the Stars"},
+		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	cn := "关于我们在星河深处共同旅行并寻找故乡的漫长故事"
+	en := "The Unexpected Chronicle of a Journey Across the Stars"
+	// 合法查询显式注册固定 A/B/C；禁止子串兜底
+	f.putSubject(a, cn, en)
+	f.putSubject(b, cn, en)
+	f.putSubject(c, cn, en)
+	f.chapters[830001] = []matching.Chapter{{ID: 83000101, Ep: 1, Sort: 1}}
+	f.chapters[830002] = []matching.Chapter{{ID: 83000201, Ep: 1, Sort: 1}}
+	f.chapters[830003] = []matching.Chapter{{ID: 83000301, Ep: 1, Sort: 1}}
+}
+
+func TestMatchingSessionFragmentConflictNotBypassedByApproxThird(t *testing.T) {
+	rt := testSessionRuntime(t)
+	file := "[Sub][关于我们在星河深处共同旅行并寻找故乡的漫长故事][The Unexpected Chronicle of a Journey Across the Stars][01].mkv"
+	g := groupFromFile(t, file, "ambig")
+
+	run := func(t *testing.T) matching.Decision {
+		t.Helper()
+		f := newFakeSessionProvider()
+		starAmbiguityFixtures(f)
+		sess := newMatchingSessionForTest(context.Background(), rt, f)
+		res, err := sess.Resolve(g, nil)
+		if err != nil {
+			t.Fatalf("Resolve: %v", err)
+		}
+		return res.Decision
+	}
+
+	d := run(t)
+	if d.Code != matching.Review || d.WinnerID != 0 {
+		t.Fatalf("want Review/0, got code=%s winner=%d reason=%s cands=%v",
+			d.Code, d.WinnerID, d.Reason, summarizeCands(d.Candidates))
+	}
+	for _, id := range []int{830001, 830002, 830003} {
+		if d.Code == matching.Accepted && d.WinnerID == id {
+			t.Fatalf("must not auto-link any of A/B/C, got %d", id)
+		}
+	}
+
+	// 调换 put 顺序（ID 排列）仍拒绝：重建 fixture 时改 subject 写入顺序
+	f2 := newFakeSessionProvider()
+	f2.exactOnly = true
+	subs := []matching.Subject{
+		{ID: 830003, Name: "关于我们在星河远处共同旅行并寻找故乡的漫长故事", Aliases: []string{"The Unexpected Chronicla of a Journey Across the Stars"}, Media: matching.KindSeries, EpisodeCount: 12, Detailed: true},
+		{ID: 830002, Name: "The Unexpected Chronicle of a Journey Across the Stars", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true},
+		{ID: 830001, Name: "关于我们在星河深处共同旅行并寻找故乡的漫长故事", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true},
+	}
+	cn := "关于我们在星河深处共同旅行并寻找故乡的漫长故事"
+	en := "The Unexpected Chronicle of a Journey Across the Stars"
+	for _, s := range subs {
+		f2.putSubject(s, cn, en)
+		f2.chapters[s.ID] = []matching.Chapter{{ID: s.ID*100 + 1, Ep: 1, Sort: 1}}
+	}
+	sess2 := newMatchingSessionForTest(context.Background(), rt, f2)
+	res2, err := sess2.Resolve(g, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Decision.Code != matching.Review || res2.Decision.WinnerID != 0 {
+		t.Fatalf("reordered IDs still Review: code=%s winner=%d reason=%s",
+			res2.Decision.Code, res2.Decision.WinnerID, res2.Decision.Reason)
+	}
+}
+
+func TestMatchingSessionBlockersStillExcludedFromGap(t *testing.T) {
+	// 明确 Blockers 的竞争者仍可合理排除，不因本次收紧而卡死可接受胜者。
+	rt := testSessionRuntime(t)
+	f := newFakeSessionProvider()
+	f.exactOnly = true
+	tv := matching.Subject{
+		ID: 840001, Name: "深空航线", NameCn: "深空航线",
+		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	movie := matching.Subject{
+		ID: 840002, Name: "深空航线", NameCn: "深空航线",
+		Media: matching.KindMovie, EpisodeCount: 1, Detailed: true,
+	}
+	f.putSubject(tv, "深空航线")
+	f.putSubject(movie, "深空航线")
+	f.chapters[840001] = seriesChaptersID(840001, 12)
+	f.chapters[840002] = []matching.Chapter{{ID: 84000201, Ep: 1, Sort: 1}}
+
+	sess := newMatchingSessionForTest(context.Background(), rt, f)
+	g := groupFromFile(t, "深空航线 - 01.mkv", "deep")
+	g.Query.Media = matching.KindSeries
+	if len(g.Files) > 0 {
+		g.Files[0].Media = matching.KindSeries
+	}
+	res, err := sess.Resolve(g, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Decision.Code != matching.Accepted || res.Decision.WinnerID != tv.ID {
+		t.Fatalf("series should accept despite movie blocker peer: code=%s id=%d reason=%s cands=%v",
+			res.Decision.Code, res.Decision.WinnerID, res.Decision.Reason, summarizeCands(res.Decision.Candidates))
+	}
+}
