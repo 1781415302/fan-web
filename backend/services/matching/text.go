@@ -23,26 +23,58 @@ var (
 
 func loadT2S() map[rune]rune {
 	t2sOnce.Do(func() {
-		m := make(map[rune]rune, 4096)
-		for _, line := range strings.Split(t2sData, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Fields(line)
-			if len(parts) < 2 {
-				continue
-			}
-			tr, _ := utf8.DecodeRuneInString(parts[0])
-			sr, _ := utf8.DecodeRuneInString(parts[1])
-			if tr == utf8.RuneError || sr == utf8.RuneError {
-				continue
-			}
-			m[tr] = sr
-		}
-		t2sMap = m
+		t2sMap = parseT2SMapping(t2sData)
 	})
 	return t2sMap
+}
+
+// parseT2SMapping 解析单字繁简表。
+// 每行：一个 Unicode scalar 源字 + 一个或多个单字目标。
+// 单一（或重复相同）目标 → 折叠到该目标；多个不同目标 → 保留源字（不入映射）。
+// 空行/注释跳过；多字源或目标的非法行不入映射。
+func parseT2SMapping(data string) map[rune]rune {
+	m := make(map[rune]rune, 4096)
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		src := []rune(parts[0])
+		if len(src) != 1 || src[0] == utf8.RuneError {
+			continue
+		}
+		var targets []rune
+		ok := true
+		for _, p := range parts[1:] {
+			tr := []rune(p)
+			if len(tr) != 1 || tr[0] == utf8.RuneError {
+				ok = false
+				break
+			}
+			targets = append(targets, tr[0])
+		}
+		if !ok || len(targets) == 0 {
+			continue
+		}
+		first := targets[0]
+		ambiguous := false
+		for _, t := range targets[1:] {
+			if t != first {
+				ambiguous = true
+				break
+			}
+		}
+		if ambiguous {
+			// 多目标歧义：保留源字，不写入映射。
+			continue
+		}
+		m[src[0]] = first
+	}
+	return m
 }
 
 // Normalize 返回原文的严格/常规/宽松比较形态；保留身份区分信息。
