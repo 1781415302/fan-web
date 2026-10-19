@@ -16,8 +16,8 @@ import (
 )
 
 // F21/F22：离线召回夹具 schema + Session/Library 双入口 runner。
-// S6 仅保证 schema 门与可编译；功能预期由 S7 修绿。
-// F21 所有权在 S6 持有直至编排者释放给 S7。
+// Session：有合法 binding 才 Accepted；Rejected→Review；不把组 Accepted 复制给无绑定文件。
+// Library：临时 SQLite；按 (dir,name) 核对入库 vs Unidentified；禁止纯 basename 键与默认 Review。
 
 type recallFixture struct {
 	Version int          `json:"version"`
@@ -512,7 +512,7 @@ func runRecallCaseSession(t *testing.T, c recallCase) []string {
 func TestMatchingRecallSession(t *testing.T) {
 	fx := loadRecallFixture(t)
 	validateRecallFixture(t, fx)
-	var all []string
+	stats := recallBucketStats{}
 	for _, c := range fx.Cases {
 		c := c
 		t.Run(c.ID, func(t *testing.T) {
@@ -520,12 +520,10 @@ func TestMatchingRecallSession(t *testing.T) {
 			for _, m := range ms {
 				t.Error(m)
 			}
-			all = append(all, ms...)
+			stats.addCase(c, ms)
 		})
 	}
-	if len(all) > 0 {
-		t.Logf("S6 note: Session functional mismatches=%d (expected until S7)", len(all))
-	}
+	t.Logf("recall Session buckets: %s", stats.summary())
 }
 
 func runRecallCaseLibrary(t *testing.T, c recallCase) []string {
@@ -644,9 +642,8 @@ func runRecallCaseLibrary(t *testing.T, c recallCase) []string {
 		if !caseFiles[key] || seenUnident[key] || seenStored[key] {
 			continue
 		}
-		// 未在 Expected 中按 Review/NoCandidates 认领、也未 Accepted 入库的未识别项
-		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected unidentified for case file key", c.ID))
-		_ = key
+		u := unident[key]
+		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected unidentified (%q,%q)", c.ID, u.FilePath, u.FileName))
 	}
 	return mismatches
 }
@@ -655,7 +652,7 @@ func TestMatchingRecallLibrary(t *testing.T) {
 	fx := loadRecallFixture(t)
 	validateRecallFixture(t, fx)
 	// 非并行：共享 database.DB
-	var all []string
+	stats := recallBucketStats{}
 	for _, c := range fx.Cases {
 		c := c
 		t.Run(c.ID, func(t *testing.T) {
@@ -663,10 +660,49 @@ func TestMatchingRecallLibrary(t *testing.T) {
 			for _, m := range ms {
 				t.Error(m)
 			}
-			all = append(all, ms...)
+			stats.addCase(c, ms)
 		})
 	}
-	if len(all) > 0 {
-		t.Logf("S6 note: Library functional mismatches=%d (expected until S7)", len(all))
+	t.Logf("recall Library buckets: %s", stats.summary())
+}
+
+// recallBucketStats 汇总 F22 期望桶与误接受（负例期望非 Accepted 却 Accepted）。
+type recallBucketStats struct {
+	Cases, Files                               int
+	WantAccepted, WantReview, WantNoCandidates int
+	MismatchCases, MismatchFiles               int
+	FalseAccepts                               int
+}
+
+func (s *recallBucketStats) addCase(c recallCase, mismatches []string) {
+	s.Cases++
+	s.Files += len(c.Expected)
+	for _, e := range c.Expected {
+		switch matching.DecisionCode(e.Mode) {
+		case matching.Accepted:
+			s.WantAccepted++
+		case matching.Review:
+			s.WantReview++
+		case matching.NoCandidates:
+			s.WantNoCandidates++
+		}
 	}
+	if len(mismatches) == 0 {
+		return
+	}
+	s.MismatchCases++
+	s.MismatchFiles += len(mismatches)
+	for _, m := range mismatches {
+		if strings.Contains(m, "want mode=review") || strings.Contains(m, "want mode=no_candidates") ||
+			strings.Contains(m, "want unidentified") {
+			if strings.Contains(m, "got mode=accepted") || strings.Contains(m, "unexpected stored") {
+				s.FalseAccepts++
+			}
+		}
+	}
+}
+
+func (s recallBucketStats) summary() string {
+	return fmt.Sprintf("cases=%d files=%d want(accepted=%d review=%d no_candidates=%d) mismatch_cases=%d mismatch_lines=%d false_accepts=%d",
+		s.Cases, s.Files, s.WantAccepted, s.WantReview, s.WantNoCandidates, s.MismatchCases, s.MismatchFiles, s.FalseAccepts)
 }

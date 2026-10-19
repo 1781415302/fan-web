@@ -367,14 +367,10 @@
       "scan_error": ""
     },
     {
-      "id": "R05",
+      "id": "R05-plain",
       "files": [
         {
           "name": "Kimi no Na wa. [01].mkv",
-          "dir": ""
-        },
-        {
-          "name": "[Kimi no Na wa.][01].mkv",
           "dir": ""
         }
       ],
@@ -425,7 +421,59 @@
           "mode": "accepted",
           "subject_id": 910005,
           "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R05-bracket",
+      "files": [
+        {
+          "name": "[Kimi no Na wa.][01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910005,
+          "name": "Kimi no Na wa.",
+          "name_cn": "你的名字。",
+          "aliases": [],
+          "year": 2016,
+          "media": "movie",
+          "episode_count": 1,
+          "chapters": [
+            {
+              "id": 910005001,
+              "ep": 1.0,
+              "sort": 1.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kimi no Na wa."
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
         },
+        {
+          "terms": [
+            "Kimi no Na wa"
+          ],
+          "ids": [
+            910005
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
         {
           "name": "[Kimi no Na wa.][01].mkv",
           "dir": "",
@@ -437,14 +485,10 @@
       "scan_error": ""
     },
     {
-      "id": "R06",
+      "id": "R06-dash",
       "files": [
         {
           "name": "Kaiju No. 8 - 01.mkv",
-          "dir": ""
-        },
-        {
-          "name": "[Kaiju No. 8][01].mkv",
           "dir": ""
         }
       ],
@@ -625,7 +669,189 @@
           "mode": "accepted",
           "subject_id": 910006,
           "stored_number": 1
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R06-bracket",
+      "files": [
+        {
+          "name": "[Kaiju No. 8][01].mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910006,
+          "name": "Kaiju No. 8",
+          "name_cn": "怪兽8号",
+          "aliases": [],
+          "year": 2024,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910006001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910006002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910006003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910006004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910006005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910006006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910006007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910006008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910006009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910006010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910006011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910006012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
         },
+        {
+          "id": 910007,
+          "name": "Kaiju No. 9",
+          "name_cn": "怪兽9号",
+          "aliases": [],
+          "year": 2025,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910007001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910007002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910007003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910007004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910007005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910007006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910007007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910007008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910007009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910007010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910007011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910007012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Kaiju No. 8"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        },
+        {
+          "terms": [
+            "Kaiju No"
+          ],
+          "ids": [
+            910006,
+            910007
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
         {
           "name": "[Kaiju No. 8][01].mkv",
           "dir": "",
@@ -1408,7 +1634,7 @@
           "dir": ""
         },
         {
-          "name": "Campus Notes S01E05v2.mkv",
+          "name": "Campus Notes 第1季 - 05v2.mkv",
           "dir": ""
         }
       ],
@@ -1584,7 +1810,7 @@
           "stored_number": 12
         },
         {
-          "name": "Campus Notes S01E05v2.mkv",
+          "name": "Campus Notes 第1季 - 05v2.mkv",
           "dir": "",
           "mode": "review",
           "subject_id": 0,
