@@ -21,7 +21,8 @@ type MatchingSession struct {
 	// active 为当前分组候选 ID 集合：仅本组实际召回 + 本次 bound/target。
 	// 其他查询缓存过的条目不得自动进入本组评分。
 	active map[int]struct{}
-	// unavailable 为本 Session 内条目级不可访问（如详情/章节 404），去重且不重入 active。
+	// unavailable 为本 Session 内条目级不可访问（如详情/章节 404）：去重请求，
+	// 且不可作为 Accepted 胜者；但当前组若召回过，其名称等身份仍参与歧义判断。
 	unavailable map[int]error
 }
 
@@ -94,21 +95,18 @@ func (s *MatchingSession) resetActive() {
 }
 
 // mergeSubjectActive 写入 Session 缓存，并纳入当前分组候选集合。
+// 即使该 ID 已记为不可访问，只要本组召回到，仍进入 active，保留身份歧义影响。
 func (s *MatchingSession) mergeSubjectActive(sub matching.Subject) {
 	s.mergeSubject(sub)
 	if sub.ID <= 0 {
 		return
 	}
-	if s.unavailable != nil {
-		if _, bad := s.unavailable[sub.ID]; bad {
-			return
-		}
-	}
 	s.ensureActive()
 	s.active[sub.ID] = struct{}{}
 }
 
-// markSubjectUnavailable 隔离单条目不可访问：不终止扫描，本 Session 内去重。
+// markSubjectUnavailable 隔离单条目不可访问：不终止扫描，本 Session 内去重详情/章节请求。
+// 不从当前组 active 删除：已召回的名称等身份仍须参与歧义，避免同名/近似作品因对手 404 而自动胜出。
 func (s *MatchingSession) markSubjectUnavailable(id int, err error) {
 	if id <= 0 {
 		return
@@ -120,13 +118,47 @@ func (s *MatchingSession) markSubjectUnavailable(id int, err error) {
 		err = ErrBangumiNotFound
 	}
 	s.unavailable[id] = err
-	if s.active != nil {
-		delete(s.active, id)
+}
+
+func (s *MatchingSession) isUnavailable(id int) bool {
+	if s == nil || s.unavailable == nil || id <= 0 {
+		return false
 	}
+	_, ok := s.unavailable[id]
+	return ok
 }
 
 func isSubjectNotFound(err error) bool {
 	return errors.Is(err, ErrBangumiNotFound)
+}
+
+// unavailableIdentityMissing 标注在不可访问候选上：不能 Accepted，但作为身份类 Missing 仍参与分差。
+const unavailableIdentityMissing = "条目详情或章节不可访问"
+
+// annotateUnavailableMissing 为当前组不可访问候选追加身份 Missing；不改分数、不加 Blockers。
+func (s *MatchingSession) annotateUnavailableMissing(ranked []matching.Candidate) []matching.Candidate {
+	if s == nil || len(ranked) == 0 || len(s.unavailable) == 0 {
+		return ranked
+	}
+	out := make([]matching.Candidate, len(ranked))
+	copy(out, ranked)
+	for i := range out {
+		id := out[i].Subject.ID
+		if !s.isUnavailable(id) {
+			continue
+		}
+		found := false
+		for _, m := range out[i].Missing {
+			if m == unavailableIdentityMissing {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out[i].Missing = append(append([]string(nil), out[i].Missing...), unavailableIdentityMissing)
+		}
+	}
+	return out
 }
 
 func (s *MatchingSession) catalog() matching.Catalog {
@@ -359,22 +391,50 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 		// Rank 同分按 ID 升序可能把「仅无法解释季号」排在可接受者前；
 		// PreferEligibleOrder 只后置序数结构 Missing/Blockers，不沉身份歧义高分候选。
 		ranked = preferEligibleOrder(ranked)
+		// 不可访问候选保留在排行中并标身份 Missing：不能 Accepted，但仍参与分差歧义。
+		ranked = s.annotateUnavailableMissing(ranked)
 		var decision matching.Decision
 		if forTarget {
-			auto := matching.Decide(q, ranked, retrievalComplete)
-			if auto.Code == matching.Accepted && auto.WinnerID != targetID {
-				decision = auto
-				decision.Reason = "自动决定已接受其他作品，不覆盖为目标"
-			} else if auto.Code == matching.Accepted && auto.WinnerID == targetID {
-				decision = auto
+			if s.isUnavailable(targetID) {
+				// 不可访问目标不能经 ConfirmTarget 消解 Missing 后接受
+				auto := matching.Decide(q, ranked, retrievalComplete)
+				if auto.Code == matching.Accepted && auto.WinnerID != targetID {
+					decision = auto
+					decision.Reason = "自动决定已接受其他作品，不覆盖为目标"
+				} else {
+					decision = matching.Decision{
+						Code:       matching.Review,
+						Candidates: auto.Candidates,
+						Reason:     "目标条目不可访问，不能确认",
+					}
+					if len(decision.Candidates) == 0 {
+						decision.Candidates = ranked
+						if len(decision.Candidates) > 3 {
+							decision.Candidates = decision.Candidates[:3]
+						}
+					}
+				}
 			} else {
-				decision = matching.ConfirmTarget(q, ranked, targetID)
+				auto := matching.Decide(q, ranked, retrievalComplete)
+				if auto.Code == matching.Accepted && auto.WinnerID != targetID {
+					decision = auto
+					decision.Reason = "自动决定已接受其他作品，不覆盖为目标"
+				} else if auto.Code == matching.Accepted && auto.WinnerID == targetID {
+					decision = auto
+				} else {
+					decision = matching.ConfirmTarget(q, ranked, targetID)
+				}
 			}
 		} else {
 			decision = matching.Decide(q, ranked, retrievalComplete)
 		}
 
 		if decision.Code == matching.Accepted && decision.WinnerID > 0 {
+			if s.isUnavailable(decision.WinnerID) {
+				// 安全网：不可访问 ID 绝不能成为写入目标
+				s.markSubjectUnavailable(decision.WinnerID, s.unavailable[decision.WinnerID])
+				continue
+			}
 			sub, ok := s.pool[decision.WinnerID]
 			if !ok {
 				return emptyMatchResult(), fmt.Errorf("胜者 %d 不在候选池: %w", decision.WinnerID, ErrMatchUpstream)
@@ -775,7 +835,7 @@ func (s *MatchingSession) selectChapterProbes(q matching.Query, ranked []matchin
 			break
 		}
 		id := c.Subject.ID
-		if id <= 0 || probed[id] {
+		if id <= 0 || probed[id] || s.isUnavailable(id) {
 			continue
 		}
 		if _, done := chapters[id]; done {
@@ -812,6 +872,12 @@ func (s *MatchingSession) selectChapterProbes(q matching.Query, ranked []matchin
 }
 
 func (s *MatchingSession) probeChapters(group matching.Group, id int) (matching.ChapterDecision, error) {
+	if s.isUnavailable(id) {
+		if err := s.unavailable[id]; err != nil {
+			return matching.ChapterDecision{}, err
+		}
+		return matching.ChapterDecision{}, ErrBangumiNotFound
+	}
 	if err := s.ensureDetailed(id); err != nil {
 		return matching.ChapterDecision{}, err
 	}
@@ -828,6 +894,12 @@ func (s *MatchingSession) probeChapters(group matching.Group, id int) (matching.
 func (s *MatchingSession) ensureDetailed(id int) error {
 	if id <= 0 {
 		return fmt.Errorf("条目 ID 无效: %w", ErrMatchUpstream)
+	}
+	if s.isUnavailable(id) {
+		if err := s.unavailable[id]; err != nil {
+			return err
+		}
+		return ErrBangumiNotFound
 	}
 	s.ensurePool()
 	if sub, ok := s.pool[id]; ok && sub.Detailed {

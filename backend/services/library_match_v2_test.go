@@ -630,3 +630,123 @@ func TestLibraryMatchV2Subject404ViaHTTPDoesNotStarve(t *testing.T) {
 		}
 	}
 }
+
+// TestLibraryMatchV2Subject404KeepsAmbiguityAndContinuesScan：
+// A 目录同名两候选之一 Detail 404 → Review/未识别、不写入另一同名；
+// B 健康目录仍入库；调换目录名顺序结论一致。
+func TestLibraryMatchV2Subject404KeepsAmbiguityAndContinuesScan(t *testing.T) {
+	run := func(t *testing.T, dirA, dirB string) {
+		t.Helper()
+		setupLibraryDB(t)
+		root := t.TempDir()
+		writeLibFile(t, root, filepath.Join(dirA, "Shared Title - 01.mkv"))
+		writeLibFile(t, root, filepath.Join(dirB, "Healthy Show - 01.mkv"))
+
+		fake := newFakeSessionProvider()
+		fake.exactOnly = true
+		exact := matching.Subject{ID: 881001, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+		peer := matching.Subject{ID: 881003, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+		healthy := matching.Subject{ID: 770002, Name: "Healthy Show", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+		putSeries(fake, exact, "Shared Title")
+		putSeries(fake, peer, "Shared Title")
+		putSeries(fake, healthy, "Healthy Show")
+		fake.detailNotFound = map[int]bool{881001: true}
+		delete(fake.detail, 881001)
+
+		res, err := newLibraryV2Service(t, root, fake).Scan()
+		if err != nil {
+			t.Fatalf("scan must not abort on subject 404: %v", err)
+		}
+		for _, id := range []int{881001, 881003} {
+			if a, _ := database.GetAnimeByBangumiID(id); a != nil {
+				t.Fatalf("must not create anime for ambiguous/404 pair id=%d", id)
+			}
+		}
+		h, err := database.GetAnimeByBangumiID(770002)
+		if err != nil || h == nil {
+			t.Fatalf("healthy B must be ingested: err=%v unid=%s", err, summarizeUnidentified(res))
+		}
+		eps, err := database.ListEpisodesByAnimeID(h.ID)
+		if err != nil || len(eps) != 1 {
+			t.Fatalf("healthy eps=%v err=%v", eps, err)
+		}
+		foundA := false
+		for _, u := range res.Unidentified {
+			if strings.Contains(u.FilePath, dirA) || strings.Contains(u.FileName, "Shared Title") {
+				foundA = true
+			}
+		}
+		if !foundA {
+			t.Fatalf("A must be unidentified, got %s", summarizeUnidentified(res))
+		}
+	}
+
+	t.Run("A_then_B", func(t *testing.T) { run(t, "A", "B") })
+	t.Run("B_then_A", func(t *testing.T) { run(t, "ZShared", "AHealthy") })
+}
+
+// TestLibraryMatchV2Subject404ApproxPeerNotIngested：精确标题 404 后近似作品不得入库。
+func TestLibraryMatchV2Subject404ApproxPeerNotIngested(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("A", "Shared Title - 01.mkv"))
+	writeLibFile(t, root, filepath.Join("B", "Healthy Show - 01.mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	exact := matching.Subject{ID: 881001, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	approx := matching.Subject{ID: 881003, Name: "Shared Titlf", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	healthy := matching.Subject{ID: 770002, Name: "Healthy Show", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	putSeries(fake, exact, "Shared Title")
+	putSeries(fake, approx, "Shared Title")
+	putSeries(fake, healthy, "Healthy Show")
+	fake.detailNotFound = map[int]bool{881001: true}
+	delete(fake.detail, 881001)
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if a, _ := database.GetAnimeByBangumiID(881003); a != nil {
+		t.Fatal("must not ingest approximate peer after exact 404")
+	}
+	if a, _ := database.GetAnimeByBangumiID(881001); a != nil {
+		t.Fatal("must not ingest 404 subject")
+	}
+	h, err := database.GetAnimeByBangumiID(770002)
+	if err != nil || h == nil {
+		t.Fatalf("healthy missing: %v unid=%s", err, summarizeUnidentified(res))
+	}
+}
+
+// TestLibraryMatchV2Chapters404KeepsAmbiguity：章节 404 同样不得消除同名歧义。
+func TestLibraryMatchV2Chapters404KeepsAmbiguity(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("A", "Shared Title - 01.mkv"))
+	writeLibFile(t, root, filepath.Join("B", "Healthy Show - 01.mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	exact := matching.Subject{ID: 881001, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	peer := matching.Subject{ID: 881003, Name: "Shared Title", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	healthy := matching.Subject{ID: 770002, Name: "Healthy Show", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	putSeries(fake, exact, "Shared Title")
+	putSeries(fake, peer, "Shared Title")
+	putSeries(fake, healthy, "Healthy Show")
+	fake.chaptersNotFound = map[int]bool{881001: true}
+	delete(fake.chapters, 881001)
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	for _, id := range []int{881001, 881003} {
+		if a, _ := database.GetAnimeByBangumiID(id); a != nil {
+			t.Fatalf("must not create anime id=%d after chapters 404 ambiguity", id)
+		}
+	}
+	if h, err := database.GetAnimeByBangumiID(770002); err != nil || h == nil {
+		t.Fatalf("healthy missing: %v unid=%s", err, summarizeUnidentified(res))
+	}
+}

@@ -503,7 +503,7 @@ func starAmbiguityFixtures(f *fakeSessionProvider) {
 	c := matching.Subject{
 		ID: 830003, Name: "关于我们在星河远处共同旅行并寻找故乡的漫长故事",
 		Aliases: []string{"The Unexpected Chronicla of a Journey Across the Stars"},
-		Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+		Media:   matching.KindSeries, EpisodeCount: 12, Detailed: true,
 	}
 	cn := "关于我们在星河深处共同旅行并寻找故乡的漫长故事"
 	en := "The Unexpected Chronicle of a Journey Across the Stars"

@@ -31,10 +31,10 @@ type scanCasesFile struct {
 }
 
 type scanCase struct {
-	ID       string            `json:"id"`
-	Bucket   string            `json:"bucket"`
-	Files    []scanCaseFile    `json:"files"`
-	Expected []scanCaseExpect  `json:"expected"`
+	ID       string           `json:"id"`
+	Bucket   string           `json:"bucket"`
+	Files    []scanCaseFile   `json:"files"`
+	Expected []scanCaseExpect `json:"expected"`
 }
 
 type scanCaseFile struct {

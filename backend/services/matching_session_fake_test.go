@@ -16,11 +16,13 @@ type fakeSessionProvider struct {
 
 	// exactOnly 为 true 时禁用子串兜底，测试必须显式注册查询词。
 	exactOnly bool
-	// detailNotFound 模拟条目级 404（ErrBangumiNotFound）。
-	detailNotFound map[int]bool
+	// detailNotFound / chaptersNotFound 模拟条目级 404（ErrBangumiNotFound）。
+	detailNotFound   map[int]bool
+	chaptersNotFound map[int]bool
 
-	searchCalls []string
-	detailCalls []int
+	searchCalls   []string
+	detailCalls   []int
+	chaptersCalls []int
 }
 
 func newFakeSessionProvider() *fakeSessionProvider {
@@ -66,6 +68,10 @@ func (f *fakeSessionProvider) Detail(_ context.Context, id int) (matching.Subjec
 }
 
 func (f *fakeSessionProvider) Chapters(_ context.Context, id int) ([]matching.Chapter, error) {
+	f.chaptersCalls = append(f.chaptersCalls, id)
+	if f.chaptersNotFound != nil && f.chaptersNotFound[id] {
+		return nil, fmt.Errorf("章节不存在: %w", ErrBangumiNotFound)
+	}
 	if ch, ok := f.chapters[id]; ok {
 		return cloneChapters(ch), nil
 	}

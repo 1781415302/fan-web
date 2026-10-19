@@ -176,9 +176,10 @@ func OnlyOrdinalStructureMissing(c Candidate) bool {
 }
 
 // PreferEligibleOrder 稳定重排，不改分数：
-//  1) 无 Blockers 且非「仅序数结构 Missing」（含完全可证与身份类 Missing）— 保留相对分序；
-//  2) 仅序数结构 Missing；
-//  3) 带 Blockers。
+//  1. 无 Blockers 且非「仅序数结构 Missing」（含完全可证与身份类 Missing）— 保留相对分序；
+//  2. 仅序数结构 Missing；
+//  3. 带 Blockers。
+//
 // 这样「无法解释季号」不会因 ID 升序卡在可接受者前，
 // 同时身份歧义的高分候选不会被沉到近似第三作之后。
 func PreferEligibleOrder(ranked []Candidate) []Candidate {
