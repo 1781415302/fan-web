@@ -247,3 +247,28 @@ func TestRankDecideFragmentConflictNotBypassedByApproxThird(t *testing.T) {
 		}
 	}
 }
+
+func TestRankNameEvidenceSubtitleKind(t *testing.T) {
+	q := Query{
+		Titles:       []Title{{Text: "Show", Source: SourceFile}},
+		Ordinal:      Ordinal{Season: 1},
+		HasFileTitle: true,
+	}
+	sub := Subject{ID: 1, Name: "Show: The Beginning", Media: KindSeries, Detailed: true}
+	ranked := Rank(q, []Subject{sub}, Catalog{}, nil)
+	if ranked[0].NameEvidence.Kind != NameSubtitle {
+		t.Fatalf("kind=%s support=%v", ranked[0].NameEvidence.Kind, ranked[0].Support)
+	}
+	if ranked[0].NameScore != nameScoreWeakCap {
+		t.Fatalf("score=%v", ranked[0].NameScore)
+	}
+}
+
+func TestRankDigitIdentityConflictBlocker(t *testing.T) {
+	q := Query{Titles: []Title{{Text: "Kaiju No. 8", Source: SourceFile}}, HasFileTitle: true, Episodes: []int{1}}
+	sub := Subject{ID: 9, Name: "Kaiju No. 9", Media: KindSeries, Detailed: true}
+	ranked := Rank(q, []Subject{sub}, Catalog{}, nil)
+	if len(ranked[0].Blockers) == 0 {
+		t.Fatalf("want digit blocker, got %+v discs=%v", ranked[0], AnalyzeTitle("Kaiju No. 8").Discriminators)
+	}
+}
