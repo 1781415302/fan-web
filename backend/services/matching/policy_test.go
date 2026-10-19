@@ -642,3 +642,72 @@ func TestPolicyNameEvidenceKindPriority(t *testing.T) {
 		t.Fatal("DirectSupport")
 	}
 }
+
+// 短标题弱副标题不得因季号+章节吻合而 RuleSubtitleVerified / 自动接受。
+func TestPolicyShortTitleSubtitleBlocked(t *testing.T) {
+	// 拉丁短标题负例：Re → Re:Zero Season 2
+	qRe := Query{
+		Titles:  []Title{{Text: "Re", Source: SourceFile}},
+		Ordinal: Ordinal{Season: 2}, Episodes: []int{1}, HasFileTitle: true,
+	}
+	subRe := Subject{
+		ID: 991601, Name: "Re:Zero Season 2",
+		Media: KindSeries, Detailed: true, EpisodeCount: 12,
+	}
+	rRe := Rank(qRe, []Subject{subRe}, Catalog{}, map[int]ChapterDecision{991601: chConfirmed(1)})
+	if rRe[0].NameEvidence.Kind != NameSubtitle {
+		t.Fatalf("Re expect NameSubtitle, got %s (%+v)", rRe[0].NameEvidence.Kind, rRe[0])
+	}
+	if hasRuleCand(rRe[0], RuleSubtitleVerified) {
+		t.Fatalf("short latin must not RuleSubtitleVerified: %+v", rRe[0])
+	}
+	if !hasMissing(rRe[0], "短标题仅允许精确或catalog等价") {
+		t.Fatalf("want short-title Missing: %+v", rRe[0])
+	}
+	if Decide(qRe, rRe, true).Code == Accepted {
+		t.Fatalf("short latin must not accept: %+v", rRe[0])
+	}
+
+	// 两字中文短标题负例
+	qCN := Query{
+		Titles:  []Title{{Text: "物语", Source: SourceFile}},
+		Ordinal: Ordinal{Season: 2}, Episodes: []int{1}, HasFileTitle: true,
+	}
+	subCN := Subject{
+		ID: 991602, Name: "物语 Season 2: Another Story",
+		Media: KindSeries, Detailed: true, EpisodeCount: 12,
+	}
+	rCN := Rank(qCN, []Subject{subCN}, Catalog{}, map[int]ChapterDecision{991602: chConfirmed(1)})
+	if rCN[0].NameEvidence.Kind != NameSubtitle {
+		t.Fatalf("物语 expect NameSubtitle, got %s", rCN[0].NameEvidence.Kind)
+	}
+	if hasRuleCand(rCN[0], RuleSubtitleVerified) || Decide(qCN, rCN, true).Code == Accepted {
+		t.Fatalf("short CJK must not promote/accept: %+v", rCN[0])
+	}
+	if !hasMissing(rCN[0], "短标题仅允许精确或catalog等价") {
+		t.Fatalf("want short-title Missing: %+v", rCN[0])
+	}
+}
+
+// 合法短标题精确匹配仍可接受（不全局禁止短标题）。
+func TestPolicyShortTitleExactStillAccepts(t *testing.T) {
+	q := Query{
+		Titles:   []Title{{Text: "物语", Source: SourceFile}},
+		Episodes: []int{1}, HasFileTitle: true,
+	}
+	sub := Subject{
+		ID: 991603, Name: "物语",
+		Media: KindSeries, Detailed: true, EpisodeCount: 12,
+	}
+	ranked := Rank(q, []Subject{sub}, Catalog{}, map[int]ChapterDecision{991603: chConfirmed(1)})
+	if ranked[0].NameEvidence.Kind != NameFullStrict && ranked[0].NameEvidence.Kind != NameFullNormal {
+		t.Fatalf("want exact kind, got %s", ranked[0].NameEvidence.Kind)
+	}
+	if hasMissing(ranked[0], "短标题仅允许精确或catalog等价") {
+		t.Fatalf("exact short title must not carry short Missing: %+v", ranked[0])
+	}
+	d := Decide(q, ranked, true)
+	if d.Code != Accepted || d.WinnerID != 991603 {
+		t.Fatalf("exact short title accept: %+v cand=%+v", d, ranked[0])
+	}
+}

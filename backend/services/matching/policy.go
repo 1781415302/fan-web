@@ -105,6 +105,10 @@ func evalSubtitleVerified(q Query, sub Subject, name NameEvidence, ch ChapterDec
 	if name.Kind != NameSubtitle {
 		return
 	}
+	// 短标题不得靠弱副标题 + 季号/章节吻合绕过身份限制（沿用 isShortTitle 口径）。
+	if isShortTitle(name.QueryText) || isShortTitle(nameEvidenceBase(name)) {
+		return
+	}
 	if q.Ordinal.Season <= 0 {
 		return
 	}
@@ -475,11 +479,14 @@ func mergePolicyIntoCandidate(c *Candidate, pol CandidatePolicy, q Query, fragme
 		c.Missing = appendUniqueString(c.Missing, "候选无法解释查询季号")
 	}
 
-	// 弱名称 Missing：副标题仅在已验证时跳过
+	// 弱名称 Missing：副标题仅在已验证时跳过；短标题副标题路径必须留下身份缺证。
 	switch c.NameEvidence.Kind {
 	case NameSubtitle:
 		if !hasSub {
 			c.Missing = appendUniqueString(c.Missing, "弱形态身份支持不能自动接受")
+		}
+		if isShortTitle(c.NameEvidence.QueryText) || isShortTitle(nameEvidenceBase(c.NameEvidence)) {
+			c.Missing = appendUniqueString(c.Missing, "短标题仅允许精确或catalog等价")
 		}
 	case NamePrefix, NameLoose:
 		c.Missing = appendUniqueString(c.Missing, "弱形态身份支持不能自动接受")

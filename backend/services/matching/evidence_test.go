@@ -493,3 +493,89 @@ func TestRecallParseSequelAndBareEpPreserved(t *testing.T) {
 		t.Fatalf("fraction=%+v", frac.Episode)
 	}
 }
+
+func TestRecallParseFateZeroKeepsHyphenTitle(t *testing.T) {
+	cases := []string{
+		"Fate-Zero - 01.mkv",
+		"Fate-Zero S01E01.mkv",
+		"Fate-Zero 第01话.mkv",
+		"Fate-Zero [01].mkv",
+	}
+	for _, name := range cases {
+		ev := ParseFile(FileInput{Name: name})
+		if ev.Name != name {
+			t.Fatalf("%s: Name mutated to %q", name, ev.Name)
+		}
+		if ev.Episode.First != 1 {
+			t.Fatalf("%s: ep=%+v", name, ev.Episode)
+		}
+		found := false
+		for _, ti := range ev.Titles {
+			if ti.Text == "Fate-Zero" {
+				found = true
+			}
+			if ti.Text == "Fate" {
+				t.Fatalf("%s: title stripped to Fate: %#v", name, ev.Titles)
+			}
+		}
+		if !found {
+			t.Fatalf("%s: Fate-Zero title lost: %#v", name, ev.Titles)
+		}
+	}
+
+	// 正例：集号之后的发布组仍剥离
+	pub := ParseFile(FileInput{Name: "Fate-Zero - 01-SENPAI.mkv"})
+	if pub.Name != "Fate-Zero - 01-SENPAI.mkv" {
+		t.Fatalf("Name mutated: %q", pub.Name)
+	}
+	if pub.Episode.First != 1 {
+		t.Fatalf("ep=%+v", pub.Episode)
+	}
+	okTitle, keptPub := false, false
+	for _, ti := range pub.Titles {
+		if ti.Text == "Fate-Zero" {
+			okTitle = true
+		}
+		if containsFold(ti.Text, "SENPAI") {
+			keptPub = true
+		}
+	}
+	if !okTitle || keptPub {
+		t.Fatalf("publish suffix: titles=%#v", pub.Titles)
+	}
+}
+
+func TestRecallParseSxxEyyRevisionSuffix(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Campus Notes S01E05v2.mkv"})
+	if ev.Name != "Campus Notes S01E05v2.mkv" {
+		t.Fatalf("Name mutated: %q", ev.Name)
+	}
+	if ev.Ordinal.Season != 1 || ev.Episode.First != 5 || ev.Episode.Last != 5 {
+		t.Fatalf("want S1E5, got season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if ev.Episode.First == 2 {
+		t.Fatal("must not take revision digit as episode")
+	}
+	found := false
+	for _, ti := range ev.Titles {
+		if containsFold(ti.Text, "Campus Notes") {
+			found = true
+		}
+		if ti.Text == "Campus Notes S01E05v2" || strings.Contains(strings.ToLower(ti.Text), "v2") {
+			t.Fatalf("revision leaked into title: %#v", ev.Titles)
+		}
+	}
+	if !found {
+		t.Fatalf("title lost: %#v", ev.Titles)
+	}
+
+	// 既有 dash / bracket 修订号不受影响
+	dash := ParseFile(FileInput{Name: "Campus Notes - 05v2.mkv"})
+	if dash.Episode.First != 5 {
+		t.Fatalf("dash 05v2: %+v", dash.Episode)
+	}
+	br := ParseFile(FileInput{Name: "Campus Notes [05v2].mkv"})
+	if br.Episode.First != 5 {
+		t.Fatalf("bracket 05v2: %+v", br.Episode)
+	}
+}

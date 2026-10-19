@@ -1634,6 +1634,469 @@
           "dir": ""
         },
         {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910014,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910014001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910014002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910014003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910014004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910014005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910014006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910014007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910014008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910014009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910014010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910014011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910014012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910014
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": "",
+          "mode": "review",
+          "subject_id": 0,
+          "stored_number": 0
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-v2-solo",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": ""
+        }
+      ],
+      "subjects": [
+        {
+          "id": 910014,
+          "name": "Campus Notes",
+          "name_cn": "校园笔记",
+          "aliases": [],
+          "year": 2021,
+          "media": "series",
+          "episode_count": 12,
+          "chapters": [
+            {
+              "id": 910014001,
+              "ep": 1.0,
+              "sort": 1.0
+            },
+            {
+              "id": 910014002,
+              "ep": 2.0,
+              "sort": 2.0
+            },
+            {
+              "id": 910014003,
+              "ep": 3.0,
+              "sort": 3.0
+            },
+            {
+              "id": 910014004,
+              "ep": 4.0,
+              "sort": 4.0
+            },
+            {
+              "id": 910014005,
+              "ep": 5.0,
+              "sort": 5.0
+            },
+            {
+              "id": 910014006,
+              "ep": 6.0,
+              "sort": 6.0
+            },
+            {
+              "id": 910014007,
+              "ep": 7.0,
+              "sort": 7.0
+            },
+            {
+              "id": 910014008,
+              "ep": 8.0,
+              "sort": 8.0
+            },
+            {
+              "id": 910014009,
+              "ep": 9.0,
+              "sort": 9.0
+            },
+            {
+              "id": 910014010,
+              "ep": 10.0,
+              "sort": 10.0
+            },
+            {
+              "id": 910014011,
+              "ep": 11.0,
+              "sort": 11.0
+            },
+            {
+              "id": 910014012,
+              "ep": 12.0,
+              "sort": 12.0
+            }
+          ],
+          "detail_error": "",
+          "chapters_error": ""
+        }
+      ],
+      "searches": [
+        {
+          "terms": [
+            "Campus Notes"
+          ],
+          "ids": [
+            910014
+          ],
+          "saturated": false
+        }
+      ],
+      "expected": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 1
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 2
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 3
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 4
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 6
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 7
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 8
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 9
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 10
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 11
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 12
+        },
+        {
+          "name": "Campus Notes S01E05v2.mkv",
+          "dir": "",
+          "mode": "accepted",
+          "subject_id": 910014,
+          "stored_number": 5
+        }
+      ],
+      "scan_error": ""
+    },
+    {
+      "id": "R09b-v2-cn",
+      "files": [
+        {
+          "name": "Campus Notes S01E01.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E02.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E03.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E04.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E05.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E06.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E07.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E08.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E09.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E10.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E11.mkv",
+          "dir": ""
+        },
+        {
+          "name": "Campus Notes S01E12.mkv",
+          "dir": ""
+        },
+        {
           "name": "Campus Notes 第1季 - 05v2.mkv",
           "dir": ""
         }

@@ -247,7 +247,7 @@ type classifiedBlock struct {
 
 var (
 	reBracket          = regexp.MustCompile(`[\[【]([^\]】]*)[\]】]`)
-	reSxxEyy           = regexp.MustCompile(`(?i)\bS(\d{1,2})E(\d{1,4})\b`)
+	reSxxEyy           = regexp.MustCompile(`(?i)\bS(\d{1,2})E(\d{1,4})(?:v\d+)?\b`)
 	reEpCN             = regexp.MustCompile(`第\s*(\d{1,4})\s*[集話话]`)
 	reEpZero           = regexp.MustCompile(`第\s*0+\s*[集話话]`)
 	reSeasonCN         = regexp.MustCompile(`第\s*([0-9一二三四五六七八九十百]+)\s*[季期]`)
@@ -766,23 +766,25 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		work = w
 	}
 
-	// SxxEyy
-	if m := reSxxEyy.FindStringSubmatch(work); m != nil {
+	// SxxEyy（含 S01E05v2 修订号）；只剥离集号之后的发布组尾缀
+	if loc := reSxxEyy.FindStringIndex(work); loc != nil {
+		m := reSxxEyy.FindStringSubmatch(work)
 		s, _ := strconv.Atoi(m[1])
 		e, _ := strconv.Atoi(m[2])
 		season = s
 		ep = EpisodeToken{Kind: NumberSingle, First: e, Last: e, Raw: m[0], Explicit: true}
-		work = reSxxEyy.ReplaceAllString(work, " ")
+		work = removeEpisodeAt(work, loc)
 	}
 
 	// 第0话 special before 第N话
-	if reEpZero.MatchString(work) {
-		ep = EpisodeToken{Kind: NumberSpecial, Raw: reEpZero.FindString(work), Explicit: true}
-		work = reEpZero.ReplaceAllString(work, " ")
-	} else if m := reEpCN.FindStringSubmatch(work); m != nil {
+	if loc := reEpZero.FindStringIndex(work); loc != nil {
+		ep = EpisodeToken{Kind: NumberSpecial, Raw: work[loc[0]:loc[1]], Explicit: true}
+		work = removeEpisodeAt(work, loc)
+	} else if loc := reEpCN.FindStringIndex(work); loc != nil {
+		m := reEpCN.FindStringSubmatch(work)
 		n, _ := strconv.Atoi(m[1])
 		ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: m[0], Explicit: true}
-		work = reEpCN.ReplaceAllString(work, " ")
+		work = removeEpisodeAt(work, loc)
 	}
 
 	// Season CN / EN / Roman in rest
@@ -844,13 +846,14 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 	}
 
 	if isUnknownEp(ep) {
-		if m := reDashEp.FindStringSubmatch(work); m != nil {
+		if loc := reDashEp.FindStringIndex(work); loc != nil {
+			m := reDashEp.FindStringSubmatch(work)
 			n, _ := strconv.Atoi(m[1])
 			if n > 0 && !isTitleProtectedNumber(work, n) {
 				ep = EpisodeToken{Kind: NumberSingle, First: n, Last: n, Raw: m[1], Explicit: true}
-				work = reDashEp.ReplaceAllString(work, " ")
-				// 发布尾缀：Title - 01-SENPAI → 集号后的组名形态剥离
-				work = stripPublishSuffix(work)
+				// 仅剥离原始集号之后的发布组尾缀（Title - 01-SENPAI）；
+				// 不得在删集号后再对整段剩余标题猜连字符尾缀（避免 Fate-Zero → Fate）。
+				work = removeEpisodeAt(work, loc)
 				// "Title 5 - 03" → season 5 when trailing small int remains
 				if season == 0 {
 					if sm := reTrailingSeason.FindStringSubmatch(cleanTitleSpaces(work)); sm != nil {
@@ -858,18 +861,16 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 						if sn > 0 && !isTitleProtectedNumber(work, sn) {
 							season = sn
 							// 用已匹配索引切片删除，避免热路径拼正则
-							loc := reTrailingSeason.FindStringIndex(cleanTitleSpaces(work))
+							loc2 := reTrailingSeason.FindStringIndex(cleanTitleSpaces(work))
 							trimmed := cleanTitleSpaces(work)
-							if loc != nil {
-								work = strings.TrimSpace(trimmed[:loc[0]] + " " + trimmed[loc[1]:])
+							if loc2 != nil {
+								work = strings.TrimSpace(trimmed[:loc2[0]] + " " + trimmed[loc2[1]:])
 							}
 						}
 					}
 				}
 			}
 		}
-	} else {
-		work = stripPublishSuffix(work)
 	}
 
 	// Trailing bare number last。已有明确集号时保留标题续作数字（如「悠久之翼2」「爆漫王。3」）。
@@ -1008,29 +1009,46 @@ func protectThenReplaceDots(work string) string {
 	return masked
 }
 
+// removeEpisodeAt 删除 [loc[0],loc[1]) 处的集号，并只对集号之后的原文调用 stripPublishSuffix。
+// 集号之前的标题（含连字符作品名）保持不动。
+func removeEpisodeAt(work string, loc []int) string {
+	if len(loc) < 2 || loc[0] < 0 || loc[1] > len(work) || loc[0] > loc[1] {
+		return work
+	}
+	before := work[:loc[0]]
+	after := stripPublishSuffix(work[loc[1]:])
+	return cleanTitleSpaces(before + " " + after)
+}
+
+// stripPublishSuffix 剥离发布组尾缀形态（如 -SENPAI）。
+// 调用方必须保证 work 仅含「原始集号之后」的片段；不得对删集号后的整段标题调用。
+// 注意：不可先走 cleanTitleSpaces（会 Trim 掉前导 -_），否则 -SENPAI 无法匹配。
 func stripPublishSuffix(work string) string {
-	trimmed := cleanTitleSpaces(work)
+	trimmed := strings.TrimSpace(strings.Join(strings.Fields(work), " "))
+	if trimmed == "" {
+		return ""
+	}
 	m := rePublishTail.FindStringSubmatch(trimmed)
 	if m == nil {
-		return work
+		return trimmed
 	}
 	tail := m[1]
 	low := strings.ToLower(tail)
 	// 结构词不当发布组
 	switch low {
 	case "season", "part", "final", "ova", "oad", "movie", "film", "tv", "bd", "sp", "ncop", "nced":
-		return work
+		return trimmed
 	}
 	if !reFansubToken.MatchString(tail) {
-		return work
+		return trimmed
 	}
 	// 单字母或过短模糊尾缀保留
 	if utf8.RuneCountInString(tail) < 3 {
-		return work
+		return trimmed
 	}
 	loc := rePublishTail.FindStringIndex(trimmed)
 	if loc == nil {
-		return work
+		return trimmed
 	}
 	return strings.TrimSpace(trimmed[:loc[0]])
 }

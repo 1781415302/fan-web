@@ -750,3 +750,174 @@ func TestLibraryMatchV2Chapters404KeepsAmbiguity(t *testing.T) {
 		t.Fatalf("healthy missing: %v unid=%s", err, summarizeUnidentified(res))
 	}
 }
+
+// TestLibraryMatchV2FateZeroKeepsFullTitle：发布组尾缀不得把 Fate-Zero 剥成 Fate。
+func TestLibraryMatchV2FateZeroKeepsFullTitle(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	dir := "fate-zero"
+	// 同目录不同集号：覆盖 dash / SxxEyy / 中文集号 / 方括号 / 发布尾缀正例
+	names := []string{
+		"Fate-Zero - 01.mkv",
+		"Fate-Zero S01E02.mkv",
+		"Fate-Zero 第03话.mkv",
+		"Fate-Zero [04].mkv",
+		"Fate-Zero - 05-SENPAI.mkv",
+	}
+	for _, name := range names {
+		writeLibFile(t, root, filepath.Join(dir, name))
+	}
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	zero := matching.Subject{ID: 991501, Name: "Fate-Zero", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	fate := matching.Subject{ID: 991502, Name: "Fate", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true}
+	// 两查询词均显式注册两个候选
+	putSeries(fake, zero, "Fate-Zero", "Fate")
+	putSeries(fake, fate, "Fate-Zero", "Fate")
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	aZero, _ := database.GetAnimeByBangumiID(991501)
+	aFate, _ := database.GetAnimeByBangumiID(991502)
+	if aFate != nil {
+		t.Fatalf("must not create Fate(991502); zero=%v unid=%s", aZero, summarizeUnidentified(res))
+	}
+	if aZero == nil {
+		t.Fatalf("want Fate-Zero(991501); res=%#v unid=%s", res, summarizeUnidentified(res))
+	}
+	eps, err := database.ListEpisodesByAnimeID(aZero.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eps) != 5 {
+		t.Fatalf("want 5 episodes stored, got %d %#v unid=%s", len(eps), eps, summarizeUnidentified(res))
+	}
+	wantNums := map[int]bool{1: true, 2: true, 3: true, 4: true, 5: true}
+	for _, ep := range eps {
+		delete(wantNums, ep.EpNumber)
+		base := filepath.Base(ep.FilePath)
+		if !strings.Contains(base, "Fate-Zero") {
+			t.Fatalf("original filename lost: %#v", ep)
+		}
+		if strings.HasPrefix(base, "Fate.") || base == "Fate.mkv" {
+			t.Fatalf("cleaned title leaked into path: %#v", ep)
+		}
+	}
+	if len(wantNums) != 0 {
+		t.Fatalf("missing episode numbers: %v eps=%#v", wantNums, eps)
+	}
+}
+
+// TestLibraryMatchV2ShortTitleSubtitleZeroWrite：短标题副标题晋升不得误入库。
+func TestLibraryMatchV2ShortTitleSubtitleZeroWrite(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	writeLibFile(t, root, filepath.Join("re", "Re S02E01.mkv"))
+	writeLibFile(t, root, filepath.Join("monogatari", "物语 S02E01.mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	reZero := matching.Subject{
+		ID: 991611, Name: "Re:Zero Season 2", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	mono := matching.Subject{
+		ID: 991612, Name: "物语 Season 2: Another Story", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}
+	putSeries(fake, reZero, "Re")
+	putSeries(fake, mono, "物语")
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	for _, id := range []int{991611, 991612} {
+		if a, _ := database.GetAnimeByBangumiID(id); a != nil {
+			t.Fatalf("short-title subtitle must not create anime id=%d unid=%s", id, summarizeUnidentified(res))
+		}
+	}
+	if res.NewAnimes != 0 || res.NewEpisodes != 0 {
+		t.Fatalf("want zero writes, got %#v unid=%s", res, summarizeUnidentified(res))
+	}
+}
+
+// TestLibraryMatchV2S01E05v2Duplicate：与普通 S01E05 同组冲突时两份第5集待确认，其余入库。
+func TestLibraryMatchV2S01E05v2Duplicate(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	dupDir := "campus-dup"
+	for i := 1; i <= 12; i++ {
+		writeLibFile(t, root, filepath.Join(dupDir, fmt.Sprintf("Campus Notes S01E%02d.mkv", i)))
+	}
+	writeLibFile(t, root, filepath.Join(dupDir, "Campus Notes S01E05v2.mkv"))
+
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	putSeries(fake, matching.Subject{
+		ID: 991701, Name: "Campus Notes", NameCn: "校园笔记", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}, "Campus Notes")
+
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	a, err := database.GetAnimeByBangumiID(991701)
+	if err != nil || a == nil {
+		t.Fatalf("anime missing: %v unid=%s", err, summarizeUnidentified(res))
+	}
+	eps, _ := database.ListEpisodesByAnimeID(a.ID)
+	for _, ep := range eps {
+		base := filepath.Base(ep.FilePath)
+		if strings.Contains(base, "S01E05") {
+			t.Fatalf("ep5 must not be stored while duplicate v2 exists: %#v", eps)
+		}
+	}
+	if len(eps) != 11 {
+		t.Fatalf("want 11 stored (all but ep5), got %d %#v unid=%s", len(eps), eps, summarizeUnidentified(res))
+	}
+}
+
+// TestLibraryMatchV2S01E05v2Solo：单独 S01E05v2 无重复第5集时应作为第5集入库。
+func TestLibraryMatchV2S01E05v2Solo(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	soloDir := "campus-solo"
+	for i := 1; i <= 12; i++ {
+		if i == 5 {
+			writeLibFile(t, root, filepath.Join(soloDir, "Campus Notes S01E05v2.mkv"))
+			continue
+		}
+		writeLibFile(t, root, filepath.Join(soloDir, fmt.Sprintf("Campus Notes S01E%02d.mkv", i)))
+	}
+	fake := newFakeSessionProvider()
+	fake.exactOnly = true
+	putSeries(fake, matching.Subject{
+		ID: 991702, Name: "Campus Notes", NameCn: "校园笔记", Media: matching.KindSeries, EpisodeCount: 12, Detailed: true,
+	}, "Campus Notes")
+	res, err := newLibraryV2Service(t, root, fake).Scan()
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	a, err := database.GetAnimeByBangumiID(991702)
+	if err != nil || a == nil {
+		t.Fatalf("anime missing: %v unid=%s", err, summarizeUnidentified(res))
+	}
+	eps, _ := database.ListEpisodesByAnimeID(a.ID)
+	if len(eps) != 12 {
+		t.Fatalf("want 12 eps, got %d %#v unid=%s", len(eps), eps, summarizeUnidentified(res))
+	}
+	foundV2 := false
+	for _, ep := range eps {
+		if ep.EpNumber == 5 {
+			if !strings.Contains(ep.FilePath, "S01E05v2.mkv") {
+				t.Fatalf("ep5 path want S01E05v2: %#v", ep)
+			}
+			foundV2 = true
+		}
+	}
+	if !foundV2 {
+		t.Fatalf("ep5 missing: %#v", eps)
+	}
+}
