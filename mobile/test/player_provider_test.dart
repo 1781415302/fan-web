@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fan_web/api/api_client.dart';
 import 'package:fan_web/api/media_api.dart';
 import 'package:fan_web/models/anime.dart';
+import 'package:fan_web/models/playback_interaction.dart' as model;
 import 'package:fan_web/providers/player_provider.dart';
 
 void main() {
@@ -152,6 +153,70 @@ void main() {
     test('returns null on the first episode', () {
       expect(prevEpisodeOf([first, second], 10), isNull);
       expect(prevEpisodeOf([first], 10), isNull);
+    });
+  });
+  group('PlayerState temporary rate', () {
+    test('defaults to no temporary rate and keeps normal rate 1', () {
+      const state = PlayerState();
+      expect(state.playbackRate, 1);
+      expect(state.temporaryPlaybackRate, isNull);
+      expect(state.isTemporaryBoosting, isFalse);
+      expect(state.effectivePlaybackRate, 1);
+    });
+
+    test('effective rate prefers temporary over normal selection', () {
+      const state = PlayerState(playbackRate: 1.25, temporaryPlaybackRate: 3);
+      expect(state.isTemporaryBoosting, isTrue);
+      expect(state.effectivePlaybackRate, 3);
+      expect(state.playbackRate, 1.25);
+    });
+
+    test('copyWith keeps temporary rate when not passed', () {
+      const state = PlayerState(playbackRate: 2, temporaryPlaybackRate: 1.5);
+      final next = state.copyWith(isPlaying: true, position: Duration.zero);
+      expect(next.temporaryPlaybackRate, 1.5);
+      expect(next.playbackRate, 2);
+      expect(next.effectivePlaybackRate, 1.5);
+    });
+
+    test('copyWith clears temporary rate with the clear flag', () {
+      const state = PlayerState(playbackRate: 2, temporaryPlaybackRate: 1.5);
+      final next = state.copyWith(clearTemporaryPlaybackRate: true);
+      expect(next.temporaryPlaybackRate, isNull);
+      expect(next.isTemporaryBoosting, isFalse);
+      expect(next.effectivePlaybackRate, 2);
+    });
+
+    test('copyWith value wins over clear flag', () {
+      const state = PlayerState(temporaryPlaybackRate: 2);
+      final next = state.copyWith(
+        temporaryPlaybackRate: 2.5,
+        clearTemporaryPlaybackRate: true,
+      );
+      expect(next.temporaryPlaybackRate, 2.5);
+    });
+
+    test('copyWith preserves existing nullable clear flags', () {
+      const state = PlayerState(
+        error: 'e',
+        notice: 'n',
+        restoredPosition: 10,
+        temporaryPlaybackRate: 2,
+      );
+      final next = state.copyWith(clearError: true, clearNotice: true);
+      expect(next.error, isNull);
+      expect(next.notice, isNull);
+      expect(next.restoredPosition, 10);
+      expect(next.temporaryPlaybackRate, 2);
+    });
+  });
+
+  group('player_provider rate re-export', () {
+    test('re-exports the shared normal rate definitions', () {
+      expect(identical(playbackRateOptions, model.playbackRateOptions), isTrue);
+      expect(normalizePlaybackRate(3), model.normalizePlaybackRate(3));
+      expect(playbackRateLabel(3), '1x');
+      expect(model.temporaryPlaybackRateLabel(3), '3x');
     });
   });
 }

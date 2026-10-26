@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -10,10 +11,16 @@ import 'package:volume_controller/volume_controller.dart';
 import '../api/media_api.dart';
 import '../api/progress_api.dart';
 import '../models/anime.dart';
+import '../models/playback_interaction.dart';
+import '../services/playback_interaction_controller.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
 import 'auth_provider.dart';
 import 'download_provider.dart';
+
+// 正常速率常量/函数已移至共享契约，这里重新导出以保持旧导入兼容。
+export '../models/playback_interaction.dart'
+    show playbackRateOptions, normalizePlaybackRate, playbackRateLabel;
 
 @immutable
 class PlayerLaunchInfo {
@@ -54,13 +61,8 @@ class PlayerConfig {
   }
 
   @override
-  int get hashCode => Object.hash(
-    animeId,
-    episodeId,
-    serverUrl,
-    animeTitle,
-    episodeNumber,
-  );
+  int get hashCode =>
+      Object.hash(animeId, episodeId, serverUrl, animeTitle, episodeNumber);
 }
 
 @immutable
@@ -84,6 +86,7 @@ class PlayerState {
     this.subtitleFontSize = 20,
     this.playbackRate = 1,
     this.notice,
+    this.temporaryPlaybackRate,
   });
 
   final bool isInitialized;
@@ -104,6 +107,13 @@ class PlayerState {
   final double subtitleFontSize;
   final double playbackRate;
   final String? notice;
+
+  /// 长按临时速率；null 表示未处于临时倍速。playbackRate 仍是正常选择。
+  final double? temporaryPlaybackRate;
+
+  bool get isTemporaryBoosting => temporaryPlaybackRate != null;
+
+  double get effectivePlaybackRate => temporaryPlaybackRate ?? playbackRate;
 
   PlayerState copyWith({
     bool? isInitialized,
@@ -128,6 +138,8 @@ class PlayerState {
     double? playbackRate,
     String? notice,
     bool clearNotice = false,
+    double? temporaryPlaybackRate,
+    bool clearTemporaryPlaybackRate = false,
   }) {
     return PlayerState(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -152,6 +164,9 @@ class PlayerState {
       subtitleFontSize: subtitleFontSize ?? this.subtitleFontSize,
       playbackRate: playbackRate ?? this.playbackRate,
       notice: notice ?? (clearNotice ? null : this.notice),
+      temporaryPlaybackRate:
+          temporaryPlaybackRate ??
+          (clearTemporaryPlaybackRate ? null : this.temporaryPlaybackRate),
     );
   }
 }
@@ -166,6 +181,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
 
   late final Player player;
   late final VideoController videoController;
+
+  /// 本会话唯一的交互控制器：速率串行通道、手势句柄、生命周期与播放意图。
+  late final PlaybackInteractionController _interaction;
 
   final _subscriptions = <StreamSubscription<dynamic>>[];
   Timer? _progressTimer;
@@ -195,6 +213,15 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _progressApi = ref.read(progressApiProvider);
     player = Player();
     videoController = VideoController(player);
+    _interaction = PlaybackInteractionController(
+      // 唯一原生速率写入端口。
+      writeRate: (rate) => player.setRate(rate),
+      pauseAndReport: pauseAndReport,
+      onRateChanged: _handleRateChanged,
+      onNotice: (message) => _setState(state.copyWith(notice: message)),
+      initialLifecycleState:
+          WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
+    );
     _setupListeners();
     ref.onDispose(() {
       unawaited(dispose());
@@ -206,6 +233,20 @@ class PlayerNotifier extends Notifier<PlayerState> {
   }
 
   PlayerState get currentState => state;
+
+  /// 当前播放意图版本，只读转发控制器。
+  int get playbackIntentRevision => _interaction.intentRevision;
+
+  void _handleRateChanged(PlaybackRateSnapshot snapshot) {
+    final temporary = snapshot.temporaryRate;
+    _setState(
+      state.copyWith(
+        playbackRate: snapshot.baseRate,
+        temporaryPlaybackRate: temporary,
+        clearTemporaryPlaybackRate: temporary == null,
+      ),
+    );
+  }
 
   void _setupListeners() {
     _subscriptions.add(player.stream.playing.listen(_handlePlaying));
@@ -262,7 +303,12 @@ class PlayerNotifier extends Notifier<PlayerState> {
       if (_disposed || _disposing) {
         return;
       }
-      await player.open(media, play: false);
+      // 紧邻实际 open 前挂起速率通道，等待在途 rate 结束后再检查守卫。
+      await _interaction.suspendForMediaOpen();
+      if (_disposed || _disposing) {
+        return;
+      }
+      await _openWithRateChannel(media);
       if (_disposed || _disposing) {
         return;
       }
@@ -301,8 +347,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Future<Media> _buildOpenMedia() async {
     final authState = ref.read(authProvider);
     final serverUrl = authState.serverUrl ?? config.serverUrl;
-    final localPath =
-        ref.read(downloadProvider.notifier).localFilePath(serverUrl, config.episodeId);
+    final localPath = ref
+        .read(downloadProvider.notifier)
+        .localFilePath(serverUrl, config.episodeId);
     if (localPath != null) {
       _mediaExpiresAt = null;
       _scheduleMediaTokenRefresh(null);
@@ -361,16 +408,36 @@ class PlayerNotifier extends Notifier<PlayerState> {
         return;
       }
       final resume = state.position;
-      final shouldPlay = state.isPlaying;
-      await player.open(media, play: false);
+      final wasPlaying = state.isPlaying;
+      final capturedIntentRevision = _interaction.intentRevision;
+      await _interaction.suspendForMediaOpen();
+      if (_disposed || _disposing) {
+        return;
+      }
+      if (_mediaRefreshAborted) {
+        // 已挂起但放弃重开：旧引擎仍有效，恢复其速率通道。
+        await _interaction.resumeAfterMediaOpen();
+        return;
+      }
+      await _openWithRateChannel(media);
+      if (_disposed || _disposing) {
+        return;
+      }
       _hasOpened = true;
       _didNearExpiryReopen = false;
       if (resume > Duration.zero) {
         try {
           await player.seek(resume);
         } catch (_) {}
+        if (_disposed || _disposing) {
+          return;
+        }
       }
-      if (shouldPlay) {
+      // 以最新播放意图为准，不能让旧 isPlaying 快照推翻后续暂停/后台。
+      if (_interaction.shouldPlayAfterMediaOpen(
+        wasPlaying: wasPlaying,
+        capturedIntentRevision: capturedIntentRevision,
+      )) {
         try {
           await player.play();
         } catch (_) {}
@@ -386,9 +453,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     } catch (_) {
       // 其它错误(如网络故障)降级为通用提示,并复位 NearExpiry 标志以便下次仍可尝试(P1)。
       if (setErrorOnFailure && !_disposed && !_disposing) {
-        _setState(
-          state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'),
-        );
+        _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       }
       _didNearExpiryReopen = false;
     } finally {
@@ -396,6 +461,20 @@ class PlayerNotifier extends Notifier<PlayerState> {
       _mediaRefreshGuardTimer = null;
       _mediaTokenRefreshInFlight = false;
     }
+  }
+
+  // 实际发起 open(play:false)：失败才标记 mediaOpenFailed；成功后强制应用最新基准速率。
+  Future<void> _openWithRateChannel(Media media) async {
+    try {
+      await player.open(media, play: false);
+    } catch (_) {
+      _interaction.mediaOpenFailed();
+      rethrow;
+    }
+    if (_disposed || _disposing) {
+      return;
+    }
+    await _interaction.resumeAfterMediaOpen();
   }
 
   // 临近过期触发刷新后启动守卫:若刷新在超时内仍未完成(如网络挂起),
@@ -415,9 +494,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
         // in-flight 标志交给进行中 _refreshMediaToken 的 finally 清理。
         _mediaRefreshAborted = true;
         _didNearExpiryReopen = false;
-        _setState(
-          state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'),
-        );
+        _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       }
     });
   }
@@ -425,6 +502,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
   void _handlePlaying(bool playing) {
     final wasPlaying = state.isPlaying;
     _setState(state.copyWith(isPlaying: playing));
+    _interaction.onPlayingChanged(playing);
     if (!playing &&
         wasPlaying &&
         !state.isRestoring &&
@@ -442,6 +520,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
       ),
     );
     if (completed && !_disposing && !_disposed) {
+      // 完成即撤销 boost 与旧自动播放许可。
+      _interaction.requestPause();
       unawaited(_queueCurrentProgress(forceWatched: true));
     }
   }
@@ -511,6 +591,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
       }
       return;
     }
+    // 终态错误撤销 boost 与旧自动播放许可。
+    _interaction.requestPause();
     _setState(
       state.copyWith(
         isLoading: false,
@@ -667,6 +749,10 @@ class PlayerNotifier extends Notifier<PlayerState> {
         _disposing) {
       return;
     }
+    // 初始化自动起播同样检查当前意图（含恢复失败回退从头播放）。
+    if (!_interaction.mayPlay) {
+      return;
+    }
     _startedPlayback = true;
     try {
       await player.play();
@@ -689,8 +775,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
     });
   }
 
-  Future<void> play() async {
+  /// 普通播放按钮/双击不带版本；条件续播传入暂停后捕获的版本。
+  Future<void> play({int? expectedIntentRevision}) async {
     if (_disposed || _disposing) {
+      return;
+    }
+    if (!_interaction.requestPlay(
+      expectedIntentRevision: expectedIntentRevision,
+    )) {
       return;
     }
     await player.play();
@@ -700,6 +792,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (_disposed || _disposing) {
       return;
     }
+    // 首次 await 前同步清除播放意图。
+    _interaction.requestPause();
     try {
       await player.pause();
     } finally {
@@ -781,15 +875,31 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (_disposed || _disposing) {
       return;
     }
-    final rate = normalizePlaybackRate(value);
-    try {
-      await player.setRate(rate);
-      if (!_disposed && !_disposing) {
-        _setState(state.copyWith(playbackRate: rate));
-      }
-    } catch (_) {
-      _setState(state.copyWith(notice: '倍速切换失败'));
+    // 正常菜单只走控制器速率通道，失败回滚/提示由控制器负责。
+    _interaction.setBaseRate(value);
+    await _interaction.flushRates();
+  }
+
+  /// 根据调用时最新状态判断是否允许开始长按临时倍速。
+  TemporaryBoostSession? beginTemporaryBoost() {
+    final current = state;
+    final eligible =
+        current.isPlaying &&
+        !current.isLoading &&
+        !current.isRestoring &&
+        !current.isCompleted &&
+        current.error == null &&
+        !_disposing &&
+        !_disposed;
+    return _interaction.beginBoost(eligible: eligible);
+  }
+
+  /// 应用生命周期入口：由 PlayerScreen 转发，交给控制器决策。
+  Future<void> handleAppLifecycleState(AppLifecycleState lifecycleState) async {
+    if (_disposed || _disposing) {
+      return;
     }
+    await _interaction.handleLifecycleState(lifecycleState);
   }
 
   void consumeRestoredPosition() {
@@ -910,6 +1020,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
     if (_disposed) {
       return;
     }
+    // 最先同步关闭交互控制器，不等待速率通道恢复。
+    _interaction.dispose();
     _disposing = true;
     _disposed = true;
     _progressTimer?.cancel();
@@ -962,25 +1074,6 @@ class BuiltPlayerMedia {
 
   final Media media;
   final DateTime? expiresAt;
-}
-
-const List<double> playbackRateOptions = <double>[0.5, 1, 1.25, 1.5, 2];
-
-double normalizePlaybackRate(double value) {
-  for (final option in playbackRateOptions) {
-    if (option == value) {
-      return option;
-    }
-  }
-  return 1;
-}
-
-String playbackRateLabel(double rate) {
-  final normalized = normalizePlaybackRate(rate);
-  if (normalized == normalized.roundToDouble()) {
-    return '${normalized.toInt()}x';
-  }
-  return '${normalized}x';
 }
 
 Episode? nextEpisodeOf(List<Episode> episodes, int episodeId) {
