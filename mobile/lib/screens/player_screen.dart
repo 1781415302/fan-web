@@ -102,8 +102,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         oldWidget.episodeId != widget.episodeId ||
         oldWidget.animeTitle != widget.animeTitle ||
         oldWidget.episodeNumber != widget.episodeNumber) {
-      // 配置重绑前结束旧会话的临时倍速。
-      _endActiveBoost();
+      // 配置重绑处于 widget 更新阶段：只同步失效本地句柄，旧句柄延后结束。
+      _endActiveBoostAfterFrame();
       _bindConfig();
     }
     if (oldWidget.animeId != widget.animeId) {
@@ -184,6 +184,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final boost = _activeBoost;
     _activeBoost = null;
     boost?.end();
+  }
+
+  /// widget 更新阶段使用：同步清除本地句柄引用使旧输入失效，捕获旧句柄，
+  /// 帧结束后再 end，避免构建期同步写 Provider。只操作捕获的旧句柄，
+  /// 不重新查找当前 Notifier；旧控制器已关闭时 end 为幂等空操作。
+  void _endActiveBoostAfterFrame() {
+    final boost = _activeBoost;
+    _activeBoost = null;
+    if (boost == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      boost.end();
+    });
   }
 
   @override

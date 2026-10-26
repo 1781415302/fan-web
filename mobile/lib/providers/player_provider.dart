@@ -171,6 +171,18 @@ class PlayerState {
   }
 }
 
+/// 原生播放引擎（Player + VideoController）构造入口。
+///
+/// 生产固定为 media_kit 实现；测试可覆盖本 Provider 以轻量替身隔离 libmpv。
+typedef PlayerEngine = ({Player player, VideoController videoController});
+
+final playerEngineFactoryProvider = Provider<PlayerEngine Function()>((ref) {
+  return () {
+    final player = Player();
+    return (player: player, videoController: VideoController(player));
+  };
+});
+
 final playerProvider = NotifierProvider.autoDispose
     .family<PlayerNotifier, PlayerState, PlayerConfig>(PlayerNotifier.new);
 
@@ -211,8 +223,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
   @override
   PlayerState build() {
     _progressApi = ref.read(progressApiProvider);
-    player = Player();
-    videoController = VideoController(player);
+    final engine = ref.read(playerEngineFactoryProvider)();
+    player = engine.player;
+    videoController = engine.videoController;
     _interaction = PlaybackInteractionController(
       // 唯一原生速率写入端口。
       writeRate: (rate) => player.setRate(rate),
@@ -424,12 +437,16 @@ class PlayerNotifier extends Notifier<PlayerState> {
         return;
       }
       _hasOpened = true;
+      if (_mediaRefreshAborted) {
+        // 守卫已进入终态错误：迟到的 open 不再定位或续播。
+        return;
+      }
       _didNearExpiryReopen = false;
       if (resume > Duration.zero) {
         try {
           await player.seek(resume);
         } catch (_) {}
-        if (_disposed || _disposing) {
+        if (_disposed || _disposing || _mediaRefreshAborted) {
           return;
         }
       }
@@ -494,6 +511,8 @@ class PlayerNotifier extends Notifier<PlayerState> {
         // in-flight 标志交给进行中 _refreshMediaToken 的 finally 清理。
         _mediaRefreshAborted = true;
         _didNearExpiryReopen = false;
+        // 终态错误撤销 boost 与本次刷新捕获的自动续播许可（同 _handleError 终态）。
+        _interaction.requestPause();
         _setState(state.copyWith(isLoading: false, error: '播放失败，请检查网络或重新登录'));
       }
     });
