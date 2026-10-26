@@ -8,10 +8,13 @@ import 'package:media_kit/media_kit.dart' show SubtitleTrack;
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../models/anime.dart';
+import '../models/playback_interaction.dart'
+    show TemporaryBoostSession, temporaryPlaybackRateLabel;
 import '../providers/anime_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/player_gesture_surface.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   const PlayerScreen({
@@ -46,6 +49,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _gestureLeftSide = false;
   bool _panGestureStarted = false;
   bool _dragWasPlaying = false;
+  // 水平 pan 本次 pause 后捕获的播放意图版本，seek 完成后仅凭它条件续播。
+  int? _dragIntentRevision;
   double _dragStartX = 0;
   double _dragStartY = 0;
   Duration _dragStartPosition = Duration.zero;
@@ -56,12 +61,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   IconData? _gestureHintIcon;
   bool _sliderDragging = false;
   bool _sliderWasPlaying = false;
+  int? _sliderIntentRevision;
   Duration _sliderPosition = Duration.zero;
   int _controlsHideGeneration = 0;
   bool _initialControlsHideScheduled = false;
   DateTime? _controlsShownAt;
   EdgeInsets? _requestedSubtitlePadding;
   List<Episode> _episodes = const [];
+  // 仅表示应用处于 resumed（可接受输入）；不据此暂停播放。
+  bool _inputFocused = true;
+  // 本页通过 onBoostStart 拿到的当前临时倍速句柄，用于打开菜单/切集等前结束。
+  TemporaryBoostSession? _activeBoost;
+  // 当前触摸序列开始时控制层是否可见，序列结束只按原状态重启隐藏计时。
+  bool _interactionControlsVisible = false;
 
   static const _controlsAutoHideDelay = Duration(seconds: 3);
 
@@ -69,6 +81,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _inputFocused =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _bindConfig();
     unawaited(
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
@@ -87,6 +102,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         oldWidget.episodeId != widget.episodeId ||
         oldWidget.animeTitle != widget.animeTitle ||
         oldWidget.episodeNumber != widget.episodeNumber) {
+      // 配置重绑处于 widget 更新阶段：只同步失效本地句柄，旧句柄延后结束。
+      _endActiveBoostAfterFrame();
       _bindConfig();
     }
     if (oldWidget.animeId != widget.animeId) {
@@ -144,15 +161,43 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
-    if (lifecycleState == AppLifecycleState.paused ||
-        lifecycleState == AppLifecycleState.inactive ||
-        lifecycleState == AppLifecycleState.hidden ||
-        lifecycleState == AppLifecycleState.detached) {
-      final notifier = _notifier;
-      if (notifier != null) {
-        unawaited(notifier.pauseAndReport());
-      }
+    // 先同步使输入失效，再交给 Notifier 统一决策；inactive 不暂停播放。
+    final focused = lifecycleState == AppLifecycleState.resumed;
+    if (!focused) {
+      _activeBoost = null;
     }
+    if (focused != _inputFocused && mounted) {
+      setState(() {
+        _inputFocused = focused;
+      });
+    } else {
+      _inputFocused = focused;
+    }
+    final notifier = _notifier;
+    if (notifier != null) {
+      unawaited(notifier.handleAppLifecycleState(lifecycleState));
+    }
+  }
+
+  /// 结束本页持有的临时倍速句柄；句柄 end 幂等，旧会话句柄无副作用。
+  void _endActiveBoost() {
+    final boost = _activeBoost;
+    _activeBoost = null;
+    boost?.end();
+  }
+
+  /// widget 更新阶段使用：同步清除本地句柄引用使旧输入失效，捕获旧句柄，
+  /// 帧结束后再 end，避免构建期同步写 Provider。只操作捕获的旧句柄，
+  /// 不重新查找当前 Notifier；旧控制器已关闭时 end 为幂等空操作。
+  void _endActiveBoostAfterFrame() {
+    final boost = _activeBoost;
+    _activeBoost = null;
+    if (boost == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      boost.end();
+    });
   }
 
   @override
@@ -225,6 +270,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           return;
         }
         _isExiting = true;
+        _endActiveBoost();
         _cancelControlsHide();
         unawaited(notifier.pauseAndReport());
       },
@@ -240,6 +286,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               fit: BoxFit.contain,
               fill: Colors.black,
               controls: null,
+              // 生命周期暂停/恢复由项目策略统一负责，关闭插件自带行为。
+              pauseUponEnteringBackgroundMode: false,
+              resumeUponEnteringForegroundMode: false,
               subtitleViewConfiguration: SubtitleViewConfiguration(
                 visible: playerState.currentSubtitleTrack != null,
                 style: TextStyle(
@@ -253,7 +302,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 padding: subtitlePadding,
               ),
             ),
-            Positioned.fill(child: _buildGestureLayer()),
+            Positioned.fill(child: _buildGestureLayer(playerState, notifier)),
             Positioned.fill(
               child: IgnorePointer(
                 ignoring: !_controlsVisible,
@@ -265,6 +314,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               ),
             ),
             if (_gestureHint != null) _buildGestureHint(),
+            if (playerState.temporaryPlaybackRate != null)
+              _buildTemporaryRateHud(playerState),
             if (playerState.isLoading) _buildLoadingOverlay(),
             if (playerState.error != null)
               _buildErrorOverlay(playerState.error!),
@@ -274,7 +325,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  Widget _buildGestureLayer() {
+  Widget _buildGestureLayer(PlayerState playerState, PlayerNotifier notifier) {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final topControlInset = _controlsVisible
@@ -289,8 +340,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         top: topControlInset,
         bottom: bottomControlInset,
       ),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: PlayerGestureSurface(
+        sessionIdentity: notifier,
+        enabled: _inputFocused && !_isExiting,
+        boostEnabled:
+            _inputFocused &&
+            !_isExiting &&
+            playerState.isPlaying &&
+            !playerState.isLoading &&
+            !playerState.isRestoring &&
+            !playerState.isCompleted &&
+            playerState.error == null,
+        onBoostStart: () {
+          // 绑定本次 notifier；最终资格由 Notifier 按调用时最新状态判断。
+          final boost = notifier.beginTemporaryBoost();
+          _activeBoost = boost;
+          return boost;
+        },
         onTap: _toggleControls,
         onDoubleTap: () {
           final notifier = _notifier;
@@ -303,6 +369,76 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         onPanUpdate: _onPanUpdate,
         onPanEnd: _onPanEnd,
         onPanCancel: _onPanCancel,
+        onInteractionStart: _onGestureInteractionStart,
+        onInteractionEnd: _onGestureInteractionEnd,
+      ),
+    );
+  }
+
+  void _onGestureInteractionStart() {
+    // 原始按下即暂停控制层自动隐藏。
+    _interactionControlsVisible = _controlsVisible;
+    _cancelControlsHide();
+  }
+
+  void _onGestureInteractionEnd() {
+    _activeBoost = null;
+    // 仅按原可见状态重启隐藏计时；不 toggle/show，失焦或退出时不重排。
+    if (!mounted || !_inputFocused || _isExiting) {
+      return;
+    }
+    if (_interactionControlsVisible && _controlsVisible) {
+      _scheduleControlsHide();
+    }
+  }
+
+  Widget _buildTemporaryRateHud(PlayerState playerState) {
+    final temporaryRate = playerState.temporaryPlaybackRate!;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${temporaryPlaybackRateLabel(temporaryRate)} · 左右滑动调速',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '松手恢复 ${playbackRateLabel(playerState.playbackRate)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -414,8 +550,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             dimension: playButtonSize,
                             child: IconButton(
                               tooltip: '上一集',
-                              onPressed: () =>
-                                  unawaited(_openAdjacentEpisode(notifier, _prevEpisode!)),
+                              onPressed: () => unawaited(
+                                _openAdjacentEpisode(notifier, _prevEpisode!),
+                              ),
                               icon: Icon(
                                 Icons.skip_previous,
                                 size: isLandscape ? 26 : 30,
@@ -447,8 +584,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             dimension: playButtonSize,
                             child: IconButton(
                               tooltip: '下一集',
-                              onPressed: () =>
-                                  unawaited(_openAdjacentEpisode(notifier, _nextEpisode!)),
+                              onPressed: () => unawaited(
+                                _openAdjacentEpisode(notifier, _nextEpisode!),
+                              ),
                               icon: Icon(
                                 Icons.skip_next,
                                 size: isLandscape ? 26 : 30,
@@ -510,12 +648,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           onChangeStart: playerState.duration <= Duration.zero
               ? null
               : (_) {
+                  _endActiveBoost();
                   _sliderDragging = true;
                   _sliderWasPlaying = playerState.isPlaying;
                   _sliderPosition = playerState.position;
                   if (_sliderWasPlaying) {
                     unawaited(notifier.pause());
                   }
+                  // pause 已同步更新意图，紧接着捕获版本供 seek 后条件续播。
+                  _sliderIntentRevision = notifier.playbackIntentRevision;
                   _showControls();
                   setState(() {});
                 },
@@ -534,7 +675,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   final target = Duration(milliseconds: (value * 1000).round());
                   _sliderDragging = false;
                   unawaited(
-                    _finishSliderDrag(notifier, target, _sliderWasPlaying),
+                    _finishSliderDrag(
+                      notifier,
+                      target,
+                      _sliderWasPlaying,
+                      _sliderIntentRevision,
+                    ),
                   );
                   setState(() {});
                 },
@@ -619,6 +765,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return;
     }
     _isExiting = true;
+    _endActiveBoost();
     _cancelControlsHide();
     if (notifier != null) {
       unawaited(notifier.pauseAndReport());
@@ -732,6 +879,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _gestureLeftSide =
         details.localPosition.dx < MediaQuery.sizeOf(context).width / 2;
     _dragWasPlaying = state.isPlaying;
+    _dragIntentRevision = null;
     _dragStartX = details.localPosition.dx;
     _dragStartY = details.localPosition.dy;
     _dragStartPosition = state.position;
@@ -759,6 +907,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : _GestureAxis.vertical;
       if (_gestureAxis == _GestureAxis.horizontal && _dragWasPlaying) {
         unawaited(notifier.pause());
+      }
+      if (_gestureAxis == _GestureAxis.horizontal) {
+        // 本次 pause 后立即捕获意图版本，不在 seek 完成时重取最新版本。
+        _dragIntentRevision = notifier.playbackIntentRevision;
       }
     }
 
@@ -811,7 +963,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (notifier != null && axis == _GestureAxis.horizontal) {
       final target = _dragTarget;
       final wasPlaying = _dragWasPlaying;
-      unawaited(_finishHorizontalDrag(notifier, target, wasPlaying));
+      unawaited(
+        _finishHorizontalDrag(
+          notifier,
+          target,
+          wasPlaying,
+          _dragIntentRevision,
+        ),
+      );
     }
     _gestureAxis = null;
     _showControls();
@@ -830,10 +989,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     PlayerNotifier notifier,
     Duration target,
     bool wasPlaying,
+    int? intentRevision,
   ) async {
     await notifier.seek(target);
-    if (wasPlaying) {
-      await notifier.play();
+    if (wasPlaying && intentRevision != null) {
+      await notifier.play(expectedIntentRevision: intentRevision);
     }
     _scheduleControlsHide();
   }
@@ -842,10 +1002,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     PlayerNotifier notifier,
     Duration target,
     bool wasPlaying,
+    int? intentRevision,
   ) async {
     await notifier.seek(target);
-    if (wasPlaying) {
-      await notifier.play();
+    if (wasPlaying && intentRevision != null) {
+      await notifier.play(expectedIntentRevision: intentRevision);
     }
     _showControls();
   }
@@ -873,6 +1034,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     PlayerState playerState,
     PlayerNotifier notifier,
   ) async {
+    _endActiveBoost();
     _showControls();
     await showModalBottomSheet<void>(
       context: context,
@@ -981,6 +1143,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       tooltip: '倍速',
       initialValue: playerState.playbackRate,
       color: AppTheme.muted,
+      onOpened: _endActiveBoost,
       onSelected: (value) => unawaited(notifier.setPlaybackRate(value)),
       itemBuilder: (context) {
         return [
@@ -1009,6 +1172,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     PlayerNotifier notifier,
     Episode episode,
   ) async {
+    _endActiveBoost();
     await notifier.pauseAndReport();
     if (!mounted) {
       return;
@@ -1032,6 +1196,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _activeBoost = null;
     _cancelControlsHide();
     _hintTimer?.cancel();
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
