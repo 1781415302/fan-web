@@ -237,6 +237,7 @@ void main() {
 
   _sessionWiringTests();
   _seekByTests();
+  _skipSeekWiringTests();
 }
 
 // ── 生产 Notifier / PlayerScreen 接线层测试：轻量原生替身，不加载 libmpv ──
@@ -957,6 +958,216 @@ void _seekByTests() {
       await session.close(tester);
       expect(notifier.seekBy(step), isNull);
       expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+/// 三集夹具：PlayerScreen 取中间集，保证上一集/下一集按钮都存在。
+FakeAnimeApi _threeEpisodeApi() => FakeAnimeApi()
+  ..episodes = const <Episode>[
+    Episode(
+      id: 1,
+      animeId: 1,
+      epNumber: 1,
+      title: '01',
+      filePath: '01.mkv',
+      duration: 0,
+    ),
+    Episode(
+      id: 2,
+      animeId: 1,
+      epNumber: 2,
+      title: '02',
+      filePath: '02.mkv',
+      duration: 0,
+    ),
+    Episode(
+      id: 3,
+      animeId: 1,
+      epNumber: 3,
+      title: '03',
+      filePath: '03.mkv',
+      duration: 0,
+    ),
+  ];
+
+class _MountedScreen {
+  _MountedScreen(this.tester, this.natives);
+
+  final WidgetTester tester;
+  final _Natives natives;
+
+  _FakeNativePlayer get player => natives.players.single;
+  ProviderContainer get container =>
+      ProviderScope.containerOf(tester.element(find.byType(PlayerScreen)));
+  PlayerState get state => container.read(playerProvider(_configFor(2)));
+  PlayerNotifier get notifier =>
+      container.read(playerProvider(_configFor(2)).notifier);
+
+  Future<void> close() async {
+    await _disposeWhileMounted(tester, notifier);
+    await tester.pumpWidget(const SizedBox());
+    await _settle(tester);
+  }
+}
+
+/// 以指定逻辑尺寸挂载真实 PlayerScreen（episodeId=2，前后集都存在）。
+Future<_MountedScreen> _mountSkipScreen(
+  WidgetTester tester, {
+  Size size = const Size(360, 640),
+  double textScale = 1,
+}) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.reset);
+  final natives = _Natives();
+  final overrides = await natives.overrides();
+  // _Natives.overrides() 第 4 项为 animeApiProvider，替换为三集夹具。
+  overrides[3] = animeApiProvider.overrideWithValue(_threeEpisodeApi());
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const PlayerScreen(animeId: 1, episodeId: 2),
+      ),
+    ),
+  );
+  await _settle(tester);
+  final mounted = _MountedScreen(tester, natives);
+  expect(mounted.player.openCount, 1);
+  expect(mounted.state.isPlaying, isTrue);
+  return mounted;
+}
+
+TextButton _skipButton(WidgetTester tester) => tester.widget<TextButton>(
+  find.descendant(
+    of: find.byKey(const Key('player-skip-forward')),
+    matching: find.byType(TextButton),
+  ),
+);
+
+void _skipSeekWiringTests() {
+  group('跳过按钮接线', () {
+    testWidgets('点击按钮：seeks 含 起点+80s，pause/play 计数不变', (tester) async {
+      final screen = await _mountSkipScreen(tester);
+      screen.player.durationController.add(const Duration(minutes: 24));
+      screen.player.setPosition(const Duration(minutes: 10));
+      await _settle(tester, 2);
+      expect(screen.state.canSeekRelative, isTrue);
+      expect(_skipButton(tester).onPressed, isNotNull);
+      final pauses = screen.player.pauseCount;
+      final plays = screen.player.playCount;
+
+      await tester.tap(find.byKey(const Key('player-skip-forward')));
+      await _settle(tester, 2);
+      expect(tester.takeException(), isNull);
+      expect(
+        screen.player.seeks,
+        contains(const Duration(minutes: 11, seconds: 20)),
+      );
+      expect(screen.player.pauseCount, pauses);
+      expect(screen.player.playCount, plays);
+
+      await tester.pump(const Duration(seconds: 2));
+      await screen.close();
+    });
+
+    testWidgets('未 emit duration（加载态）时按钮 onPressed 为 null', (tester) async {
+      final screen = await _mountSkipScreen(tester);
+      expect(screen.state.duration, Duration.zero);
+      expect(_skipButton(tester).onPressed, isNull);
+      await screen.close();
+    });
+
+    testWidgets('尺寸矩阵 + textScaler 1.5：无 overflow，按钮不与居中簇相交', (tester) async {
+      const sizes = [Size(360, 640), Size(800, 360), Size(320, 568)];
+      for (final size in sizes) {
+        final screen = await _mountSkipScreen(
+          tester,
+          size: size,
+          textScale: 1.5,
+        );
+        screen.player.durationController.add(const Duration(minutes: 24));
+        await _settle(tester, 2);
+        expect(tester.takeException(), isNull, reason: '$size');
+        expect(find.byTooltip('上一集'), findsOneWidget, reason: '$size');
+        expect(find.byTooltip('下一集'), findsOneWidget, reason: '$size');
+        final play = find.byTooltip(screen.state.isPlaying ? '暂停' : '播放');
+        final cluster = tester
+            .getRect(find.byTooltip('上一集'))
+            .expandToInclude(tester.getRect(play))
+            .expandToInclude(tester.getRect(find.byTooltip('下一集')));
+        final button = tester.getRect(
+          find.byKey(const Key('player-skip-forward')),
+        );
+        expect(button.width, lessThanOrEqualTo(64), reason: '$size');
+        expect(button.height, greaterThanOrEqualTo(40), reason: '$size');
+        expect(
+          button.overlaps(cluster),
+          isFalse,
+          reason: '$size $button $cluster',
+        );
+        await screen.close();
+      }
+    });
+  });
+
+  group('拖动灵敏度接线', () {
+    Future<Duration> dragOnce(
+      WidgetTester tester, {
+      required Size size,
+      required Duration duration,
+    }) async {
+      final screen = await _mountSkipScreen(tester, size: size);
+      screen.player.durationController.add(duration);
+      const start = Duration(minutes: 5);
+      screen.player.setPosition(start);
+      await _settle(tester, 2);
+      // 等控制层自动隐藏，拖动落在手势层。
+      await tester.pump(const Duration(seconds: 4));
+      await _settle(tester);
+      final seeksBefore = screen.player.seeks.length;
+
+      await tester.drag(
+        find.byType(PlayerGestureSurface),
+        const Offset(100, 0),
+      );
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(screen.player.seeks.length, greaterThan(seeksBefore));
+      final delta = screen.player.seeks.last - start;
+      expect(delta, greaterThan(Duration.zero));
+      expect(delta, lessThanOrEqualTo(const Duration(seconds: 30)));
+
+      await tester.pump(const Duration(seconds: 2));
+      await screen.close();
+      return delta;
+    }
+
+    testWidgets('手势层右拖 100px：增量在 (0, 30s]，与屏宽和时长无关', (tester) async {
+      final narrow = await dragOnce(
+        tester,
+        size: const Size(360, 640),
+        duration: const Duration(minutes: 24),
+      );
+      final wide = await dragOnce(
+        tester,
+        size: const Size(800, 360),
+        duration: const Duration(minutes: 24),
+      );
+      final longer = await dragOnce(
+        tester,
+        size: const Size(360, 640),
+        duration: const Duration(minutes: 48),
+      );
+      expect(wide, narrow);
+      expect(longer, narrow);
     });
   });
 }
