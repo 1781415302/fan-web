@@ -236,6 +236,7 @@ void main() {
   });
 
   _sessionWiringTests();
+  _seekByTests();
 }
 
 // ── 生产 Notifier / PlayerScreen 接线层测试：轻量原生替身，不加载 libmpv ──
@@ -245,6 +246,9 @@ class _FakeNativePlayer implements mk.Player {
   final playingController = StreamController<bool>.broadcast();
   final positionController = StreamController<Duration>.broadcast();
   final errorController = StreamController<String>.broadcast();
+  // 默认不 emit：既有用例中 state.duration 仍为 0、未完成。
+  final durationController = StreamController<Duration>.broadcast();
+  final completedController = StreamController<bool>.broadcast();
 
   int openCount = 0;
   int playCount = 0;
@@ -273,9 +277,9 @@ class _FakeNativePlayer implements mk.Player {
   late final mk.PlayerStream stream = mk.PlayerStream(
     const Stream.empty(),
     playingController.stream,
-    const Stream.empty(),
+    completedController.stream,
     positionController.stream,
-    const Stream.empty(),
+    durationController.stream,
     const Stream.empty(),
     const Stream.empty(),
     const Stream.empty(),
@@ -755,6 +759,204 @@ void _sessionWiringTests() {
       expect(player.rateWrites.last, 1.5);
       expect(tester.takeException(), isNull);
       await session.close(tester);
+    });
+  });
+}
+
+void _seekByTests() {
+  group('PlayerState.canSeekRelative', () {
+    const ready = PlayerState(duration: Duration(minutes: 24));
+
+    test('全部满足时允许', () {
+      expect(ready.canSeekRelative, isTrue);
+    });
+
+    test('duration=0 拒绝', () {
+      expect(const PlayerState().canSeekRelative, isFalse);
+    });
+
+    test('error 拒绝', () {
+      expect(ready.copyWith(error: '播放失败').canSeekRelative, isFalse);
+    });
+
+    test('isLoading 拒绝', () {
+      expect(ready.copyWith(isLoading: true).canSeekRelative, isFalse);
+    });
+
+    test('isRestoring 拒绝', () {
+      expect(ready.copyWith(isRestoring: true).canSeekRelative, isFalse);
+    });
+
+    test('isCompleted 拒绝', () {
+      expect(ready.copyWith(isCompleted: true).canSeekRelative, isFalse);
+    });
+  });
+
+  group('PlayerNotifier.seekBy', () {
+    const step = Duration(seconds: 80);
+    const window = Duration(milliseconds: 1600);
+
+    Future<_ProviderSession> startWithDuration(WidgetTester tester) async {
+      final session = await _startProviderSession(tester);
+      session.player.durationController.add(const Duration(minutes: 24));
+      await _settle(tester, 2);
+      expect(session.state.duration, const Duration(minutes: 24));
+      expect(session.state.canSeekRelative, isTrue);
+      return session;
+    }
+
+    Future<void> moveTo(
+      WidgetTester tester,
+      _ProviderSession session,
+      Duration position,
+    ) async {
+      session.player.setPosition(position);
+      await _settle(tester, 2);
+      expect(session.state.position, position);
+    }
+
+    testWidgets('duration=24:00 时 seekBy(80s) 从当前位置下发', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      final target = session.notifier.seekBy(step);
+      expect(target, const Duration(minutes: 11, seconds: 20));
+      expect(session.player.seeks.last, target);
+      await _settle(tester, 2);
+      expect(session.state.position, target);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek 未完成且 position 仍报旧值时连调累加，且不触碰 play/pause', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+      final playBefore = session.player.playCount;
+      final pauseBefore = session.player.pauseCount;
+      session.player.seekGate = Completer<void>();
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 11, seconds: 20),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      session.player.setPosition(const Duration(minutes: 10));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(session.state.position, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 12, seconds: 40),
+      );
+      expect(
+        session.player.seeks.last,
+        const Duration(minutes: 12, seconds: 40),
+      );
+
+      session.player.seekGate!.complete();
+      session.player.seekGate = null;
+      await _settle(tester, 2);
+      expect(session.player.playCount, playBefore);
+      expect(session.player.pauseCount, pauseBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('基线窗口到期后起点回到 state.position', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 11, seconds: 20),
+      );
+      await _settle(tester, 2);
+      await tester.pump(window);
+      // 窗口到期后 position 流回报的新位置成为起点。
+      await moveTo(tester, session, const Duration(minutes: 5));
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 6, seconds: 20),
+      );
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek(15:00) 后立即 seekBy 从 15:00 起算', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      unawaited(session.notifier.seek(const Duration(minutes: 15)));
+      await tester.pump(const Duration(milliseconds: 100));
+      session.player.setPosition(const Duration(minutes: 10));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('末尾钳制到 duration-1s，已在上限时返回 null', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 23, seconds: 30));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 23, seconds: 59),
+      );
+      await _settle(tester, 2);
+      await tester.pump(window);
+
+      await moveTo(tester, session, const Duration(minutes: 23, seconds: 59));
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('duration 未知时返回 null 且不下发 seek', (tester) async {
+      final session = await _startProviderSession(tester);
+      expect(session.state.duration, Duration.zero);
+
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks, isEmpty);
+
+      await session.close(tester);
+    });
+
+    testWidgets('emit completed 后返回 null', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+      session.player.completedController.add(true);
+      await _settle(tester, 2);
+      expect(session.state.isCompleted, isTrue);
+
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await session.close(tester);
+    });
+
+    testWidgets('基线窗口内 dispose：无 pending timer', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      expect(session.notifier.seekBy(step), isNotNull);
+      await _settle(tester, 2);
+      // 不推进 1.5 s 窗口直接销毁；测试框架会在结束时校验 pending timer。
+      final notifier = session.notifier;
+      await session.close(tester);
+      expect(notifier.seekBy(step), isNull);
+      expect(tester.takeException(), isNull);
     });
   });
 }
