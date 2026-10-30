@@ -846,13 +846,18 @@ class PlayerNotifier extends Notifier<PlayerState> {
       await player.seek(target);
       _setState(state.copyWith(position: target, isCompleted: false));
     } catch (_) {
-      _clearSeekBaseline();
+      // 仅清本次登记的基线；挂起期间后续 seek 已登记的新基线保持不动。
+      if (_seekBaseline == target) {
+        _clearSeekBaseline();
+      }
       _setState(state.copyWith(notice: '跳转失败，请稍后重试'));
     }
   }
 
   /// 以「有效基线，否则 state.position」为起点位移 delta（正负皆可）。
-  /// 返回钳制到 [0, duration - seekEndMargin] 后的目标；null 表示拒绝。
+  /// 返回钳制到 [0, duration - seekEndMargin] 后的目标；null 表示拒绝，
+  /// 含钳制后目标未沿 delta 方向前进（delta > 0 且目标 <= 起点、
+  /// delta < 0 且目标 >= 起点、delta == 0）。
   /// 目标通过既有 seek() 下发；seek 的失败仍走 notice，不抛错。
   Duration? seekBy(Duration delta) {
     if (_disposed || _disposing) {
@@ -876,7 +881,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     } else if (target > upper) {
       target = upper;
     }
-    if (target == start) {
+    if (delta == Duration.zero ||
+        (delta > Duration.zero && target <= start) ||
+        (delta < Duration.zero && target >= start)) {
       return null;
     }
     unawaited(seek(target));

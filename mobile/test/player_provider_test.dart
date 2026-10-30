@@ -258,6 +258,8 @@ class _FakeNativePlayer implements mk.Player {
   final List<double> rateWrites = <double>[];
   Completer<void>? openGate;
   Completer<void>? seekGate;
+  // 默认关闭：开启后下一次 seek 在 gate 完成后抛错（仅生效一次）。
+  bool failNextSeek = false;
 
   bool _playing = false;
   Duration _position = Duration.zero;
@@ -332,9 +334,14 @@ class _FakeNativePlayer implements mk.Player {
   @override
   Future<void> seek(Duration duration) async {
     seeks.add(duration);
+    final shouldFail = failNextSeek;
+    failNextSeek = false;
     final gate = seekGate;
     if (gate != null) {
       await gate.future;
+    }
+    if (shouldFail) {
+      throw StateError('seek failed');
     }
     _position = duration;
   }
@@ -918,6 +925,65 @@ void _seekByTests() {
       final seeksBefore = session.player.seeks.length;
       expect(session.notifier.seekBy(step), isNull);
       expect(session.player.seeks.length, seeksBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('23:59.5 时 seekBy(+80s) 不回退，返回 null 且不下发 seek', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(
+        tester,
+        session,
+        const Duration(minutes: 23, seconds: 59, milliseconds: 500),
+      );
+
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('0:00:00.5 时 seekBy(-80s) 钳到 0 并下发 seek(0)', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(milliseconds: 500));
+
+      expect(session.notifier.seekBy(-step), Duration.zero);
+      expect(session.player.seeks.last, Duration.zero);
+      await _settle(tester, 2);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek#1 失败不清除 seek#2 已登记的基线', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      final gate1 = Completer<void>();
+      session.player.seekGate = gate1;
+      session.player.failNextSeek = true;
+      unawaited(session.notifier.seek(const Duration(minutes: 5)));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // seek#2 不挂起，完成后 position 流仍报旧值。
+      session.player.seekGate = null;
+      unawaited(session.notifier.seek(const Duration(minutes: 15)));
+      await _settle(tester, 2);
+      session.player.setPosition(const Duration(minutes: 10));
+      await _settle(tester, 2);
+      expect(session.state.position, const Duration(minutes: 10));
+
+      gate1.complete();
+      await _settle(tester, 2);
+      expect(session.state.notice, '跳转失败，请稍后重试');
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
 
       await tester.pump(window);
       await session.close(tester);
