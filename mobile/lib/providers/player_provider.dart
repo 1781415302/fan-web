@@ -12,6 +12,7 @@ import '../api/media_api.dart';
 import '../api/progress_api.dart';
 import '../models/anime.dart';
 import '../models/playback_interaction.dart';
+import '../models/playback_seek.dart' show seekBaselineWindow, seekEndMargin;
 import '../services/playback_interaction_controller.dart';
 import '../services/progress_outbox.dart';
 import 'anime_provider.dart';
@@ -114,6 +115,14 @@ class PlayerState {
   bool get isTemporaryBoosting => temporaryPlaybackRate != null;
 
   double get effectivePlaybackRate => temporaryPlaybackRate ?? playbackRate;
+
+  /// 是否允许相对 seek：已知时长、无错误、非加载/恢复断点/播放完成。
+  bool get canSeekRelative =>
+      duration > Duration.zero &&
+      error == null &&
+      !isLoading &&
+      !isRestoring &&
+      !isCompleted;
 
   PlayerState copyWith({
     bool? isInitialized,
@@ -219,6 +228,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
   bool _mediaTokenRefreshInFlight = false;
   bool _mediaRefreshAborted = false;
   bool _didNearExpiryReopen = false;
+
+  /// 连续 seek 基线：最近一次 seek 目标，在 seekBaselineWindow 内作为相对 seek 起点。
+  Duration? _seekBaseline;
+  Timer? _seekBaselineTimer;
+
+  /// seek 请求单调序号；基线归属以序号识别，相同目标的不同请求也不同号。
+  int _seekSeq = 0;
+  int? _seekBaselineOwner;
 
   @override
   PlayerState build() {
@@ -827,12 +844,69 @@ class PlayerNotifier extends Notifier<PlayerState> {
       return;
     }
     final target = _clampDuration(position, state.duration);
+    // 同步登记基线：position 流在 seek 期间可能仍报旧值，连点需基于目标累加。
+    final seq = ++_seekSeq;
+    _setSeekBaseline(target, seq);
     try {
       await player.seek(target);
       _setState(state.copyWith(position: target, isCompleted: false));
     } catch (_) {
+      // 仅清本次登记的基线；挂起期间后续 seek 已登记的新基线保持不动。
+      if (_seekBaselineOwner == seq) {
+        _clearSeekBaseline();
+      }
       _setState(state.copyWith(notice: '跳转失败，请稍后重试'));
     }
+  }
+
+  /// 以「有效基线，否则 state.position」为起点位移 delta（正负皆可）。
+  /// 返回钳制到 [0, duration - seekEndMargin] 后的目标；null 表示拒绝，
+  /// 含钳制后目标未沿 delta 方向前进（delta > 0 且目标 <= 起点、
+  /// delta < 0 且目标 >= 起点、delta == 0）。
+  /// 目标通过既有 seek() 下发；seek 的失败仍走 notice，不抛错。
+  Duration? seekBy(Duration delta) {
+    if (_disposed || _disposing) {
+      return null;
+    }
+    if (!state.canSeekRelative) {
+      return null;
+    }
+    // 票据刷新重开后会 seek 回旧位置，此时相对 seek 会被覆盖。
+    if (_mediaTokenRefreshInFlight) {
+      return null;
+    }
+    final start = _seekBaseline ?? state.position;
+    var upper = state.duration - seekEndMargin;
+    if (upper < Duration.zero) {
+      upper = Duration.zero;
+    }
+    var target = start + delta;
+    if (target < Duration.zero) {
+      target = Duration.zero;
+    } else if (target > upper) {
+      target = upper;
+    }
+    if (delta == Duration.zero ||
+        (delta > Duration.zero && target <= start) ||
+        (delta < Duration.zero && target >= start)) {
+      return null;
+    }
+    unawaited(seek(target));
+    return target;
+  }
+
+  void _setSeekBaseline(Duration target, int owner) {
+    _seekBaseline = target;
+    _seekBaselineOwner = owner;
+    _seekBaselineTimer?.cancel();
+    _seekBaselineTimer = Timer(seekBaselineWindow, _clearSeekBaseline);
+  }
+
+  void _clearSeekBaseline() {
+    _seekBaselineTimer?.cancel();
+    _seekBaselineTimer = null;
+    _seekBaseline = null;
+    _seekBaselineOwner = null;
   }
 
   Future<void> setVolume(double value) async {
@@ -1049,6 +1123,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _mediaRefreshTimer = null;
     _mediaRefreshGuardTimer?.cancel();
     _mediaRefreshGuardTimer = null;
+    _clearSeekBaseline();
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }

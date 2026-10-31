@@ -236,6 +236,8 @@ void main() {
   });
 
   _sessionWiringTests();
+  _seekByTests();
+  _skipSeekWiringTests();
 }
 
 // ── 生产 Notifier / PlayerScreen 接线层测试：轻量原生替身，不加载 libmpv ──
@@ -245,6 +247,9 @@ class _FakeNativePlayer implements mk.Player {
   final playingController = StreamController<bool>.broadcast();
   final positionController = StreamController<Duration>.broadcast();
   final errorController = StreamController<String>.broadcast();
+  // 默认不 emit：既有用例中 state.duration 仍为 0、未完成。
+  final durationController = StreamController<Duration>.broadcast();
+  final completedController = StreamController<bool>.broadcast();
 
   int openCount = 0;
   int playCount = 0;
@@ -253,6 +258,8 @@ class _FakeNativePlayer implements mk.Player {
   final List<double> rateWrites = <double>[];
   Completer<void>? openGate;
   Completer<void>? seekGate;
+  // 默认关闭：开启后下一次 seek 在 gate 完成后抛错（仅生效一次）。
+  bool failNextSeek = false;
 
   bool _playing = false;
   Duration _position = Duration.zero;
@@ -273,9 +280,9 @@ class _FakeNativePlayer implements mk.Player {
   late final mk.PlayerStream stream = mk.PlayerStream(
     const Stream.empty(),
     playingController.stream,
-    const Stream.empty(),
+    completedController.stream,
     positionController.stream,
-    const Stream.empty(),
+    durationController.stream,
     const Stream.empty(),
     const Stream.empty(),
     const Stream.empty(),
@@ -327,9 +334,14 @@ class _FakeNativePlayer implements mk.Player {
   @override
   Future<void> seek(Duration duration) async {
     seeks.add(duration);
+    final shouldFail = failNextSeek;
+    failNextSeek = false;
     final gate = seekGate;
     if (gate != null) {
       await gate.future;
+    }
+    if (shouldFail) {
+      throw StateError('seek failed');
     }
     _position = duration;
   }
@@ -755,6 +767,526 @@ void _sessionWiringTests() {
       expect(player.rateWrites.last, 1.5);
       expect(tester.takeException(), isNull);
       await session.close(tester);
+    });
+  });
+}
+
+void _seekByTests() {
+  group('PlayerState.canSeekRelative', () {
+    const ready = PlayerState(duration: Duration(minutes: 24));
+
+    test('全部满足时允许', () {
+      expect(ready.canSeekRelative, isTrue);
+    });
+
+    test('duration=0 拒绝', () {
+      expect(const PlayerState().canSeekRelative, isFalse);
+    });
+
+    test('error 拒绝', () {
+      expect(ready.copyWith(error: '播放失败').canSeekRelative, isFalse);
+    });
+
+    test('isLoading 拒绝', () {
+      expect(ready.copyWith(isLoading: true).canSeekRelative, isFalse);
+    });
+
+    test('isRestoring 拒绝', () {
+      expect(ready.copyWith(isRestoring: true).canSeekRelative, isFalse);
+    });
+
+    test('isCompleted 拒绝', () {
+      expect(ready.copyWith(isCompleted: true).canSeekRelative, isFalse);
+    });
+  });
+
+  group('PlayerNotifier.seekBy', () {
+    const step = Duration(seconds: 80);
+    const window = Duration(milliseconds: 1600);
+
+    Future<_ProviderSession> startWithDuration(WidgetTester tester) async {
+      final session = await _startProviderSession(tester);
+      session.player.durationController.add(const Duration(minutes: 24));
+      await _settle(tester, 2);
+      expect(session.state.duration, const Duration(minutes: 24));
+      expect(session.state.canSeekRelative, isTrue);
+      return session;
+    }
+
+    Future<void> moveTo(
+      WidgetTester tester,
+      _ProviderSession session,
+      Duration position,
+    ) async {
+      session.player.setPosition(position);
+      await _settle(tester, 2);
+      expect(session.state.position, position);
+    }
+
+    testWidgets('duration=24:00 时 seekBy(80s) 从当前位置下发', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      final target = session.notifier.seekBy(step);
+      expect(target, const Duration(minutes: 11, seconds: 20));
+      expect(session.player.seeks.last, target);
+      await _settle(tester, 2);
+      expect(session.state.position, target);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek 未完成且 position 仍报旧值时连调累加，且不触碰 play/pause', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+      final playBefore = session.player.playCount;
+      final pauseBefore = session.player.pauseCount;
+      session.player.seekGate = Completer<void>();
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 11, seconds: 20),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      session.player.setPosition(const Duration(minutes: 10));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(session.state.position, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 12, seconds: 40),
+      );
+      expect(
+        session.player.seeks.last,
+        const Duration(minutes: 12, seconds: 40),
+      );
+
+      session.player.seekGate!.complete();
+      session.player.seekGate = null;
+      await _settle(tester, 2);
+      expect(session.player.playCount, playBefore);
+      expect(session.player.pauseCount, pauseBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('基线窗口到期后起点回到 state.position', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 11, seconds: 20),
+      );
+      await _settle(tester, 2);
+      await tester.pump(window);
+      // 窗口到期后 position 流回报的新位置成为起点。
+      await moveTo(tester, session, const Duration(minutes: 5));
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 6, seconds: 20),
+      );
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek(15:00) 后立即 seekBy 从 15:00 起算', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      unawaited(session.notifier.seek(const Duration(minutes: 15)));
+      await tester.pump(const Duration(milliseconds: 100));
+      session.player.setPosition(const Duration(minutes: 10));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('末尾钳制到 duration-1s，已在上限时返回 null', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 23, seconds: 30));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 23, seconds: 59),
+      );
+      await _settle(tester, 2);
+      await tester.pump(window);
+
+      await moveTo(tester, session, const Duration(minutes: 23, seconds: 59));
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('23:59.5 时 seekBy(+80s) 不回退，返回 null 且不下发 seek', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(
+        tester,
+        session,
+        const Duration(minutes: 23, seconds: 59, milliseconds: 500),
+      );
+
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('0:00:00.5 时 seekBy(-80s) 钳到 0 并下发 seek(0)', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(milliseconds: 500));
+
+      expect(session.notifier.seekBy(-step), Duration.zero);
+      expect(session.player.seeks.last, Duration.zero);
+      await _settle(tester, 2);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('seek#1 失败不清除 seek#2 已登记的基线', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      final gate1 = Completer<void>();
+      session.player.seekGate = gate1;
+      session.player.failNextSeek = true;
+      unawaited(session.notifier.seek(const Duration(minutes: 5)));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // seek#2 不挂起，完成后 position 流仍报旧值。
+      session.player.seekGate = null;
+      unawaited(session.notifier.seek(const Duration(minutes: 15)));
+      await _settle(tester, 2);
+      session.player.setPosition(const Duration(minutes: 10));
+      await _settle(tester, 2);
+      expect(session.state.position, const Duration(minutes: 10));
+
+      gate1.complete();
+      await _settle(tester, 2);
+      expect(session.state.notice, '跳转失败，请稍后重试');
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('相同目标：seek#1 失败不清除仍挂起的 seek#2 基线', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      // seek#1 → 15:00，挂起并最终失败。
+      final gate1 = Completer<void>();
+      session.player.seekGate = gate1;
+      session.player.failNextSeek = true;
+      var seek1Done = false;
+      unawaited(
+        session.notifier
+            .seek(const Duration(minutes: 15))
+            .whenComplete(() => seek1Done = true),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // seek#2 → 同样 15:00，保持挂起。
+      final gate2 = Completer<void>();
+      session.player.seekGate = gate2;
+      var seek2Done = false;
+      unawaited(
+        session.notifier
+            .seek(const Duration(minutes: 15))
+            .whenComplete(() => seek2Done = true),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      session.player.seekGate = null;
+
+      gate1.complete();
+      await _settle(tester, 2);
+      expect(seek1Done, isTrue);
+      expect(session.state.notice, '跳转失败，请稍后重试');
+      expect(seek2Done, isFalse);
+      expect(session.state.position, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
+      expect(
+        session.player.seeks.last,
+        const Duration(minutes: 16, seconds: 20),
+      );
+      await _settle(tester, 2);
+
+      gate2.complete();
+      await _settle(tester, 2);
+      expect(seek2Done, isTrue);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
+    testWidgets('duration 未知时返回 null 且不下发 seek', (tester) async {
+      final session = await _startProviderSession(tester);
+      expect(session.state.duration, Duration.zero);
+
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks, isEmpty);
+
+      await session.close(tester);
+    });
+
+    testWidgets('emit completed 后返回 null', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+      session.player.completedController.add(true);
+      await _settle(tester, 2);
+      expect(session.state.isCompleted, isTrue);
+
+      final seeksBefore = session.player.seeks.length;
+      expect(session.notifier.seekBy(step), isNull);
+      expect(session.player.seeks.length, seeksBefore);
+
+      await session.close(tester);
+    });
+
+    testWidgets('基线窗口内 dispose：无 pending timer', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      expect(session.notifier.seekBy(step), isNotNull);
+      await _settle(tester, 2);
+      // 不推进 1.5 s 窗口直接销毁；测试框架会在结束时校验 pending timer。
+      final notifier = session.notifier;
+      await session.close(tester);
+      expect(notifier.seekBy(step), isNull);
+      expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+/// 三集夹具：PlayerScreen 取中间集，保证上一集/下一集按钮都存在。
+FakeAnimeApi _threeEpisodeApi() => FakeAnimeApi()
+  ..episodes = const <Episode>[
+    Episode(
+      id: 1,
+      animeId: 1,
+      epNumber: 1,
+      title: '01',
+      filePath: '01.mkv',
+      duration: 0,
+    ),
+    Episode(
+      id: 2,
+      animeId: 1,
+      epNumber: 2,
+      title: '02',
+      filePath: '02.mkv',
+      duration: 0,
+    ),
+    Episode(
+      id: 3,
+      animeId: 1,
+      epNumber: 3,
+      title: '03',
+      filePath: '03.mkv',
+      duration: 0,
+    ),
+  ];
+
+class _MountedScreen {
+  _MountedScreen(this.tester, this.natives);
+
+  final WidgetTester tester;
+  final _Natives natives;
+
+  _FakeNativePlayer get player => natives.players.single;
+  ProviderContainer get container =>
+      ProviderScope.containerOf(tester.element(find.byType(PlayerScreen)));
+  PlayerState get state => container.read(playerProvider(_configFor(2)));
+  PlayerNotifier get notifier =>
+      container.read(playerProvider(_configFor(2)).notifier);
+
+  Future<void> close() async {
+    await _disposeWhileMounted(tester, notifier);
+    await tester.pumpWidget(const SizedBox());
+    await _settle(tester);
+  }
+}
+
+/// 以指定逻辑尺寸挂载真实 PlayerScreen（episodeId=2，前后集都存在）。
+Future<_MountedScreen> _mountSkipScreen(
+  WidgetTester tester, {
+  Size size = const Size(360, 640),
+  double textScale = 1,
+}) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.reset);
+  final natives = _Natives();
+  final overrides = await natives.overrides();
+  // _Natives.overrides() 第 4 项为 animeApiProvider，替换为三集夹具。
+  overrides[3] = animeApiProvider.overrideWithValue(_threeEpisodeApi());
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: const PlayerScreen(animeId: 1, episodeId: 2),
+      ),
+    ),
+  );
+  await _settle(tester);
+  final mounted = _MountedScreen(tester, natives);
+  expect(mounted.player.openCount, 1);
+  expect(mounted.state.isPlaying, isTrue);
+  return mounted;
+}
+
+TextButton _skipButton(WidgetTester tester) => tester.widget<TextButton>(
+  find.descendant(
+    of: find.byKey(const Key('player-skip-forward')),
+    matching: find.byType(TextButton),
+  ),
+);
+
+void _skipSeekWiringTests() {
+  group('跳过按钮接线', () {
+    testWidgets('点击按钮：seeks 含 起点+80s，pause/play 计数不变', (tester) async {
+      final screen = await _mountSkipScreen(tester);
+      screen.player.durationController.add(const Duration(minutes: 24));
+      screen.player.setPosition(const Duration(minutes: 10));
+      await _settle(tester, 2);
+      expect(screen.state.canSeekRelative, isTrue);
+      expect(_skipButton(tester).onPressed, isNotNull);
+      final pauses = screen.player.pauseCount;
+      final plays = screen.player.playCount;
+
+      await tester.tap(find.byKey(const Key('player-skip-forward')));
+      await _settle(tester, 2);
+      expect(tester.takeException(), isNull);
+      expect(
+        screen.player.seeks,
+        contains(const Duration(minutes: 11, seconds: 20)),
+      );
+      expect(screen.player.pauseCount, pauses);
+      expect(screen.player.playCount, plays);
+
+      await tester.pump(const Duration(seconds: 2));
+      await screen.close();
+    });
+
+    testWidgets('未 emit duration（加载态）时按钮 onPressed 为 null', (tester) async {
+      final screen = await _mountSkipScreen(tester);
+      expect(screen.state.duration, Duration.zero);
+      expect(_skipButton(tester).onPressed, isNull);
+      await screen.close();
+    });
+
+    testWidgets('尺寸矩阵 + textScaler 1.5：无 overflow，按钮不与居中簇相交', (tester) async {
+      const sizes = [Size(360, 640), Size(800, 360), Size(320, 568)];
+      for (final size in sizes) {
+        final screen = await _mountSkipScreen(
+          tester,
+          size: size,
+          textScale: 1.5,
+        );
+        screen.player.durationController.add(const Duration(minutes: 24));
+        await _settle(tester, 2);
+        expect(tester.takeException(), isNull, reason: '$size');
+        expect(find.byTooltip('上一集'), findsOneWidget, reason: '$size');
+        expect(find.byTooltip('下一集'), findsOneWidget, reason: '$size');
+        final play = find.byTooltip(screen.state.isPlaying ? '暂停' : '播放');
+        final cluster = tester
+            .getRect(find.byTooltip('上一集'))
+            .expandToInclude(tester.getRect(play))
+            .expandToInclude(tester.getRect(find.byTooltip('下一集')));
+        final button = tester.getRect(
+          find.byKey(const Key('player-skip-forward')),
+        );
+        expect(button.width, lessThanOrEqualTo(64), reason: '$size');
+        expect(button.height, greaterThanOrEqualTo(40), reason: '$size');
+        expect(
+          button.overlaps(cluster),
+          isFalse,
+          reason: '$size $button $cluster',
+        );
+        await screen.close();
+      }
+    });
+  });
+
+  group('拖动灵敏度接线', () {
+    Future<Duration> dragOnce(
+      WidgetTester tester, {
+      required Size size,
+      required Duration duration,
+    }) async {
+      final screen = await _mountSkipScreen(tester, size: size);
+      screen.player.durationController.add(duration);
+      const start = Duration(minutes: 5);
+      screen.player.setPosition(start);
+      await _settle(tester, 2);
+      // 等控制层自动隐藏，拖动落在手势层。
+      await tester.pump(const Duration(seconds: 4));
+      await _settle(tester);
+      final seeksBefore = screen.player.seeks.length;
+
+      await tester.drag(
+        find.byType(PlayerGestureSurface),
+        const Offset(100, 0),
+      );
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(screen.player.seeks.length, greaterThan(seeksBefore));
+      final delta = screen.player.seeks.last - start;
+      expect(delta, greaterThan(Duration.zero));
+      expect(delta, lessThanOrEqualTo(const Duration(seconds: 30)));
+
+      await tester.pump(const Duration(seconds: 2));
+      await screen.close();
+      return delta;
+    }
+
+    testWidgets('手势层右拖 100px：增量在 (0, 30s]，与屏宽和时长无关', (tester) async {
+      final narrow = await dragOnce(
+        tester,
+        size: const Size(360, 640),
+        duration: const Duration(minutes: 24),
+      );
+      final wide = await dragOnce(
+        tester,
+        size: const Size(800, 360),
+        duration: const Duration(minutes: 24),
+      );
+      final longer = await dragOnce(
+        tester,
+        size: const Size(360, 640),
+        duration: const Duration(minutes: 48),
+      );
+      expect(wide, narrow);
+      expect(longer, narrow);
     });
   });
 }

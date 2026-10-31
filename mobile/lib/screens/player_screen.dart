@@ -10,6 +10,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../models/anime.dart';
 import '../models/playback_interaction.dart'
     show TemporaryBoostSession, temporaryPlaybackRateLabel;
+import '../models/playback_seek.dart';
 import '../providers/anime_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
@@ -542,58 +543,74 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ],
                     ),
                     SizedBox(height: isLandscape ? 2 : 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    // 跳过按钮贴右，不影响原居中播放按钮簇的布局。
+                    Stack(
+                      alignment: Alignment.center,
                       children: [
-                        if (_prevEpisode != null)
-                          SizedBox.square(
-                            dimension: playButtonSize,
-                            child: IconButton(
-                              tooltip: '上一集',
-                              onPressed: () => unawaited(
-                                _openAdjacentEpisode(notifier, _prevEpisode!),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_prevEpisode != null)
+                              SizedBox.square(
+                                dimension: playButtonSize,
+                                child: IconButton(
+                                  tooltip: '上一集',
+                                  onPressed: () => unawaited(
+                                    _openAdjacentEpisode(
+                                      notifier,
+                                      _prevEpisode!,
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    Icons.skip_previous,
+                                    size: isLandscape ? 26 : 30,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
-                              icon: Icon(
-                                Icons.skip_previous,
-                                size: isLandscape ? 26 : 30,
-                                color: Colors.white,
+                            SizedBox.square(
+                              dimension: playButtonSize,
+                              child: IconButton.filled(
+                                tooltip: playerState.isPlaying ? '暂停' : '播放',
+                                onPressed: playerState.error == null
+                                    ? () => unawaited(_togglePlayback(notifier))
+                                    : null,
+                                icon: Icon(
+                                  playerState.isPlaying
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  size: isLandscape ? 26 : 30,
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppTheme.accent,
+                                  foregroundColor: AppTheme.background,
+                                ),
                               ),
                             ),
-                          ),
-                        SizedBox.square(
-                          dimension: playButtonSize,
-                          child: IconButton.filled(
-                            tooltip: playerState.isPlaying ? '暂停' : '播放',
-                            onPressed: playerState.error == null
-                                ? () => unawaited(_togglePlayback(notifier))
-                                : null,
-                            icon: Icon(
-                              playerState.isPlaying
-                                  ? Icons.pause
-                                  : Icons.play_arrow,
-                              size: isLandscape ? 26 : 30,
-                            ),
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: AppTheme.background,
-                            ),
-                          ),
+                            if (_nextEpisode != null)
+                              SizedBox.square(
+                                dimension: playButtonSize,
+                                child: IconButton(
+                                  tooltip: '下一集',
+                                  onPressed: () => unawaited(
+                                    _openAdjacentEpisode(
+                                      notifier,
+                                      _nextEpisode!,
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    Icons.skip_next,
+                                    size: isLandscape ? 26 : 30,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        if (_nextEpisode != null)
-                          SizedBox.square(
-                            dimension: playButtonSize,
-                            child: IconButton(
-                              tooltip: '下一集',
-                              onPressed: () => unawaited(
-                                _openAdjacentEpisode(notifier, _nextEpisode!),
-                              ),
-                              icon: Icon(
-                                Icons.skip_next,
-                                size: isLandscape ? 26 : 30,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: _buildSkipForwardButton(notifier, playerState),
+                        ),
                       ],
                     ),
                   ],
@@ -604,6 +621,68 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildSkipForwardButton(
+    PlayerNotifier notifier,
+    PlayerState playerState,
+  ) {
+    final enabled = playerState.canSeekRelative;
+    final color = enabled ? Colors.white : Colors.white38;
+    return Tooltip(
+      message: '快进 1 分 20 秒',
+      child: SizedBox(
+        key: const Key('player-skip-forward'),
+        width: 64,
+        height: 44,
+        child: TextButton(
+          onPressed: enabled ? () => _skipForward(notifier) : null,
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(64, 44),
+            foregroundColor: Colors.white,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          // 字体度量差异时整体缩小，保证总宽不超过 64 且不溢出。
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.fast_forward, size: 18, color: color),
+                const SizedBox(width: 2),
+                Text(
+                  '1:20',
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 一键快进 [skipForwardStep]；连点由 Provider 的 seek 基线累加。
+  void _skipForward(PlayerNotifier notifier) {
+    if (_isExiting || _sliderDragging || _panGestureStarted) {
+      return;
+    }
+    _endActiveBoost();
+    final target = notifier.seekBy(skipForwardStep);
+    if (target == null) {
+      return;
+    }
+    _setGestureHint(
+      '快进 ${formatTime(skipForwardStep.inSeconds)} → ${formatTime(target.inSeconds)}',
+      Icons.fast_forward,
+    );
+    _showControls();
   }
 
   Widget _buildControlsTouchRegion({required Widget child}) {
@@ -919,12 +998,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (duration <= Duration.zero) {
         return;
       }
-      final width = MediaQuery.sizeOf(context).width;
-      final deltaSeconds = width <= 0
-          ? 0
-          : dx / width * duration.inSeconds * 1.5;
       _dragTarget = _clampPlayerDuration(
-        _dragStartPosition + Duration(seconds: deltaSeconds.round()),
+        _dragStartPosition + horizontalDragSeekDelta(dx),
         duration,
       );
       _setGestureHint(
