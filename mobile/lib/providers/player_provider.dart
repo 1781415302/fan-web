@@ -233,6 +233,10 @@ class PlayerNotifier extends Notifier<PlayerState> {
   Duration? _seekBaseline;
   Timer? _seekBaselineTimer;
 
+  /// seek 请求单调序号；基线归属以序号识别，相同目标的不同请求也不同号。
+  int _seekSeq = 0;
+  int? _seekBaselineOwner;
+
   @override
   PlayerState build() {
     _progressApi = ref.read(progressApiProvider);
@@ -841,13 +845,14 @@ class PlayerNotifier extends Notifier<PlayerState> {
     }
     final target = _clampDuration(position, state.duration);
     // 同步登记基线：position 流在 seek 期间可能仍报旧值，连点需基于目标累加。
-    _setSeekBaseline(target);
+    final seq = ++_seekSeq;
+    _setSeekBaseline(target, seq);
     try {
       await player.seek(target);
       _setState(state.copyWith(position: target, isCompleted: false));
     } catch (_) {
       // 仅清本次登记的基线；挂起期间后续 seek 已登记的新基线保持不动。
-      if (_seekBaseline == target) {
+      if (_seekBaselineOwner == seq) {
         _clearSeekBaseline();
       }
       _setState(state.copyWith(notice: '跳转失败，请稍后重试'));
@@ -890,8 +895,9 @@ class PlayerNotifier extends Notifier<PlayerState> {
     return target;
   }
 
-  void _setSeekBaseline(Duration target) {
+  void _setSeekBaseline(Duration target, int owner) {
     _seekBaseline = target;
+    _seekBaselineOwner = owner;
     _seekBaselineTimer?.cancel();
     _seekBaselineTimer = Timer(seekBaselineWindow, _clearSeekBaseline);
   }
@@ -900,6 +906,7 @@ class PlayerNotifier extends Notifier<PlayerState> {
     _seekBaselineTimer?.cancel();
     _seekBaselineTimer = null;
     _seekBaseline = null;
+    _seekBaselineOwner = null;
   }
 
   Future<void> setVolume(double value) async {

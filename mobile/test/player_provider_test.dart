@@ -989,6 +989,59 @@ void _seekByTests() {
       await session.close(tester);
     });
 
+    testWidgets('相同目标：seek#1 失败不清除仍挂起的 seek#2 基线', (tester) async {
+      final session = await startWithDuration(tester);
+      await moveTo(tester, session, const Duration(minutes: 10));
+
+      // seek#1 → 15:00，挂起并最终失败。
+      final gate1 = Completer<void>();
+      session.player.seekGate = gate1;
+      session.player.failNextSeek = true;
+      var seek1Done = false;
+      unawaited(
+        session.notifier
+            .seek(const Duration(minutes: 15))
+            .whenComplete(() => seek1Done = true),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // seek#2 → 同样 15:00，保持挂起。
+      final gate2 = Completer<void>();
+      session.player.seekGate = gate2;
+      var seek2Done = false;
+      unawaited(
+        session.notifier
+            .seek(const Duration(minutes: 15))
+            .whenComplete(() => seek2Done = true),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      session.player.seekGate = null;
+
+      gate1.complete();
+      await _settle(tester, 2);
+      expect(seek1Done, isTrue);
+      expect(session.state.notice, '跳转失败，请稍后重试');
+      expect(seek2Done, isFalse);
+      expect(session.state.position, const Duration(minutes: 10));
+
+      expect(
+        session.notifier.seekBy(step),
+        const Duration(minutes: 16, seconds: 20),
+      );
+      expect(
+        session.player.seeks.last,
+        const Duration(minutes: 16, seconds: 20),
+      );
+      await _settle(tester, 2);
+
+      gate2.complete();
+      await _settle(tester, 2);
+      expect(seek2Done, isTrue);
+
+      await tester.pump(window);
+      await session.close(tester);
+    });
+
     testWidgets('duration 未知时返回 null 且不下发 seek', (tester) async {
       final session = await _startProviderSession(tester);
       expect(session.state.duration, Duration.zero);
