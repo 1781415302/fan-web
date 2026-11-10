@@ -11,6 +11,7 @@ type fileExtras struct {
 	Part        int
 	Final       bool
 	Notes       []string // 供测试/诊断，不进 Conflicts
+	Conflicts   []string // 预抽取阶段发现的硬冲突（如互斥的显式季号），由 mergeExtras 原样并入 ev.Conflicts
 }
 
 func preExtract(stem string) (string, fileExtras) {
@@ -62,6 +63,9 @@ func mergeExtras(ev *FileEvidence, ex fileExtras) {
 	}
 	if ex.Final {
 		ev.Ordinal.Final = true
+	}
+	if len(ex.Conflicts) > 0 {
+		ev.Conflicts = append(ev.Conflicts, ex.Conflicts...)
 	}
 }
 

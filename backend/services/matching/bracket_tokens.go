@@ -83,7 +83,10 @@ func extractEpisodeTokens(stem string, ex *fileExtras) string {
 	for _, h := range hits {
 		if h.season > 0 {
 			if season != 0 && season != h.season {
-				ex.Notes = append(ex.Notes, fmt.Sprintf("预抽取季号互斥%d/%d", season, h.season))
+				// 互斥的显式季号是硬冲突：原始标记随后会被移除，必须进 Conflicts 走 Review，不能只写诊断 Notes。
+				msg := fmt.Sprintf("预抽取季号互斥%d/%d", season, h.season)
+				ex.Notes = append(ex.Notes, msg)
+				ex.Conflicts = append(ex.Conflicts, msg)
 				continue
 			}
 			season = h.season

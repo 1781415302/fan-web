@@ -151,3 +151,31 @@ func TestConfirmInboxConcurrentCreatorNotRolledBack(t *testing.T) {
 		t.Fatalf("应仍只有一条番剧，got %d", n)
 	}
 }
+
+// PR #19 审核问题 3：互斥的显式季号 [S02E01][S03E01] 必须是硬冲突，确认接口不得入库。
+func TestConfirmInboxConflictingExplicitSeasonsRejected(t *testing.T) {
+	root := t.TempDir()
+	relDir := "Confirm Show"
+	name := "[Group] Confirm Show [S02E01][S03E01].mkv"
+	writeVideos(t, filepath.Join(root, relDir), name)
+	handler := setupScanHandlerV2(t, root, confirmShowSeed(8623))
+
+	resp := postConfirm(t, handler, confirmInboxRequest{BangumiID: 8623, FilePath: relDir, FileNames: []string{name}})
+	if resp.Code == utils.CodeSuccess {
+		t.Fatalf("互斥季号不得确认入库: %s", resp.Data)
+	}
+	data := decodeConfirmError(t, resp)
+	if data.Reason != confirmReasonReviewRequired && data.Reason != confirmReasonNoMatch {
+		t.Fatalf("应 review_required/no_match，got %#v", data)
+	}
+	var epCount int
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM episodes").Scan(&epCount); err != nil {
+		t.Fatal(err)
+	}
+	if epCount != 0 {
+		t.Fatalf("不得写入剧集，got %d", epCount)
+	}
+	if n := countAnimesByBangumiID(t, 8623); n != 0 {
+		t.Fatalf("新建番剧应回滚，got %d", n)
+	}
+}
