@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func titleTexts(ev FileEvidence) []string {
+func cleanTitleTexts(ev FileEvidence) []string {
 	out := make([]string, 0, len(ev.Titles))
 	for _, t := range ev.Titles {
 		out = append(out, t.Text)
@@ -87,16 +87,16 @@ func TestTitleCleanLeadingCJKFansubParseFile(t *testing.T) {
 	for _, tc := range cases {
 		ev := ParseFile(FileInput{Name: tc.name})
 		if titlesContainSub(ev, tc.fansub) {
-			t.Fatalf("%s: fansub %q leaked into titles %v", tc.name, tc.fansub, titleTexts(ev))
+			t.Fatalf("%s: fansub %q leaked into titles %v", tc.name, tc.fansub, cleanTitleTexts(ev))
 		}
-		if got := titleTexts(ev); !reflect.DeepEqual(got, tc.want) {
+		if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%s: titles=%v want %v", tc.name, got, tc.want)
 		}
 		if ev.Episode.First != 5 {
 			t.Fatalf("%s: episode=%+v want 5", tc.name, ev.Episode)
 		}
 		if titlesContainSub(ev, fansubPlaceholder) {
-			t.Fatalf("%s: placeholder leaked into titles %v", tc.name, titleTexts(ev))
+			t.Fatalf("%s: placeholder leaked into titles %v", tc.name, cleanTitleTexts(ev))
 		}
 	}
 }
@@ -106,16 +106,16 @@ func TestTitleCleanFirstBlockPositionSemantics(t *testing.T) {
 	// 若直接删除首块，[Bocchi the Rock] 成为首块并按 looksLikeLeadingFansub 被当成字幕组。
 	deleted := ParseFile(FileInput{Name: "[Bocchi the Rock][孤独摇滚][05].mkv"})
 	if titlesContainSub(deleted, "Bocchi") {
-		t.Fatalf("precondition: deletion counterfactual should lose the leading latin title, got %v", titleTexts(deleted))
+		t.Fatalf("precondition: deletion counterfactual should lose the leading latin title, got %v", cleanTitleTexts(deleted))
 	}
 	ev := ParseFile(FileInput{Name: "[喵萌奶茶屋][Bocchi the Rock][孤独摇滚][05].mkv"})
-	if got, want := titleTexts(ev), []string{"Bocchi the Rock", "孤独摇滚"}; !reflect.DeepEqual(got, want) {
+	if got, want := cleanTitleTexts(ev), []string{"Bocchi the Rock", "孤独摇滚"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("placeholder must keep following block position: titles=%v want %v", got, want)
 	}
 
 	// [喵萌奶茶屋][标题][05]：中文短标题保留。
 	ev = ParseFile(FileInput{Name: "[喵萌奶茶屋][标题][05].mp4"})
-	if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) || ev.Episode.First != 5 {
+	if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) || ev.Episode.First != 5 {
 		t.Fatalf("[喵萌奶茶屋][标题][05]: titles=%v ep=%+v", got, ev.Episode)
 	}
 
@@ -124,11 +124,11 @@ func TestTitleCleanFirstBlockPositionSemantics(t *testing.T) {
 	ev = ParseFile(FileInput{Name: "[喵萌奶茶屋][ABC][05].mp4"})
 	ascii := ParseFile(FileInput{Name: "[Fansub][ABC][05].mp4"})
 	if titlesContainSub(ev, "喵萌奶茶屋") {
-		t.Fatalf("[喵萌奶茶屋][ABC][05]: fansub leaked into titles %v", titleTexts(ev))
+		t.Fatalf("[喵萌奶茶屋][ABC][05]: fansub leaked into titles %v", cleanTitleTexts(ev))
 	}
-	if !reflect.DeepEqual(titleTexts(ev), titleTexts(ascii)) || ev.Episode != ascii.Episode {
+	if !reflect.DeepEqual(cleanTitleTexts(ev), cleanTitleTexts(ascii)) || ev.Episode != ascii.Episode {
 		t.Fatalf("[喵萌奶茶屋][ABC][05] must parse like [Fansub][ABC][05]: %v/%+v vs %v/%+v",
-			titleTexts(ev), ev.Episode, titleTexts(ascii), ascii.Episode)
+			cleanTitleTexts(ev), ev.Episode, cleanTitleTexts(ascii), ascii.Episode)
 	}
 	if ev.Episode.First != 5 {
 		t.Fatalf("[喵萌奶茶屋][ABC][05]: episode=%+v", ev.Episode)
@@ -160,7 +160,7 @@ func TestTitleCleanFansubNoMisfire(t *testing.T) {
 			t.Fatalf("%s: extractFansubMeta must be identity, got %q", tc.name, got)
 		}
 		ev := ParseFile(FileInput{Name: tc.name})
-		if got := titleTexts(ev); !reflect.DeepEqual(got, tc.want) {
+		if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%s: titles=%v want %v", tc.name, got, tc.want)
 		}
 		if ev.Episode.First != 5 {
@@ -176,19 +176,19 @@ func TestTitleCleanFansubNoMisfire(t *testing.T) {
 
 func TestTitleCleanMetaBlocks(t *testing.T) {
 	ev := ParseFile(FileInput{Name: "[Fansub] Title [简日 简中 繁日双语 粤日双语 ENG SUB Dual Audio MultiSub Web 1080p CRC32 ABCD1234] - 05.mkv"})
-	if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"Title"}) {
+	if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"Title"}) {
 		t.Fatalf("meta block leaked: titles=%v", got)
 	}
 	if ev.Episode.First != 5 {
 		t.Fatalf("episode=%+v", ev.Episode)
 	}
 	ev = ParseFile(FileInput{Name: "[Group][标题][简日双语内嵌][05].mp4"})
-	if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) {
+	if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) {
 		t.Fatalf("[简日双语内嵌] leaked: titles=%v", got)
 	}
 	// 元数据块位于首块时以占位块保持位置
 	ev = ParseFile(FileInput{Name: "[简日双语][标题][05].mp4"})
-	if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) {
+	if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"标题"}) {
 		t.Fatalf("leading meta block: titles=%v", got)
 	}
 
@@ -228,13 +228,13 @@ func TestTitleCleanOrdinalWordsParseFile(t *testing.T) {
 	if ev.Ordinal.Season != 0 || ev.Ordinal.Part != 2 || ev.Episode.First != 5 {
 		t.Fatalf("Part 2: ordinal=%+v ep=%+v", ev.Ordinal, ev.Episode)
 	}
-	if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"Title Name"}) || titlesContainSub(ev, "Part") {
+	if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"Title Name"}) || titlesContainSub(ev, "Part") {
 		t.Fatalf("Part 2: titles=%v", got)
 	}
 
 	ev = ParseFile(FileInput{Name: "Title Part II - 05.mkv"})
 	if ev.Ordinal.Season != 0 || ev.Ordinal.Part != 2 || titlesContainSub(ev, "Part") {
-		t.Fatalf("Part II: ordinal=%+v titles=%v", ev.Ordinal, titleTexts(ev))
+		t.Fatalf("Part II: ordinal=%+v titles=%v", ev.Ordinal, cleanTitleTexts(ev))
 	}
 
 	for _, tc := range []struct {
@@ -249,7 +249,7 @@ func TestTitleCleanOrdinalWordsParseFile(t *testing.T) {
 		if ev.Ordinal.Season != tc.season || ev.Ordinal.Final || ev.Episode.First != 5 {
 			t.Fatalf("%s: ordinal=%+v ep=%+v", tc.name, ev.Ordinal, ev.Episode)
 		}
-		if got := titleTexts(ev); !reflect.DeepEqual(got, []string{"Title"}) {
+		if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, []string{"Title"}) {
 			t.Fatalf("%s: titles=%v", tc.name, got)
 		}
 	}
@@ -305,7 +305,7 @@ func TestTitleCleanParallelTitlesParseFile(t *testing.T) {
 	}
 	for _, tc := range cases {
 		ev := ParseFile(FileInput{Name: tc.name})
-		if got := titleTexts(ev); !reflect.DeepEqual(got, tc.want) {
+		if got := cleanTitleTexts(ev); !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%s: titles=%v want %v", tc.name, got, tc.want)
 		}
 		if ev.Ordinal.Season != tc.season || ev.Episode.First != 5 {
