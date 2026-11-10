@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "provenance": "synthetic_protocol_fixture; xian-wang subject IDs/names/years verified",
+  "provenance": "synthetic_protocol_fixture; xian-wang subject IDs/names/years verified; recall-v2 (Re0/Bocchi/Frieren/Bleach/CLANNAD) subjects, aliases and chapter ep/sort copied from Bangumi API v0 snapshot 2026-11-10, search ids are the real result order filtered to subjects with main-episode chapters",
   "subjects": [
     {
       "id": 358742,
@@ -269,6 +269,350 @@
       "summary": "",
       "cover": "",
       "platform": "TV"
+    },
+    {
+      "id": 140001,
+      "name": "Re:ゼロから始める異世界生活",
+      "name_cn": "Re：从零开始的异世界生活",
+      "aliases": [
+        "Re:Zero kara Hajimeru Isekai Seikatsu",
+        "rezero",
+        "Re0",
+        "Re: Life a Different World from Zero"
+      ],
+      "year": 2016,
+      "media": "series",
+      "episode_count": 25,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 425998,
+      "name": "Re:ゼロから始める異世界生活 3rd season 襲擊編",
+      "name_cn": "Re：从零开始的异世界生活 第三季 袭击篇",
+      "aliases": [
+        "Re：從零開始的異世界生活 第三季 襲擊篇",
+        "Re0 第三季",
+        "Re0 3",
+        "rezero s3",
+        "Re:Zero kara Hajimeru Isekai Seikatsu (2024)",
+        "Re:ゼロから始める異世界生活 (2024)",
+        "Re:Zero kara Hajimeru Isekai Seikatsu 3rd Season Shuugeki Hen",
+        "Re:ZERO -Starting Life in Another World- Season 3 Shuugeki Hen"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 8,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 510728,
+      "name": "Re:ゼロから始める異世界生活 3rd season 反擊編",
+      "name_cn": "Re：从零开始的异世界生活 第三季 反击篇",
+      "aliases": [
+        "Re：從零開始的異世界生活 第三季 反擊篇",
+        "Re:Zero kara Hajimeru Isekai Seikatsu (2025)",
+        "Re:Zero - Starting Life in Another World (2025)",
+        "re0 第三季 反击篇",
+        "re0 第三季 反擊篇"
+      ],
+      "year": 2025,
+      "media": "series",
+      "episode_count": 8,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 547888,
+      "name": "Re:ゼロから始める異世界生活 4th season 喪失編",
+      "name_cn": "Re：从零开始的异世界生活 第四季 丧失篇",
+      "aliases": [
+        "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+        "Re:ZERO -Starting Life in Another World- Season 4",
+        "Re Zero kara Hajimeru Isekai Seikatsu 4th Season",
+        "Re：從零開始的異世界生活 第四季 喪失篇",
+        "re0 第四季 丧失篇",
+        "re0 第四季 喪失篇"
+      ],
+      "year": 2026,
+      "media": "series",
+      "episode_count": 11,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 633836,
+      "name": "Re:ゼロから始める異世界生活 4th season 奪還編",
+      "name_cn": "Re：从零开始的异世界生活 第四季 夺还篇",
+      "aliases": [
+        "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+        "Re:ZERO -Starting Life in Another World- Season 4",
+        "Re Zero kara Hajimeru Isekai Seikatsu 4th Season",
+        "Re：從零開始的異世界生活 第四季 奪還篇",
+        "re0 第四季 夺还篇",
+        "re0 第四季 奪還篇"
+      ],
+      "year": 2026,
+      "media": "series",
+      "episode_count": 8,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 328609,
+      "name": "ぼっち・ざ・ろっく！",
+      "name_cn": "孤独摇滚！",
+      "aliases": [
+        "BTR",
+        "Bocchi the Rock!",
+        "Bocchi the \"Guitar Hero\" Rock Story"
+      ],
+      "year": 2022,
+      "media": "series",
+      "episode_count": 12,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 436738,
+      "name": "劇場総集編ぼっち・ざ・ろっく！ Re:",
+      "name_cn": "剧场总集篇孤独摇滚！ Re:",
+      "aliases": [
+        "劇場総集編「ぼっち・ざ・ろっく！」 前編",
+        "BOCCHI THE ROCK! Recap Part 1"
+      ],
+      "year": 2024,
+      "media": "movie",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "剧场版"
+    },
+    {
+      "id": 459642,
+      "name": "劇場総集編ぼっち・ざ・ろっく！ Re:Re:",
+      "name_cn": "剧场总集篇孤独摇滚！ Re:Re:",
+      "aliases": [
+        "劇場総集編「ぼっち・ざ・ろっく！」 後編",
+        "BOCCHI THE ROCK! Recap Part 2"
+      ],
+      "year": 2024,
+      "media": "movie",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "剧场版"
+    },
+    {
+      "id": 400602,
+      "name": "葬送のフリーレン",
+      "name_cn": "葬送的芙莉莲",
+      "aliases": [
+        "Frieren: Beyond Journey's End",
+        "Sousou no Frieren",
+        "葬送的芙莉蓮"
+      ],
+      "year": 2023,
+      "media": "series",
+      "episode_count": 28,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 459283,
+      "name": "葬送のフリーレン ～●●の魔法～",
+      "name_cn": "葬送的芙莉莲 ～●●的魔法～",
+      "aliases": [],
+      "year": 2023,
+      "media": "series",
+      "episode_count": 11,
+      "summary": "",
+      "cover": "",
+      "platform": "WEB"
+    },
+    {
+      "id": 515759,
+      "name": "葬送のフリーレン 第2期",
+      "name_cn": "葬送的芙莉莲 第二季",
+      "aliases": [
+        "Sousou no Frieren 2nd Season",
+        "Frieren: Beyond Journey's End Season 2",
+        "Sousou no Frieren (2026)",
+        "Beyond Journey`s End (2026)",
+        "葬送のフリーレン (2026)"
+      ],
+      "year": 2026,
+      "media": "series",
+      "episode_count": 10,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 549563,
+      "name": "葬送のフリーレン ～●●の魔法～2期",
+      "name_cn": "葬送的芙莉莲 ～●●的魔法～2期",
+      "aliases": [],
+      "year": 2025,
+      "media": "series",
+      "episode_count": 11,
+      "summary": "",
+      "cover": "",
+      "platform": "WEB"
+    },
+    {
+      "id": 1600,
+      "name": "BLEACH",
+      "name_cn": "死神",
+      "aliases": [
+        "ブリーチ"
+      ],
+      "year": 2004,
+      "media": "series",
+      "episode_count": 366,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 302286,
+      "name": "BLEACH 千年血戦篇",
+      "name_cn": "死神 千年血战篇",
+      "aliases": [
+        "BLEACH 千年血戦編",
+        "Bleach: Sennen Kessen-hen",
+        "Bleach: Thousand-Year Blood War"
+      ],
+      "year": 2022,
+      "media": "series",
+      "episode_count": 13,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 412916,
+      "name": "BLEACH 千年血戦篇-訣別譚-",
+      "name_cn": "死神 千年血战篇-诀别谭-",
+      "aliases": [
+        "BLEACH: Thousand-Year Blood War - The Separation",
+        "Bleach: Sennen Kessen Hen - Ketsubetsu Tan",
+        "Bleach: Thousand-Year Blood War - The Separation",
+        "死神 千年血战篇 第2部分",
+        "死神 千年血战篇 Part.2"
+      ],
+      "year": 2023,
+      "media": "series",
+      "episode_count": 13,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 457326,
+      "name": "BLEACH 千年血戦篇-相剋譚-",
+      "name_cn": "死神 千年血战篇-相克谭-",
+      "aliases": [
+        "死神 千年血战篇 第3部分",
+        "BLEACH: Thousand-Year Blood War - The Conflict",
+        "Bleach: Sennen Kessen Hen - Soukoku Tan",
+        "Bleach Season 4",
+        "Bleach: Thousand-Year Blood War - The Conflict",
+        "Bleach Season 4, Bleach: Sennen Kessen Hen Part 3"
+      ],
+      "year": 2024,
+      "media": "series",
+      "episode_count": 14,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 530725,
+      "name": "BLEACH 千年血戦篇-禍進譚-",
+      "name_cn": "死神 千年血战篇-祸进谭-",
+      "aliases": [
+        "BLEACH: Thousand-Year Blood War - The Calamity",
+        "BLEACH: Sennen Kessen-hen - Kashin-tan",
+        "BLEACH: Thousand-Year Blood War Part 4"
+      ],
+      "year": 2026,
+      "media": "series",
+      "episode_count": 10,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 51,
+      "name": "CLANNAD -クラナド-",
+      "name_cn": "CLANNAD",
+      "aliases": [
+        "クラナド",
+        "小镇家族"
+      ],
+      "year": 2007,
+      "media": "series",
+      "episode_count": 23,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 876,
+      "name": "CLANNAD 〜AFTER STORY〜",
+      "name_cn": "",
+      "aliases": [],
+      "year": 2008,
+      "media": "series",
+      "episode_count": 24,
+      "summary": "",
+      "cover": "",
+      "platform": "TV"
+    },
+    {
+      "id": 37873,
+      "name": "CLANNAD もうひとつの世界 智代編",
+      "name_cn": "CLANNAD 另一个世界 智代篇",
+      "aliases": [],
+      "year": 2008,
+      "media": "ova",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "OVA"
+    },
+    {
+      "id": 37874,
+      "name": "CLANNAD 〜AFTER STORY〜もうひとつの世界 杏編",
+      "name_cn": "CLANNAD ～AFTER STORY～另一个世界 杏篇",
+      "aliases": [],
+      "year": 2009,
+      "media": "ova",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "OVA"
+    },
+    {
+      "id": 3686,
+      "name": "劇場版 CLANNAD",
+      "name_cn": "剧场版 CLANNAD",
+      "aliases": [],
+      "year": 2007,
+      "media": "movie",
+      "episode_count": 1,
+      "summary": "",
+      "cover": "",
+      "platform": "剧场版"
     }
   ],
   "searches": [
@@ -458,6 +802,100 @@
       ],
       "ids": [],
       "saturated": false
+    },
+    {
+      "terms": [
+        "Re Zero kara Hajimeru Isekai Seikatsu"
+      ],
+      "ids": [
+        140001,
+        547888,
+        633836,
+        510728,
+        425998
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Re Zero kara Hajimeru Isekai Seikatsu 4"
+      ],
+      "ids": [
+        547888,
+        633836,
+        140001,
+        510728,
+        425998
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "孤独摇滚!",
+        "孤独摇滚"
+      ],
+      "ids": [
+        328609,
+        436738,
+        459642
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Bocchi the Rock!"
+      ],
+      "ids": [
+        328609,
+        436738,
+        459642
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "葬送的芙莉莲"
+      ],
+      "ids": [
+        400602,
+        459283,
+        515759,
+        549563
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "Bleach"
+      ],
+      "ids": [
+        1600,
+        302286,
+        412916,
+        457326,
+        530725
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "CLANNAD"
+      ],
+      "ids": [
+        51,
+        876,
+        37873,
+        37874,
+        3686
+      ],
+      "saturated": false
+    },
+    {
+      "terms": [
+        "NCOP"
+      ],
+      "ids": [],
+      "saturated": false
     }
   ],
   "chapters": [
@@ -627,6 +1065,182 @@
         "first_ep": 1,
         "first_sort": 1,
         "count": 12
+      }
+    },
+    {
+      "subject_id": 140001,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 25
+      }
+    },
+    {
+      "subject_id": 425998,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 51,
+        "count": 8
+      }
+    },
+    {
+      "subject_id": 510728,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 59,
+        "count": 8
+      }
+    },
+    {
+      "subject_id": 547888,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 67,
+        "count": 11
+      }
+    },
+    {
+      "subject_id": 633836,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 78,
+        "count": 8
+      }
+    },
+    {
+      "subject_id": 328609,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 12
+      }
+    },
+    {
+      "subject_id": 436738,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1
+      }
+    },
+    {
+      "subject_id": 459642,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 2,
+        "count": 1
+      }
+    },
+    {
+      "subject_id": 400602,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 28
+      }
+    },
+    {
+      "subject_id": 459283,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 11
+      }
+    },
+    {
+      "subject_id": 515759,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 29,
+        "count": 10
+      }
+    },
+    {
+      "subject_id": 549563,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 12,
+        "count": 11
+      }
+    },
+    {
+      "subject_id": 1600,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 366
+      }
+    },
+    {
+      "subject_id": 302286,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 13
+      }
+    },
+    {
+      "subject_id": 412916,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 14,
+        "count": 13
+      }
+    },
+    {
+      "subject_id": 457326,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 27,
+        "count": 14
+      }
+    },
+    {
+      "subject_id": 530725,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 41,
+        "count": 10
+      }
+    },
+    {
+      "subject_id": 51,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 22
+      }
+    },
+    {
+      "subject_id": 876,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 22
+      }
+    },
+    {
+      "subject_id": 37873,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1
+      }
+    },
+    {
+      "subject_id": 37874,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1
+      }
+    },
+    {
+      "subject_id": 3686,
+      "rule": {
+        "first_ep": 1,
+        "first_sort": 1,
+        "count": 1
       }
     }
   ],
