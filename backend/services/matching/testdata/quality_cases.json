@@ -474,6 +474,364 @@
           "mode": "review"
         }
       ]
+    },
+    {
+      "id": "rv2-re0-4th-abs",
+      "bucket": "site_a",
+      "files": [
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 12][总第78][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 13][总第79][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 14][总第80][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 15][总第81][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 16][总第82][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 17][总第83][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 18][总第84][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 19][总第85][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 12][总第78][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 1,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 13][总第79][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 2,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 14][总第80][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 3,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 15][总第81][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 4,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 16][总第82][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 5,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 17][总第83][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 6,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 18][总第84][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 7,
+          "mode": "accepted"
+        },
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 19][总第85][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 633836,
+          "stored_number": 8,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-re0-4th-abs-mismatch",
+      "bucket": "site_a",
+      "files": [
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 05][总第71][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 05][总第71][WebRip][1080P_AVC_AAC][简日双语内嵌].mp4",
+          "subject_id": 547888,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-re0-s04e19-no-abs",
+      "bucket": "site_a",
+      "files": [
+        {
+          "name": "[Group] Re Zero kara Hajimeru Isekai Seikatsu [S04E19][1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Group] Re Zero kara Hajimeru Isekai Seikatsu [S04E19][1080p].mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "rv2-bocchi-split",
+      "bucket": "title_split",
+      "files": [
+        {
+          "name": "孤独摇滚！ Bocchi the Rock! - 05.mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "孤独摇滚！ Bocchi the Rock! - 05.mkv",
+          "subject_id": 328609,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-nekomoe-joint-fansub",
+      "bucket": "fansub",
+      "files": [
+        {
+          "name": "[喵萌奶茶屋&LoliHouse] 孤独摇滚！ Bocchi the Rock! - 05 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[喵萌奶茶屋&LoliHouse] 孤独摇滚！ Bocchi the Rock! - 05 [WebRip 1080p HEVC-10bit AAC][简繁日内封字幕].mkv",
+          "subject_id": 328609,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-qianxia-bracket-ep",
+      "bucket": "bracket_episode",
+      "files": [
+        {
+          "name": "[千夏字幕组][葬送的芙莉莲][第05话][1080p][简体内嵌].mp4",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[千夏字幕组][葬送的芙莉莲][第05话][1080p][简体内嵌].mp4",
+          "subject_id": 400602,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-bleach-dominance",
+      "bucket": "dominance",
+      "files": [
+        {
+          "name": "[Sub] Bleach - 05 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] Bleach - 05 [1080p].mkv",
+          "subject_id": 1600,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-clannad-dominance",
+      "bucket": "dominance",
+      "files": [
+        {
+          "name": "[Sub] CLANNAD - 05 [1080p].mkv",
+          "dir": ""
+        }
+      ],
+      "expected": [
+        {
+          "name": "[Sub] CLANNAD - 05 [1080p].mkv",
+          "subject_id": 51,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-ep01-cn-dir",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "EP01.mp4",
+          "dir": "孤独摇滚！"
+        }
+      ],
+      "expected": [
+        {
+          "name": "EP01.mp4",
+          "subject_id": 328609,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-ep01-cn-dir-weak-form",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "EP01.mp4",
+          "dir": "孤独摇滚"
+        }
+      ],
+      "expected": [
+        {
+          "name": "EP01.mp4",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "rv2-ep01-batch-dir",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "EP01.mp4",
+          "dir": "[Lilith-Raws] 孤独摇滚！ [Baha][WEB-DL][1080p AVC AAC][CHT]"
+        }
+      ],
+      "expected": [
+        {
+          "name": "EP01.mp4",
+          "subject_id": 328609,
+          "stored_number": 1,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-season-dir-bare-number",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "05.mkv",
+          "dir": "星河物语/Season 2"
+        }
+      ],
+      "expected": [
+        {
+          "name": "05.mkv",
+          "subject_id": 910010,
+          "stored_number": 5,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-season-dir-s02",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "03.mkv",
+          "dir": "Star River/S02"
+        }
+      ],
+      "expected": [
+        {
+          "name": "03.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-season-dir-cn",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "03.mkv",
+          "dir": "星河物语/第二季"
+        }
+      ],
+      "expected": [
+        {
+          "name": "03.mkv",
+          "subject_id": 910010,
+          "stored_number": 3,
+          "mode": "accepted"
+        }
+      ]
+    },
+    {
+      "id": "rv2-season-dir-frieren-s2",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "05.mkv",
+          "dir": "葬送的芙莉莲/Season 2"
+        }
+      ],
+      "expected": [
+        {
+          "name": "05.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "review"
+        }
+      ]
+    },
+    {
+      "id": "rv2-sps-ncop-dir",
+      "bucket": "directory",
+      "files": [
+        {
+          "name": "NCOP.mkv",
+          "dir": "孤独摇滚！/SPs"
+        }
+      ],
+      "expected": [
+        {
+          "name": "NCOP.mkv",
+          "subject_id": 0,
+          "stored_number": 0,
+          "mode": "no_candidates"
+        }
+      ]
     }
   ]
 }

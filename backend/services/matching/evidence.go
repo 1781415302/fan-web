@@ -54,6 +54,7 @@ func ParseFile(input FileInput) FileEvidence {
 	}
 	stem := strings.TrimSuffix(input.Name, filepath.Ext(input.Name))
 	stem = foldWidthAndT2S(stem)
+	stem, ex := preExtract(stem)
 
 	blocks, rest := splitBracketBlocks(stem)
 	classified := classifyBlocks(blocks, rest)
@@ -161,6 +162,7 @@ func ParseFile(input FileInput) FileEvidence {
 	ev.Media = media
 	ev.Episode = pickEpisode(epCandidates, stem)
 	ev.Conflicts = uniqueStrings(conflicts)
+	mergeExtras(&ev, ex)
 
 	// Pure numbering filename (05.mkv): title equals episode → clear for directory fallback.
 	// 年份形态的纯数字标题（如 1984.1080p）保留为标题，不当作裸集号。
@@ -176,11 +178,14 @@ func ParseFile(input FileInput) FileEvidence {
 	}
 
 	// Directory evidence
-	dirTitles, dirSeason, dirYear, dirMedia := parseDirectory(input.Dir)
+	dir, dirSeason0 := preExtractDir(input.Dir)
+	dirTitles, dirSeason, dirYear, dirMedia := parseDirectory(dir)
+	dirSeason = max(dirSeason, dirSeason0)
 	if len(ev.Titles) == 0 {
 		for _, t := range dirTitles {
 			ev.Titles = append(ev.Titles, Title{Text: t, Source: SourceDirectory})
 		}
+		applyDirSeasonFallback(&ev, dirSeason)
 	} else {
 		// Directory may supplement season/year when file lacks them; conflicts Review
 		if dirSeason > 0 {
@@ -200,6 +205,7 @@ func ParseFile(input FileInput) FileEvidence {
 		if ev.Media == KindUnknown && dirMedia != KindUnknown {
 			ev.Media = dirMedia
 		}
+		applyDirSeasonFallback(&ev, dirSeason)
 	}
 	// Part/Final from any title analyze
 	for _, t := range ev.Titles {

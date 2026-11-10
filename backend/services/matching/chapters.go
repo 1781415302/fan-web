@@ -8,7 +8,14 @@ import (
 // InterpretChapters 按 Confirmed/CountFit/Conflict/Unchecked 分类章节解释。
 // 只将 Single 的原始正整数写入 StoredNumber。
 // 先找远端 Ep 精确等于原始号的唯一章节，再找 Sort 精确相等的唯一章节。
+// 签名不变，委托 InterpretChaptersWith(…, ChapterOptions{})（零值 == 旧行为）。
 func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter, chaptersKnown bool) ChapterDecision {
+	return InterpretChaptersWith(files, subject, chapters, chaptersKnown, ChapterOptions{})
+}
+
+// InterpretChaptersWith 同 InterpretChapters，并在原 Ep/Sort 精确匹配失败后追加
+// 总集数（abs_sort）与季锚点（season_sort）兜底；兜底绑定的 StoredNumber 为 int(chapter.Ep)。
+func InterpretChaptersWith(files []FileEvidence, subject Subject, chapters []Chapter, chaptersKnown bool, opts ChapterOptions) ChapterDecision {
 	required := collectRequiredSingles(files)
 	out := ChapterDecision{
 		State:    ChapterUnchecked,
@@ -23,6 +30,7 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 
 	epIndex := indexChaptersBy(chapters, true)
 	sortIndex := indexChaptersBy(chapters, false)
+	cumulative := chaptersCumulative(chapters)
 
 	type pending struct {
 		bind EpisodeBinding
@@ -89,13 +97,14 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 				out.Rejected[name] = "集号必须为正整数"
 				continue
 			}
-			bind, reject := resolveSingleNumber(n, name, chapters, epIndex, sortIndex, subject)
+			bind, reject := resolveSingleNumber(n, f.AbsEpisode, name, chapters, epIndex, sortIndex, subject, cumulative, opts)
 			if reject != "" {
 				out.Rejected[name] = reject
 				continue
 			}
 			pendings = append(pendings, pending{bind: bind})
-			numberUsers[n] = append(numberUsers[n], name)
+			// ep/sort/count 时 StoredNumber==n（与旧行为相同）；abs_sort/season_sort 时为条目内集号。
+			numberUsers[bind.StoredNumber] = append(numberUsers[bind.StoredNumber], name)
 			if bind.ChapterID != 0 {
 				chapterUsers[bind.ChapterID] = append(chapterUsers[bind.ChapterID], name)
 			}
@@ -134,7 +143,9 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 		out.Bindings = append(out.Bindings, p.bind)
 	}
 
-	// Coverage 在重复/冲突检测结束后计算：仅最终 Bindings 的真实 ep/sort 计入 Matched。
+	// Coverage 在重复/冲突检测结束后计算：仅最终 Bindings 的真实 ep/sort（及 abs_sort/season_sort）计入 Matched。
+	// abs_sort/season_sort 绑定的文件号在 Required 中替换为其 StoredNumber（升序去重）。
+	required = remapRequiredForFallback(files, out.Bindings, required)
 	out.Coverage = buildChapterCoverage(required, out.Bindings)
 
 	// 单文件编号异常（越界/小数/特别篇/重复版本等）只进入 Rejected，
@@ -143,7 +154,7 @@ func InterpretChapters(files []FileEvidence, subject Subject, chapters []Chapter
 	hasCountFit := false
 	for _, b := range out.Bindings {
 		switch b.Basis {
-		case "ep", "sort":
+		case "ep", "sort", "abs_sort", "season_sort":
 			hasConfirmed = true
 		case "count":
 			hasCountFit = true
@@ -217,7 +228,7 @@ func emptyChapterCoverage(required []int) ChapterCoverage {
 	}
 }
 
-// buildChapterCoverage：Matched 仅含最终 Bindings 中 Basis=ep/sort 且 ChapterID>0 的 StoredNumber；
+// buildChapterCoverage：Matched 仅含最终 Bindings 中 Basis=ep/sort/abs_sort/season_sort 且 ChapterID>0 的 StoredNumber；
 // CountFit/movie 占位不计入；Missing = Required − Matched。切片字段始终非 nil。
 func buildChapterCoverage(required []int, bindings []EpisodeBinding) ChapterCoverage {
 	if required == nil {
@@ -228,7 +239,7 @@ func buildChapterCoverage(required []int, bindings []EpisodeBinding) ChapterCove
 		if b.StoredNumber <= 0 || b.ChapterID <= 0 {
 			continue
 		}
-		if b.Basis != "ep" && b.Basis != "sort" {
+		if !isChapterBasis(b.Basis) {
 			continue
 		}
 		matchedSet[b.StoredNumber] = struct{}{}
@@ -260,8 +271,9 @@ func hasAnyNumbering(files []FileEvidence) bool {
 }
 
 func resolveSingleNumber(
-	n int, name string, chapters []Chapter,
+	n, absEpisode int, name string, chapters []Chapter,
 	epIndex, sortIndex map[float64][]Chapter, subject Subject,
+	cumulative bool, opts ChapterOptions,
 ) (EpisodeBinding, string) {
 	bind := EpisodeBinding{
 		FileName:     name,
@@ -297,6 +309,15 @@ func resolveSingleNumber(
 	}
 
 	if chosen != nil {
+		// 一致性校验：仅当文件带总集数且条目 sort 为累计号时，原命中章节的 Sort 必须等于总集数。
+		if absEpisode > 0 && cumulative && chosen.Sort != float64(absEpisode) {
+			reject := fmt.Sprintf("总集数%d与章节Sort%v不一致", absEpisode, chosen.Sort)
+			// 被一致性校验拒绝后，仅在存在唯一总集数命中时改走 abs_sort；不再尝试季锚点。
+			if ch, fb, ok := ResolveAbsOrAnchor(n, absEpisode, chapters, ChapterOptions{}); ok {
+				return fallbackBinding(name, ch, fb), ""
+			}
+			return bind, reject
+		}
 		bind.ChapterID = chosen.ID
 		bind.Basis = basis
 		return bind, ""
@@ -304,6 +325,10 @@ func resolveSingleNumber(
 
 	// 无精确 Ep/Sort 命中：不得用 [minSort,maxSort] 包围判定
 	if len(chapters) > 0 {
+		// 追加兜底：总集数 → 季锚点；均无唯一命中则保持原拒绝文案
+		if ch, fb, ok := ResolveAbsOrAnchor(n, absEpisode, chapters, opts); ok {
+			return fallbackBinding(name, ch, fb), ""
+		}
 		// 列表非空但无此号：即便落在 min..max 之间也不接受
 		return bind, fmt.Sprintf("章节列表中无 Ep/Sort 精确等于 %d（不接受区间包围）", n)
 	}
@@ -317,6 +342,67 @@ func resolveSingleNumber(
 		return bind, fmt.Sprintf("编号 %d 超出可信话数 %d", n, subject.EpisodeCount)
 	}
 	return bind, "无章节列表且无可信话数，无法解释编号"
+}
+
+// fallbackBinding：abs_sort/season_sort 绑定，StoredNumber 为条目内集号 int(chapter.Ep)。
+func fallbackBinding(name string, ch Chapter, basis string) EpisodeBinding {
+	return EpisodeBinding{
+		FileName:     name,
+		StoredNumber: int(ch.Ep),
+		ChapterID:    ch.ID,
+		Basis:        basis,
+	}
+}
+
+// chaptersCumulative：存在 chapter.Sort != chapter.Ep 即视为条目 sort 为累计号。
+func chaptersCumulative(chapters []Chapter) bool {
+	for _, ch := range chapters {
+		if ch.Sort != ch.Ep {
+			return true
+		}
+	}
+	return false
+}
+
+// isChapterBasis：计入 Confirmed / Coverage.Matched 的真实章节命中 basis。
+func isChapterBasis(basis string) bool {
+	switch basis {
+	case "ep", "sort", "abs_sort", "season_sort":
+		return true
+	}
+	return false
+}
+
+// remapRequiredForFallback：对最终 Bindings 中 abs_sort/season_sort 的文件，
+// 把其文件号在 Required 中替换为 StoredNumber，升序去重；无兜底绑定时原样返回。
+func remapRequiredForFallback(files []FileEvidence, bindings []EpisodeBinding, required []int) []int {
+	stored := map[string]int{}
+	for _, b := range bindings {
+		if b.Basis == "abs_sort" || b.Basis == "season_sort" {
+			stored[b.FileName] = b.StoredNumber
+		}
+	}
+	if len(stored) == 0 {
+		return required
+	}
+	seen := map[int]struct{}{}
+	nums := []int{}
+	for _, f := range files {
+		if f.Episode.Kind != NumberSingle || f.Episode.First <= 0 {
+			continue
+		}
+		n := f.Episode.First
+		if sn, ok := stored[f.Name]; ok {
+			n = sn
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	return nums
 }
 
 func indexChaptersBy(chapters []Chapter, byEp bool) map[float64][]Chapter {

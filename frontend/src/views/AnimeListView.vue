@@ -3,11 +3,18 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { ApiError } from '../api'
-import { createAnime, listAnimes, scanAnime } from '../api/anime'
-import { getLibraryScan, listUnidentified, startLibraryScan } from '../api/library'
+import { listAnimes } from '../api/anime'
+import {
+  ConfirmInboxError,
+  confirmInbox,
+  getLibraryScan,
+  listUnidentified,
+  startLibraryScan,
+} from '../api/library'
+import InboxFileCard, { type InboxCardError, type InboxConfirmPayload } from '../components/InboxFileCard.vue'
 import { useAuthStore } from '../stores/auth'
 import type { Anime } from '../types/anime'
-import type { LibraryScanResult, MatchCandidate, UnidentifiedFile } from '../types/library'
+import type { ConfirmInboxRequest, LibraryScanResult, UnidentifiedFile } from '../types/library'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -25,6 +32,8 @@ const scanError = ref('')
 const confirmingPath = ref<string | null>(null)
 const inboxItems = ref<UnidentifiedFile[]>([])
 const inboxTotal = ref(0)
+// 确认失败只渲染在对应卡片内（key 见 inboxKey），不再写页面底部 scanError。
+const cardErrors = ref<Record<string, InboxCardError>>({})
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 // loadSerial 序列化 load()：搜索防抖、翻页、扫描完成刷新等入口可能并发触发，
@@ -154,28 +163,78 @@ async function handleLibraryScan() {
   }
 }
 
-function candidateLabel(candidate: MatchCandidate) {
-  return candidate.name_cn || candidate.name
+function inboxKey(file: UnidentifiedFile) {
+  return `${file.file_path}/${file.file_name}`
 }
 
 function isConfirming(filePath: string) {
   return confirmingPath.value !== null && confirmingPath.value === filePath
 }
 
-async function confirmCandidate(file: UnidentifiedFile, candidate: MatchCandidate) {
+// 默认批量范围：同 file_path 且候选列表含该 bangumi id 的全部收件箱文件；
+// 被点击的文件本身总是包含在内（手动搜索选中的条目可能不在任何候选里）。
+function siblingFileNames(file: UnidentifiedFile, bangumiId: number) {
+  const names: string[] = []
+  for (const item of inboxItems.value) {
+    if (item.file_path !== file.file_path) continue
+    if (!(item.candidates ?? []).some((candidate) => candidate.id === bangumiId)) continue
+    if (!names.includes(item.file_name)) names.push(item.file_name)
+  }
+  if (!names.includes(file.file_name)) names.unshift(file.file_name)
+  return names
+}
+
+function siblingCountFor(file: UnidentifiedFile) {
+  return (bangumiId: number) => siblingFileNames(file, bangumiId).length
+}
+
+function setCardError(file: UnidentifiedFile, cardError: InboxCardError | null) {
+  const next = { ...cardErrors.value }
+  if (cardError) next[inboxKey(file)] = cardError
+  else delete next[inboxKey(file)]
+  cardErrors.value = next
+}
+
+function removeConfirmedFiles(filePath: string, fileNames: string[]) {
+  const confirmed = new Set(fileNames)
+  const isConfirmed = (item: UnidentifiedFile) => item.file_path === filePath && confirmed.has(item.file_name)
+  const removed = inboxItems.value.filter(isConfirmed).length
+  inboxItems.value = inboxItems.value.filter((item) => !isConfirmed(item))
+  inboxTotal.value = Math.max(0, inboxTotal.value - removed)
+  const nextErrors = { ...cardErrors.value }
+  for (const name of fileNames) delete nextErrors[`${filePath}/${name}`]
+  cardErrors.value = nextErrors
+}
+
+function toCardError(e: unknown): InboxCardError {
+  if (e instanceof ConfirmInboxError) {
+    return { message: e.message, reason: e.reason, file_names: e.file_names }
+  }
+  return { message: e instanceof ApiError ? e.message : '确认失败' }
+}
+
+// 收件箱确认走原子接口 confirmInbox：建档 + 限定文件扫描 + 失败回滚都在服务端完成。
+// 失败时不再调用 createAnime / scanAnime（旧两步流程已废弃），错误只渲染在该卡片内。
+async function confirmCandidate(file: UnidentifiedFile, payload: InboxConfirmPayload) {
   if (isConfirming(file.file_path)) return
   confirmingPath.value = file.file_path
-  scanError.value = ''
+  setCardError(file, null)
+  const fileNames = payload.scope === 'single' ? [file.file_name] : siblingFileNames(file, payload.bangumiId)
+  const req: ConfirmInboxRequest = {
+    bangumi_id: payload.bangumiId,
+    file_path: file.file_path,
+    file_names: fileNames,
+  }
+  if (payload.episodeOffset !== undefined) req.episode_offset = payload.episodeOffset
   try {
-    const anime = await createAnime(candidate.id, file.file_path)
-    await scanAnime(anime.id)
-    await loadInbox()
+    await confirmInbox(req)
+    removeConfirmedFiles(file.file_path, fileNames)
     if (scanResult.value) {
       scanResult.value = { ...scanResult.value, unidentified: inboxItems.value }
     }
     await load()
   } catch (e: unknown) {
-    scanError.value = e instanceof ApiError ? e.message : '确认失败'
+    setCardError(file, toCardError(e))
   } finally {
     if (confirmingPath.value === file.file_path) confirmingPath.value = null
   }
@@ -254,21 +313,13 @@ onBeforeUnmount(() => {
         <summary>查看无法识别文件（{{ inboxTotal }}）</summary>
         <ul class="unidentified-list">
           <li v-for="file in inboxItems" :key="`${file.file_path}/${file.file_name}-${file.reason}`">
-            <code>{{ file.file_name }}</code>
-            <span>{{ file.reason }}</span>
-            <div v-if="file.candidates?.length > 0" class="candidate-picks">
-              <button
-                v-for="candidate in file.candidates"
-                :key="candidate.id"
-                type="button"
-                class="action-btn candidate-btn"
-                :disabled="isConfirming(file.file_path)"
-                @click="confirmCandidate(file, candidate)"
-              >
-                {{ candidateLabel(candidate) }}
-                <span class="candidate-score">{{ candidate.score.toFixed(2) }}</span>
-              </button>
-            </div>
+            <InboxFileCard
+              :file="file"
+              :sibling-count="siblingCountFor(file)"
+              :confirming="isConfirming(file.file_path)"
+              :error="cardErrors[inboxKey(file)] ?? null"
+              @confirm="confirmCandidate(file, $event)"
+            />
           </li>
         </ul>
       </details>
@@ -283,21 +334,13 @@ onBeforeUnmount(() => {
         <summary>无法识别文件（{{ inboxTotal }}）</summary>
         <ul class="unidentified-list">
           <li v-for="file in inboxItems" :key="`inbox-${file.file_path}/${file.file_name}-${file.reason}`">
-            <code>{{ file.file_name }}</code>
-            <span>{{ file.reason }}</span>
-            <div v-if="file.candidates?.length > 0" class="candidate-picks">
-              <button
-                v-for="candidate in file.candidates"
-                :key="`inbox-${candidate.id}-${file.file_name}`"
-                type="button"
-                class="action-btn candidate-btn"
-                :disabled="isConfirming(file.file_path)"
-                @click="confirmCandidate(file, candidate)"
-              >
-                {{ candidateLabel(candidate) }}
-                <span class="candidate-score">{{ candidate.score.toFixed(2) }}</span>
-              </button>
-            </div>
+            <InboxFileCard
+              :file="file"
+              :sibling-count="siblingCountFor(file)"
+              :confirming="isConfirming(file.file_path)"
+              :error="cardErrors[inboxKey(file)] ?? null"
+              @confirm="confirmCandidate(file, $event)"
+            />
           </li>
         </ul>
       </details>
@@ -573,26 +616,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
-}
-
-.candidate-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-}
-
-.candidate-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  font-size: 13px;
-}
-
-.candidate-score {
-  margin-left: 6px;
-  color: var(--text-muted-color);
-  font-weight: 500;
-  font-size: 12px;
 }
 
 .unidentified-list code {

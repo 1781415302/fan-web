@@ -127,6 +127,7 @@ func main() {
 		manager.GET("/library/scan", libraryHandler.Status)
 		manager.GET("/library/unidentified", libraryHandler.Unidentified)
 		manager.GET("/library/dirs", libraryHandler.Dirs)
+		manager.POST("/library/inbox/confirm", animeHandler.Confirm)
 		manager.POST("/animes/:id/rebind", animeHandler.Rebind)
 		manager.GET("/bangumi/search", bangumiHandler.Search)
 		manager.GET("/bangumi/subject/:id", bangumiHandler.Subject)

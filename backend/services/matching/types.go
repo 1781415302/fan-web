@@ -63,14 +63,16 @@ type EpisodeToken struct {
 }
 
 // FileEvidence 单文件解析证据；Conflicts 为中文可解释原因。
+// 季/部/终季字段是 Ordinal.Season / Ordinal.Part / Ordinal.Final，不是 ev.Season。
 type FileEvidence struct {
-	Name      string  // 不含目录，原文件名
-	Titles    []Title // 保留原语言；目录标题与文件标题来源区分
-	Ordinal   Ordinal
-	Year      int
-	Media     MediaKind
-	Episode   EpisodeToken
-	Conflicts []string
+	Name       string  // 不含目录，原文件名
+	Titles     []Title // 保留原语言；目录标题与文件标题来源区分
+	Ordinal    Ordinal
+	Year       int
+	Media      MediaKind
+	Episode    EpisodeToken
+	AbsEpisode int // 总集数标注，如 [总第85]；0=无。不得进入标题/季/Episode
+	Conflicts  []string
 }
 
 // FileInput 已验证相对目录（OS 分隔符）+ 文件名。
@@ -195,12 +197,21 @@ type Decision struct {
 	Reason     string
 }
 
-// EpisodeBinding 文件→集号绑定；StoredNumber 保留文件 Single 原始正整数。
+// EpisodeBinding 文件→集号绑定。
+// StoredNumber：basis ep/sort/count → 文件原始号（不变）；abs_sort/season_sort → int(chapter.Ep)（条目内集号，>=1）。
+// Basis 取值："ep" | "sort" | "count" | "movie" | "abs_sort" | "season_sort"。
 type EpisodeBinding struct {
 	FileName     string
 	StoredNumber int
 	ChapterID    int    // 仅本次匹配核对/去重，不写入现有 schema
-	Basis        string // "ep" / "sort" / "count" / "movie"
+	Basis        string // "ep" | "sort" | "count" | "movie" | "abs_sort" | "season_sort"
+}
+
+// ChapterOptions 控制 InterpretChaptersWith 的兜底行为；零值 == 旧行为。
+type ChapterOptions struct {
+	// SeasonSortAnchor>0：同季兄弟条目章节中最小 sort。仅当文件号 n 的 raw ep/sort 精确匹配失败时，
+	// 尝试唯一的 chapter.Sort == anchor+n-1。0=禁用。
+	SeasonSortAnchor int
 }
 
 // ChapterState 章节核对状态。

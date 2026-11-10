@@ -2,6 +2,8 @@ package matching
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -507,4 +509,245 @@ func TestRecallCoverageMoviePlaceholderNotMatched(t *testing.T) {
 	d := InterpretChapters(files, subject, nil, true)
 	// 无 NumberSingle → Required 空；即便有 movie 绑定也不能伪造 Matched
 	assertCoverage(t, d.Coverage, []int{}, []int{}, []int{})
+}
+
+// ---- S5：累计号/季锚点兜底（真实 Re:Zero 数据，fixtures 见 sort_anchor_test.go） ----
+
+func reZeroFiles(from, to, absFrom int) []FileEvidence {
+	var files []FileEvidence
+	for n := from; n <= to; n++ {
+		f := FileEvidence{
+			Name:    fmt.Sprintf("[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - %02d][WebRip].mp4", n),
+			Ordinal: Ordinal{Season: 4},
+			Media:   KindSeries,
+			Episode: EpisodeToken{Kind: NumberSingle, First: n, Last: n, Explicit: true},
+		}
+		if absFrom > 0 {
+			f.AbsEpisode = absFrom + (n - from)
+		}
+		files = append(files, f)
+	}
+	return files
+}
+
+func assertReZeroRecoveryConfirmed(t *testing.T, d ChapterDecision, wantBasis string) {
+	t.Helper()
+	if d.State != ChapterConfirmed {
+		t.Fatalf("state=%s rejected=%v bindings=%v", d.State, d.Rejected, d.Bindings)
+	}
+	if len(d.Rejected) != 0 {
+		t.Fatalf("rejected must be empty: %v", d.Rejected)
+	}
+	if len(d.Bindings) != 8 {
+		t.Fatalf("bindings=%d want 8: %v", len(d.Bindings), d.Bindings)
+	}
+	for i, b := range d.Bindings {
+		n := 12 + i
+		wantName := fmt.Sprintf("[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - %02d][WebRip].mp4", n)
+		if b.FileName != wantName {
+			t.Fatalf("binding[%d] file=%s want %s", i, b.FileName, wantName)
+		}
+		if b.Basis != wantBasis {
+			t.Fatalf("binding[%d] basis=%s want %s", i, b.Basis, wantBasis)
+		}
+		if b.StoredNumber != i+1 {
+			t.Fatalf("binding[%d] StoredNumber=%d want %d", i, b.StoredNumber, i+1)
+		}
+		if b.ChapterID != reZeroRecoveryID*100+i+1 {
+			t.Fatalf("binding[%d] ChapterID=%d want %d", i, b.ChapterID, reZeroRecoveryID*100+i+1)
+		}
+	}
+	want := []int{1, 2, 3, 4, 5, 6, 7, 8}
+	if fmt.Sprint(d.Coverage.Required) != fmt.Sprint(want) || fmt.Sprint(d.Coverage.Matched) != fmt.Sprint(want) {
+		t.Fatalf("coverage required=%v matched=%v want %v", d.Coverage.Required, d.Coverage.Matched, want)
+	}
+	if d.Coverage.Missing == nil || len(d.Coverage.Missing) != 0 {
+		t.Fatalf("missing must be empty non-nil: %#v", d.Coverage.Missing)
+	}
+	if !coverageFullyMatched(d) {
+		t.Fatalf("coverageFullyMatched must be true: %+v", d.Coverage)
+	}
+}
+
+// ① 夺还篇 4th - 12..19 + 总第78..85 → 全 Confirmed、StoredNumber=1..8、coverage 完整（零值选项即可）。
+func TestChaptersAbsSortRecoveryFullCoverage(t *testing.T) {
+	files := reZeroFiles(12, 19, 78)
+	d := InterpretChaptersWith(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, ChapterOptions{})
+	assertReZeroRecoveryConfirmed(t, d, "abs_sort")
+	// 带锚点时 abs 仍优先
+	d = InterpretChaptersWith(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, ChapterOptions{SeasonSortAnchor: 67})
+	assertReZeroRecoveryConfirmed(t, d, "abs_sort")
+}
+
+// ② 缺 AbsEpisode，仅靠季锚点（丧失篇+夺还篇最小 sort=67）得同样结果。
+func TestChaptersSeasonSortAnchorRecoveryFullCoverage(t *testing.T) {
+	files := reZeroFiles(12, 19, 0)
+	anchor := ComputeSeasonAnchor(map[int][]Chapter{
+		reZeroRecoveryID: reZeroRecoveryChapters(),
+		reZeroLossID:     reZeroLossChapters(),
+	})
+	d := InterpretChaptersWith(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, ChapterOptions{SeasonSortAnchor: anchor})
+	assertReZeroRecoveryConfirmed(t, d, "season_sort")
+
+	// 无锚点 → 旧行为：全部拒绝、Conflict
+	old := InterpretChapters(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true)
+	if old.State != ChapterConflict || len(old.Bindings) != 0 || len(old.Rejected) != 8 {
+		t.Fatalf("zero options must keep old rejection: %s %v %v", old.State, old.Bindings, old.Rejected)
+	}
+	for name, reason := range old.Rejected {
+		if !strings.Contains(reason, "不接受区间包围") {
+			t.Fatalf("%s: old reason changed: %s", name, reason)
+		}
+	}
+}
+
+// ③ 4th - 5 [总第71]：对夺还篇 → Rejected（不静默绑错）；对丧失篇 → basis=ep 通过。
+func TestChaptersAbsEpisodeConsistencyCheck(t *testing.T) {
+	file := FileEvidence{
+		Name:       "[晚街与灯][Re Zero kara Hajimeru Isekai Seikatsu][4th - 05][总第71][WebRip].mp4",
+		Ordinal:    Ordinal{Season: 4},
+		Media:      KindSeries,
+		Episode:    EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Explicit: true},
+		AbsEpisode: 71,
+	}
+	files := []FileEvidence{file}
+	for _, opts := range []ChapterOptions{{}, {SeasonSortAnchor: 67}} {
+		d := InterpretChaptersWith(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, opts)
+		if len(d.Bindings) != 0 {
+			t.Fatalf("opts=%+v: must not bind recovery: %v", opts, d.Bindings)
+		}
+		if got := d.Rejected[file.Name]; got != "总集数71与章节Sort82不一致" {
+			t.Fatalf("opts=%+v: reason=%q", opts, got)
+		}
+		if d.State != ChapterConflict {
+			t.Fatalf("opts=%+v: state=%s", opts, d.State)
+		}
+	}
+
+	d := InterpretChaptersWith(files, reZeroLossSubject(), reZeroLossChapters(), true, ChapterOptions{SeasonSortAnchor: 67})
+	if d.State != ChapterConfirmed || len(d.Bindings) != 1 || len(d.Rejected) != 0 {
+		t.Fatalf("loss must confirm: %s %v %v", d.State, d.Bindings, d.Rejected)
+	}
+	b := d.Bindings[0]
+	if b.Basis != "ep" || b.StoredNumber != 5 || b.ChapterID != reZeroLossID*100+5 {
+		t.Fatalf("loss binding=%+v", b)
+	}
+}
+
+// 一致性校验拒绝后存在唯一 abs 命中 → abs_sort（4.1 第 3 点“或被 1 拒绝且存在 abs 命中”）。
+func TestChaptersAbsEpisodeConsistencyFallsBackToAbsSort(t *testing.T) {
+	// 文件号 3 在夺还篇有 ep3(sort80)，但总第85 → 一致性不符，改由 sort85=ep8 绑定
+	file := FileEvidence{
+		Name:       "Re Zero 4th - 03 [总第85].mkv",
+		Episode:    EpisodeToken{Kind: NumberSingle, First: 3, Last: 3, Explicit: true},
+		AbsEpisode: 85,
+	}
+	d := InterpretChaptersWith([]FileEvidence{file}, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, ChapterOptions{})
+	if d.State != ChapterConfirmed || len(d.Bindings) != 1 {
+		t.Fatalf("state=%s bindings=%v rejected=%v", d.State, d.Bindings, d.Rejected)
+	}
+	if b := d.Bindings[0]; b.Basis != "abs_sort" || b.StoredNumber != 8 || b.ChapterID != reZeroRecoveryID*100+8 {
+		t.Fatalf("binding=%+v", b)
+	}
+	if fmt.Sprint(d.Coverage.Required) != "[8]" || fmt.Sprint(d.Coverage.Matched) != "[8]" || len(d.Coverage.Missing) != 0 {
+		t.Fatalf("coverage=%+v", d.Coverage)
+	}
+}
+
+// 被一致性校验拒绝且无 abs 命中时，不再尝试季锚点。
+func TestChaptersAbsEpisodeConsistencyRejectSkipsAnchor(t *testing.T) {
+	// 文件号 1 命中丧失篇 ep1(sort67)，总第99 不一致；锚点 67+1-1=67 也会命中 ep1，但不得启用
+	file := FileEvidence{
+		Name:       "x - 01 [总第99].mkv",
+		Episode:    EpisodeToken{Kind: NumberSingle, First: 1, Last: 1, Explicit: true},
+		AbsEpisode: 99,
+	}
+	d := InterpretChaptersWith([]FileEvidence{file}, reZeroLossSubject(), reZeroLossChapters(), true, ChapterOptions{SeasonSortAnchor: 67})
+	if len(d.Bindings) != 0 || d.Rejected[file.Name] != "总集数99与章节Sort67不一致" {
+		t.Fatalf("bindings=%v rejected=%v", d.Bindings, d.Rejected)
+	}
+}
+
+// ④ 4th - 1..11 走原 ep 路径，结果与改动前逐字节一致（含/不含锚点、含一致的总集数）。
+func TestChaptersOriginalEpPathUnchangedWithAnchor(t *testing.T) {
+	files := reZeroFiles(1, 11, 0)
+	chs := reZeroLossChapters()
+	sub := reZeroLossSubject()
+
+	// 改动前行为的显式期望（basis=ep，StoredNumber=文件原始号）
+	want := ChapterDecision{State: ChapterConfirmed, Rejected: map[string]string{}}
+	var nums []int
+	for i, f := range files {
+		want.Bindings = append(want.Bindings, EpisodeBinding{FileName: f.Name, StoredNumber: i + 1, ChapterID: reZeroLossID*100 + i + 1, Basis: "ep"})
+		nums = append(nums, i+1)
+	}
+	want.Coverage = ChapterCoverage{Required: nums, Matched: nums, Missing: []int{}}
+
+	got := InterpretChapters(files, sub, chs, true)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("InterpretChapters changed:\n got=%#v\nwant=%#v", got, want)
+	}
+	for _, opts := range []ChapterOptions{{SeasonSortAnchor: 67}, {SeasonSortAnchor: 51}} {
+		withAnchor := InterpretChaptersWith(files, sub, chs, true, opts)
+		if !reflect.DeepEqual(withAnchor, want) {
+			t.Fatalf("opts=%+v changed original ep path:\n got=%#v\nwant=%#v", opts, withAnchor, want)
+		}
+	}
+	// 一致的总集数（67..77）不改变结果
+	withAbs := InterpretChaptersWith(reZeroFiles(1, 11, 67), sub, chs, true, ChapterOptions{SeasonSortAnchor: 67})
+	if !reflect.DeepEqual(withAbs.Bindings, want.Bindings) || withAbs.State != ChapterConfirmed || len(withAbs.Rejected) != 0 {
+		t.Fatalf("consistent abs changed result: %#v", withAbs)
+	}
+}
+
+// ⑤ sort 逐季重置（sort==ep）的条目上 [S2E05][总第30] 仍按 ep 通过。
+func TestChaptersNonCumulativeIgnoresAbsEpisode(t *testing.T) {
+	chs := make([]Chapter, 0, 12)
+	for i := 1; i <= 12; i++ {
+		chs = append(chs, Chapter{ID: 900 + i, Ep: float64(i), Sort: float64(i)})
+	}
+	sub := Subject{ID: 9, Name: "Show 第二季", Media: KindSeries, EpisodeCount: 12, Detailed: true}
+	file := FileEvidence{
+		Name:       "[Group][Show][S2E05][总第30].mkv",
+		Ordinal:    Ordinal{Season: 2},
+		Episode:    EpisodeToken{Kind: NumberSingle, First: 5, Last: 5, Explicit: true},
+		AbsEpisode: 30,
+	}
+	for _, opts := range []ChapterOptions{{}, {SeasonSortAnchor: 1}} {
+		d := InterpretChaptersWith([]FileEvidence{file}, sub, chs, true, opts)
+		if d.State != ChapterConfirmed || len(d.Bindings) != 1 || len(d.Rejected) != 0 {
+			t.Fatalf("opts=%+v: %s %v %v", opts, d.State, d.Bindings, d.Rejected)
+		}
+		if b := d.Bindings[0]; b.Basis != "ep" || b.StoredNumber != 5 || b.ChapterID != 905 {
+			t.Fatalf("opts=%+v: binding=%+v", opts, b)
+		}
+	}
+}
+
+// 兜底绑定与原路径绑定得到相同 StoredNumber 时按旧规则整组拒绝，不静默去重。
+func TestChaptersFallbackDuplicateStoredNumberRejected(t *testing.T) {
+	files := []FileEvidence{
+		{Name: "a - 01.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 1, Last: 1}},
+		{Name: "b - 12.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 12, Last: 12}},
+	}
+	d := InterpretChaptersWith(files, reZeroRecoverySubject(), reZeroRecoveryChapters(), true, ChapterOptions{SeasonSortAnchor: 67})
+	if len(d.Bindings) != 0 {
+		t.Fatalf("duplicates must be rejected: %v", d.Bindings)
+	}
+	for _, f := range files {
+		if _, ok := d.Rejected[f.Name]; !ok {
+			t.Fatalf("%s must be rejected: %v", f.Name, d.Rejected)
+		}
+	}
+}
+
+// 无章节列表时兜底不生效，仍走 count 路径。
+func TestChaptersFallbackSkippedWithoutChapterList(t *testing.T) {
+	files := []FileEvidence{{Name: "x - 03.mkv", Episode: EpisodeToken{Kind: NumberSingle, First: 3, Last: 3}, AbsEpisode: 80}}
+	sub := Subject{ID: 1, Media: KindSeries, EpisodeCount: 8}
+	got := InterpretChaptersWith(files, sub, nil, true, ChapterOptions{SeasonSortAnchor: 67})
+	want := InterpretChapters(files, sub, nil, true)
+	if !reflect.DeepEqual(got, want) || got.State != ChapterCountFit || got.Bindings[0].Basis != "count" {
+		t.Fatalf("got=%#v want=%#v", got, want)
+	}
 }

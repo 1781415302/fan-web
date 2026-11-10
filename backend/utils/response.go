@@ -35,3 +35,11 @@ func Error(c *gin.Context, code int, message string) {
 		Data:    nil,
 	})
 }
+
+func ErrorWithData(c *gin.Context, code int, msg string, data interface{}) {
+	c.JSON(200, Response{
+		Code:    code,
+		Message: msg,
+		Data:    data,
+	})
+}

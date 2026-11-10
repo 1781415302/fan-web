@@ -53,12 +53,14 @@ func Decide(q Query, ranked []Candidate, retrievalComplete bool) Decision {
 		}
 	}
 	second := firstNonExcluded(ranked[1:])
-	if second != nil && best.Score-second.Score < scoreGapMin {
-		return Decision{
-			Code:       Review,
-			Candidates: cands,
-			Reason: fmt.Sprintf("与次优可用候选分差不足（%.3f < %.2f）",
-				best.Score-second.Score, scoreGapMin),
+	if second != nil {
+		if gap := gapRequired(best, *second); best.Score-second.Score < gap {
+			return Decision{
+				Code:       Review,
+				Candidates: cands,
+				Reason: fmt.Sprintf("与次优可用候选分差不足（%.3f < %.2f）",
+					best.Score-second.Score, gap),
+			}
 		}
 	}
 	return Decision{
@@ -66,6 +68,27 @@ func Decide(q Query, ranked []Candidate, retrievalComplete bool) Decision {
 		WinnerID:   best.Subject.ID,
 		Candidates: cands,
 		Reason:     "满足自动接受条件",
+	}
+}
+
+// gapRequired 返回最优与次优可用候选所需的最小分差（Plan §4.6 dominance）。
+// 仅当最优为强等价命中（full/base/catalog）、有直接文件标题支持、且无 Blockers/Missing，
+// 而次优只是衍生标题命中（subtitle/prefix/fuzzy/loose）时，放宽到 scoreGapMinDerived；
+// 其余情况（含两者均为强等价的平局）维持 scoreGapMin。
+func gapRequired(best, second Candidate) float64 {
+	if !best.NameEvidence.DirectSupport || len(best.Blockers) > 0 || len(best.Missing) > 0 {
+		return scoreGapMin
+	}
+	switch best.NameEvidence.Kind {
+	case NameFullStrict, NameFullNormal, NameBaseStrict, NameBaseNormal, NameCatalog:
+	default:
+		return scoreGapMin
+	}
+	switch second.NameEvidence.Kind {
+	case NameSubtitle, NamePrefix, NameFuzzy, NameLoose:
+		return scoreGapMinDerived
+	default:
+		return scoreGapMin
 	}
 }
 

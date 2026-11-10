@@ -84,10 +84,12 @@ func matchCandidatesFromDecision(d matching.Decision) []MatchCandidate {
 			break
 		}
 		out = append(out, MatchCandidate{
-			ID:     c.Subject.ID,
-			Name:   c.Subject.Name,
-			NameCn: c.Subject.NameCn,
-			Score:  c.Score,
+			ID:      c.Subject.ID,
+			Name:    c.Subject.Name,
+			NameCn:  c.Subject.NameCn,
+			Score:   c.Score,
+			Year:    c.Subject.Year,
+			EpCount: c.Subject.EpisodeCount,
 		})
 	}
 	return out
