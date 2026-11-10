@@ -485,13 +485,30 @@ func (e *scanV2StepError) Unwrap() error { return e.err }
 // runScanV2 单番 v2 扫描核心：先读 existing（原样作为 Expected）→ ScanForAnime(opts) →
 // ReconcileEpisodes(RemoveMissing=true) → 返回已保存剧集。不清收件箱，由调用方决定。
 func (h *AnimeHandler) runScanV2(anime *models.Anime, opts ...services.ScanOption) ([]models.Episode, error) {
+	plan, err := h.prepareScanV2(anime, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return h.commitScanV2(plan)
+}
+
+// scanV2Plan 单番 v2 扫描的待提交结果：prepareScanV2 只读，commitScanV2 才写库。
+type scanV2Plan struct {
+	animeID       int64
+	expectedAnime models.Anime
+	existing      []models.Episode
+	inv           services.EpisodeInventory
+}
+
+// prepareScanV2 读取快照并生成 Inventory，不写数据库。
+func (h *AnimeHandler) prepareScanV2(anime *models.Anime, opts ...services.ScanOption) (scanV2Plan, error) {
 	existing, err := database.ListEpisodesByAnimeID(anime.ID)
 	if err != nil {
-		return nil, &scanV2StepError{msg: "读取已有集数失败", err: err}
+		return scanV2Plan{}, &scanV2StepError{msg: "读取已有集数失败", err: err}
 	}
 	dirPeers, err := database.ListAnimesByFilePath(anime.FilePath)
 	if err != nil {
-		return nil, &scanV2StepError{msg: "读取同目录番剧失败", err: err}
+		return scanV2Plan{}, &scanV2StepError{msg: "读取同目录番剧失败", err: err}
 	}
 	peers := make([]models.Anime, 0, len(dirPeers))
 	for _, peer := range dirPeers {
@@ -504,22 +521,26 @@ func (h *AnimeHandler) runScanV2(anime *models.Anime, opts ...services.ScanOptio
 	inv, err := h.scanner.ScanForAnime(*anime, existing, peers, opts...)
 	if err != nil {
 		log.Printf("[Anime] v2 扫描目录 %q 失败: %v", anime.FilePath, err)
-		return nil, err
+		return scanV2Plan{}, err
 	}
+	return scanV2Plan{animeID: anime.ID, expectedAnime: expectedAnime, existing: existing, inv: inv}, nil
+}
 
-	if err := database.ReconcileEpisodes(anime.ID, database.EpisodeReconcileInput{
-		ExpectedAnime: expectedAnime,
-		Expected:      existing,
-		Desired:       inv.Desired,
-		PresentFiles:  inv.PresentFiles,
-		Renames:       inv.Renames,
+// commitScanV2 以快照 CAS 在单个事务内提交 Inventory，并返回提交后的剧集。
+func (h *AnimeHandler) commitScanV2(plan scanV2Plan) ([]models.Episode, error) {
+	if err := database.ReconcileEpisodes(plan.animeID, database.EpisodeReconcileInput{
+		ExpectedAnime: plan.expectedAnime,
+		Expected:      plan.existing,
+		Desired:       plan.inv.Desired,
+		PresentFiles:  plan.inv.PresentFiles,
+		Renames:       plan.inv.Renames,
 		RemoveMissing: true,
 	}); err != nil {
-		log.Printf("[Anime] v2 保存番剧 %d 集数失败: %v", anime.ID, err)
+		log.Printf("[Anime] v2 保存番剧 %d 集数失败: %v", plan.animeID, err)
 		return nil, err
 	}
 
-	storedEpisodes, err := database.ListEpisodesByAnimeID(anime.ID)
+	storedEpisodes, err := database.ListEpisodesByAnimeID(plan.animeID)
 	if err != nil {
 		return nil, &scanV2StepError{msg: "读取已保存集数失败", err: err}
 	}
@@ -583,8 +604,8 @@ func (h *AnimeHandler) confirmLock(bangumiID int) *sync.Mutex {
 }
 
 // Confirm POST /api/library/inbox/confirm：收件箱点击确认的原子操作。
-// 按 bangumi_id 加进程内互斥 → 查/建番剧 → runScanV2(WithOnlyFiles, WithEpisodeOffset)
-// → 校验 file_names 全部入库 → 精确清收件箱；失败时回滚本请求新建的番剧，created=false 不删任何数据。
+// 按 bangumi_id 加进程内互斥 → 查/建番剧 → prepareScanV2(WithOnlyFiles, WithEpisodeOffset)（只读）
+// → 校验 file_names 全部可归入 → commitScanV2 原子提交 → 精确清收件箱；失败时回滚本请求新建的番剧，created=false 不删任何数据。
 func (h *AnimeHandler) Confirm(c *gin.Context) {
 	var request confirmInboxRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -652,7 +673,8 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		created = true
 	}
 
-	episodes, err := h.runScanV2(anime,
+	// 先只读生成整批结果并校验 file_names 全部可归入，再原子提交；校验失败时对数据库零写入。
+	plan, err := h.prepareScanV2(anime,
 		services.WithOnlyFiles(request.FileNames),
 		services.WithEpisodeOffset(request.EpisodeOffset),
 	)
@@ -662,8 +684,8 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		return
 	}
 
-	stored := make(map[string]bool, len(episodes))
-	for _, ep := range episodes {
+	stored := make(map[string]bool, len(plan.inv.Desired))
+	for _, ep := range plan.inv.Desired {
 		stored[ep.FilePath] = true
 	}
 	var missing []string
@@ -676,9 +698,16 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		missing = append(missing, name)
 	}
 	if len(missing) > 0 {
-		h.rollbackConfirmedAnime(anime.ID, created, episodes)
+		h.rollbackConfirmedAnime(anime.ID, created, nil)
 		confirmFail(c, utils.CodeInternal, confirmReasonNoMatch,
 			"这些文件未能归入该条目："+strings.Join(missing, "、"), missing)
+		return
+	}
+
+	episodes, err := h.commitScanV2(plan)
+	if err != nil {
+		h.rollbackConfirmedAnime(anime.ID, created, nil)
+		confirmFail(c, utils.CodeInternal, confirmScanErrorReason(err), scanV2ErrorMessage(err), nil)
 		return
 	}
 
