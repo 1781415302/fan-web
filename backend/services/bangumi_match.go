@@ -21,10 +21,12 @@ type BangumiMatchDecision struct {
 }
 
 type MatchCandidate struct {
-	ID     int     `json:"id"`
-	Name   string  `json:"name"`
-	NameCn string  `json:"name_cn"`
-	Score  float64 `json:"score"`
+	ID      int     `json:"id"`
+	Name    string  `json:"name"`
+	NameCn  string  `json:"name_cn"`
+	Score   float64 `json:"score"`
+	Year    int     `json:"year,omitempty"`
+	EpCount int     `json:"ep_count,omitempty"`
 }
 
 var matchBracketsRe = regexp.MustCompile(`[\[\(\{（【「『《〈][^\]\)\}）】」』》〉]*[\]\)\}）】」』》〉]`)

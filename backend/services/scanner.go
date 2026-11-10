@@ -327,9 +327,26 @@ var scanSessionHook func(context.Context, *MatchingRuntime) *MatchingSession
 // fileIsAssociated 关联检查端口；测试可替换，默认走 database.IsFileAssociated。
 var fileIsAssociated = database.IsFileAssociated
 
+// ScanOption 调整单次 ScanForAnime 的行为；不传选项与旧行为等价。
+type ScanOption func(*scanOptions)
+
+type scanOptions struct{}
+
+// WithOnlyFiles 仅限定未关联文件集 free；已有剧集绑定照常保留。
+// names 为目录内文件名；空切片=不限定。Stage 0 选项暂不生效。
+func WithOnlyFiles(names []string) ScanOption {
+	return func(*scanOptions) {}
+}
+
+// WithEpisodeOffset n>=0；n==0 与不传等价。Stage 0 选项暂不生效。
+func WithEpisodeOffset(n int) ScanOption {
+	return func(*scanOptions) {}
+}
+
 // ScanForAnime 生成目标条目的安全 Inventory；生产 v2 单番重扫必须走此入口。
 // 旧 Scan(dir) 语义不变。error 时调用方应零写入。
-func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Episode, peers []models.Anime) (EpisodeInventory, error) {
+// opts 为契约占位，Stage 0 暂不生效。
+func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Episode, peers []models.Anime, opts ...ScanOption) (EpisodeInventory, error) {
 	empty := EpisodeInventory{
 		Desired:      []models.Episode{},
 		PresentFiles: []string{},

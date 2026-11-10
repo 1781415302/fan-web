@@ -139,10 +139,12 @@ func unidentifiedRowsForWrite(files []UnidentifiedFile) ([]models.UnidentifiedFi
 		candidates := make([]models.MatchCandidate, 0, len(file.Candidates))
 		for _, candidate := range file.Candidates {
 			candidates = append(candidates, models.MatchCandidate{
-				ID:     candidate.ID,
-				Name:   candidate.Name,
-				NameCn: candidate.NameCn,
-				Score:  candidate.Score,
+				ID:      candidate.ID,
+				Name:    candidate.Name,
+				NameCn:  candidate.NameCn,
+				Score:   candidate.Score,
+				Year:    candidate.Year,
+				EpCount: candidate.EpCount,
 			})
 		}
 		rows = append(rows, models.UnidentifiedFile{

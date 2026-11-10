@@ -378,7 +378,7 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 				if probed[id] {
 					continue
 				}
-				dec, err := s.probeChapters(group, id)
+				dec, err := s.probeChapters(group, id, q, ranked)
 				if err != nil {
 					if isSubjectNotFound(err) {
 						s.markSubjectUnavailable(id, err)
@@ -470,7 +470,7 @@ func (s *MatchingSession) resolve(group matching.Group, bound *BoundMatch, targe
 				}
 				// 胜者章节：若未探测且有编号，做一次解释（详情话数 / 已缓存章节）
 				if !probed[decision.WinnerID] {
-					dec, err := s.probeChapters(group, decision.WinnerID)
+					dec, err := s.probeChapters(group, decision.WinnerID, q, ranked)
 					if err != nil {
 						if isSubjectNotFound(err) {
 							s.markSubjectUnavailable(decision.WinnerID, err)
@@ -1022,7 +1022,7 @@ func (s *MatchingSession) shouldReviewUnprobedChapterProof(ranked []matching.Can
 	return false
 }
 
-func (s *MatchingSession) probeChapters(group matching.Group, id int) (matching.ChapterDecision, error) {
+func (s *MatchingSession) probeChapters(group matching.Group, id int, q matching.Query, ranked []matching.Candidate) (matching.ChapterDecision, error) {
 	if s.isUnavailable(id) {
 		if err := s.unavailable[id]; err != nil {
 			return matching.ChapterDecision{}, err
@@ -1037,8 +1037,7 @@ func (s *MatchingSession) probeChapters(group matching.Group, id int) (matching.
 	if err != nil {
 		return matching.ChapterDecision{}, err
 	}
-	known := true
-	dec := matching.InterpretChapters(group.Files, sub, chs, known)
+	dec := s.interpretWithAnchor(group, sub, chs, q, ranked)
 	return dec, nil
 }
 
