@@ -330,27 +330,74 @@ var fileIsAssociated = database.IsFileAssociated
 // ScanOption 调整单次 ScanForAnime 的行为；不传选项与旧行为等价。
 type ScanOption func(*scanOptions)
 
-type scanOptions struct{}
-
-// WithOnlyFiles 仅限定未关联文件集 free；已有剧集绑定照常保留。
-// names 为目录内文件名；空切片=不限定。Stage 0 选项暂不生效。
-func WithOnlyFiles(names []string) ScanOption {
-	return func(*scanOptions) {}
+type scanOptions struct {
+	// onlyFiles 非 nil 时仅允许其中的文件进入未关联待匹配集；nil=不限定。
+	onlyFiles map[string]bool
+	// episodeOffset >0 时在 GroupFiles 之后、Resolve 之前平移 Single 集号。
+	episodeOffset int
 }
 
-// WithEpisodeOffset n>=0；n==0 与不传等价。Stage 0 选项暂不生效。
+// errEpisodeOffsetNotApplicable 偏移适用性不满足时的说明（包装 ErrMatchReviewRequired）。
+const errEpisodeOffsetNotApplicable = "集号偏移仅适用于累计编号（集号需大于该条目话数）"
+
+// WithOnlyFiles 仅限定未关联文件集 free；已有剧集绑定照常保留。
+// names 为目录内文件名；空切片=不限定。
+func WithOnlyFiles(names []string) ScanOption {
+	return func(o *scanOptions) {
+		if len(names) == 0 {
+			o.onlyFiles = nil
+			return
+		}
+		set := make(map[string]bool, len(names))
+		for _, n := range names {
+			set[n] = true
+		}
+		o.onlyFiles = set
+	}
+}
+
+// WithEpisodeOffset n>=0；n==0 与不传等价。
+// n>0 仅适用于累计编号：anime.EpCount>0 且被平移文件的原始集号全部 > anime.EpCount，
+// 否则 ScanForAnime 返回 ErrMatchReviewRequired 包装错误。
 func WithEpisodeOffset(n int) ScanOption {
-	return func(*scanOptions) {}
+	return func(o *scanOptions) {
+		if n < 0 {
+			n = 0
+		}
+		o.episodeOffset = n
+	}
+}
+
+// episodeOffsetApplicable 偏移适用性：被平移（NumberSingle）文件的原始集号必须全部 > epCount（epCount>0）。
+func episodeOffsetApplicable(g matching.Group, epCount int) bool {
+	if epCount <= 0 {
+		return false
+	}
+	for _, f := range g.Files {
+		if f.Episode.Kind != matching.NumberSingle {
+			continue
+		}
+		if f.Episode.First <= epCount || f.Episode.Last <= epCount {
+			return false
+		}
+	}
+	return true
 }
 
 // ScanForAnime 生成目标条目的安全 Inventory；生产 v2 单番重扫必须走此入口。
 // 旧 Scan(dir) 语义不变。error 时调用方应零写入。
-// opts 为契约占位，Stage 0 暂不生效。
+// opts：WithOnlyFiles 限定未关联文件集；WithEpisodeOffset 在分组后平移集号（仅累计编号）。
 func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Episode, peers []models.Anime, opts ...ScanOption) (EpisodeInventory, error) {
 	empty := EpisodeInventory{
 		Desired:      []models.Episode{},
 		PresentFiles: []string{},
 		Renames:      []database.EpisodeRename{},
+	}
+	var options scanOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
 	}
 	if s == nil {
 		return empty, fmt.Errorf("ScannerService 为空")
@@ -360,6 +407,9 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 	}
 	if anime.BangumiID <= 0 {
 		return empty, fmt.Errorf("目标番剧缺少有效 BangumiID")
+	}
+	if options.episodeOffset > 0 && anime.EpCount <= 0 {
+		return empty, fmt.Errorf("%w: %s", ErrMatchReviewRequired, errEpisodeOffsetNotApplicable)
 	}
 
 	fullPath, present, err := s.listPresentVideoFiles(anime.FilePath)
@@ -438,6 +488,10 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 		if claimedNew[name] {
 			continue
 		}
+		if options.onlyFiles != nil && !options.onlyFiles[name] {
+			// WithOnlyFiles：仅限定待匹配的未关联文件；已有剧集（含可证明的改名）照常保留
+			continue
+		}
 		freeLeft = append(freeLeft, name)
 	}
 
@@ -462,6 +516,12 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 
 		hadExistingTarget := len(existing) > 0
 		for _, g := range groups {
+			if options.episodeOffset > 0 {
+				if !episodeOffsetApplicable(g, anime.EpCount) {
+					return empty, fmt.Errorf("%w: %s", ErrMatchReviewRequired, errEpisodeOffsetNotApplicable)
+				}
+				g = matching.ShiftGroupEpisodes(g, options.episodeOffset)
+			}
 			res, err := sess.Resolve(g, bound)
 			if err != nil {
 				return empty, err
@@ -588,7 +648,16 @@ func subjectFromAnime(a models.Anime) matching.Subject {
 // correctExistingEpNumber 仅在新解析明确、无硬冲突、且对目标话数可解释时更正集号；否则原样保留。
 func correctExistingEpNumber(anime models.Anime, ep models.Episode) int {
 	ev := matching.ParseFile(matching.FileInput{Name: ep.FilePath, Dir: anime.FilePath})
+	return correctExistingEpNumberFromEvidence(anime, ep, ev)
+}
+
+// correctExistingEpNumberFromEvidence 为 correctExistingEpNumber 的判定主体（ev 为该文件的解析证据）。
+func correctExistingEpNumberFromEvidence(anime models.Anime, ep models.Episode, ev matching.FileEvidence) int {
 	if len(ev.Conflicts) > 0 {
+		return ep.EpNumber
+	}
+	if ev.AbsEpisode > 0 {
+		// 总集数标注意味着文件号与条目号可能不同，不得按文件名回改
 		return ep.EpNumber
 	}
 	switch ev.Episode.Kind {
