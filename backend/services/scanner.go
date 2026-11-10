@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -435,13 +436,41 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 	var desired []models.Episode
 	var missing []models.Episode
 
+	// 会话按需打开：既有剧集更正校验与未关联文件匹配共用同一个 MatchingSession。
+	var sess *MatchingSession
+	getSession := func() *MatchingSession {
+		if sess == nil {
+			sess = s.openMatchingSession(context.Background())
+		}
+		return sess
+	}
+	// 话数未知（EpCount<=0）时“n 对目标话数可解释”无从判断：改为用目标章节核对，
+	// 只有文件号 n 能按原 ep/sort 直接对上目标章节才允许更正，否则沿用已保存集号
+	// （季锚点 / 总集数换算得到的条目内集号不会被改回文件号）。章节取不到时同样保守沿用。
+	var targetNumbers map[int]bool
+	targetNumbersLoaded := false
+	correctKept := func(ep models.Episode) int {
+		n := correctExistingEpNumber(anime, ep)
+		if n == ep.EpNumber || anime.EpCount > 0 {
+			return n
+		}
+		if !targetNumbersLoaded {
+			targetNumbersLoaded = true
+			targetNumbers = targetChapterNumbers(getSession(), anime.BangumiID)
+		}
+		if targetNumbers[n] {
+			return n
+		}
+		return ep.EpNumber
+	}
+
 	for _, ep := range existing {
 		if ep.FilePath == "" {
 			continue
 		}
 		if presentSet[ep.FilePath] {
 			kept := ep
-			kept.EpNumber = correctExistingEpNumber(anime, ep)
+			kept.EpNumber = correctKept(ep)
 			desired = append(desired, kept)
 		} else {
 			missing = append(missing, ep)
@@ -477,7 +506,7 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 		old := existingByPath[r.From]
 		ep := old
 		ep.FilePath = r.To
-		ep.EpNumber = correctExistingEpNumber(anime, models.Episode{
+		ep.EpNumber = correctKept(models.Episode{
 			ID: old.ID, AnimeID: old.AnimeID, EpNumber: old.EpNumber,
 			Title: old.Title, FilePath: r.To, Duration: old.Duration,
 		})
@@ -509,7 +538,7 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 			inputs = append(inputs, matching.FileInput{Name: name, Dir: anime.FilePath})
 		}
 		groups := matching.GroupFiles(inputs)
-		sess := s.openMatchingSession(context.Background())
+		sess := getSession()
 		if sess == nil || sess.provider == nil {
 			return empty, fmt.Errorf("ScanForAnime: MatchingSession/Provider 不可用")
 		}
@@ -593,6 +622,27 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 		PresentFiles: append([]string(nil), present...),
 		Renames:      renames,
 	}, nil
+}
+
+// targetChapterNumbers 目标条目章节中可作为“文件原始号直接命中”的编号集合（整数 Ep 与整数 Sort，>=1），
+// 与 InterpretChapters 的 ep/sort 基准一致。会话或章节不可用时返回 nil（调用方保守沿用已保存集号）。
+func targetChapterNumbers(sess *MatchingSession, bangumiID int) map[int]bool {
+	if sess == nil || sess.provider == nil || bangumiID <= 0 {
+		return nil
+	}
+	chs, err := sess.provider.Chapters(sess.ctx, bangumiID)
+	if err != nil {
+		return nil
+	}
+	out := make(map[int]bool, len(chs)*2)
+	for _, ch := range chs {
+		for _, v := range []float64{ch.Ep, ch.Sort} {
+			if v >= 1 && v == math.Trunc(v) {
+				out[int(v)] = true
+			}
+		}
+	}
+	return out
 }
 
 func (s *ScannerService) openMatchingSession(ctx context.Context) *MatchingSession {

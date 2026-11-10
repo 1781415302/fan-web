@@ -407,3 +407,38 @@ func TestRecallV2E2EInboxConfirmNoSiblingNeedsOffset(t *testing.T) {
 		assertSnapshotsEqual(t, fmt.Sprintf("偏移后重扫#%d", round), got, snapshotAnimeEpisodes(t, anime.ID))
 	}
 }
+
+// TestRecallV2E2EInboxConfirmNoAbsUnknownEpCountRescanStable PR #19 审核问题 4：
+// 条目总话数未知（EpCount=0）时，季锚点换算出的集号（文件号 12..19 → 条目内 1..8）在单番重扫后不得被改回文件号。
+func TestRecallV2E2EInboxConfirmNoAbsUnknownEpCountRescanStable(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	dir := filepath.Join("Re0", "Season4")
+	names := sceneARe0Files(false)
+	writeScanVideos(t, filepath.Join(root, dir), names...)
+	fake := newFixtureProvider(t, loadProviderReplayDoc(t))
+	sub := fake.subjects[633836]
+	sub.EpisodeCount = 0
+	fake.subjects[633836] = sub
+	withFileAssociated(t, func(string, string) (bool, error) { return false, nil })
+
+	anime := createConfirmTarget(t, fake, 633836, dir)
+	if anime.EpCount != 0 {
+		t.Fatalf("应模拟话数未知: %#v", anime)
+	}
+	if _, err := scanTargetAndReconcile(t, root, fake, anime, WithOnlyFiles(names)); err != nil {
+		t.Fatalf("confirm scan: %v", err)
+	}
+	got := snapshotAnimeEpisodes(t, anime.ID)
+	for i, name := range names {
+		if got[name].EpNumber != i+1 {
+			t.Fatalf("%s: ep_number=%d want %d (got=%v)", name, got[name].EpNumber, i+1, got)
+		}
+	}
+	for round := 1; round <= 2; round++ {
+		if _, err := scanTargetAndReconcile(t, root, fake, anime); err != nil {
+			t.Fatalf("rescan #%d: %v", round, err)
+		}
+		assertSnapshotsEqual(t, fmt.Sprintf("EpCount=0 重扫#%d", round), got, snapshotAnimeEpisodes(t, anime.ID))
+	}
+}
