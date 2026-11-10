@@ -17,6 +17,7 @@ const (
 	nameScoreAcceptMin     = 0.88
 	scoreAcceptMin         = 0.92
 	scoreGapMin            = 0.10
+	scoreGapMinDerived     = 0.05 // 仅 gapRequired：强等价原名 vs 衍生标题次优时的分差门
 	structBonusSeasonPart  = 0.03
 	structBonusYearSame    = 0.02
 	structBonusChapterConf = 0.02

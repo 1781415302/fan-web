@@ -667,6 +667,163 @@ func (s *MatchingSession) runQueries(q matching.Query, terms []matching.QueryTer
 		key string
 	}
 	neededLangs := fileTitleLangKeys(q)
+	// 语言覆盖放宽（Plan §4.6）：解析层清理后，仅由低信息词（元数据残留、纯数字、
+	// 字幕组名）构成的标题不计入 neededLangs。只按 TitleKey 词法判定，不按文件名/ID 硬编码；
+	// 无法确认为低信息的词（如无「字幕组/raws」等标记的字幕组名）一律保留，宁可召回不完整。
+	// 若全部标题都是低信息，则保持原集合不放宽。
+	{
+		isSep := func(r rune) bool {
+			if r < 0x80 {
+				return !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+			}
+			return strings.ContainsRune("、。・·【】「」『』《》〈〉（）！？～｜　", r)
+		}
+		allDigits := func(t string) bool {
+			if t == "" {
+				return false
+			}
+			for _, r := range t {
+				if r < '0' || r > '9' {
+					return false
+				}
+			}
+			return true
+		}
+		asciiMeta := map[string]bool{
+			"webrip": true, "web": true, "webdl": true, "dl": true, "bdrip": true, "bd": true,
+			"bdmv": true, "dvdrip": true, "dvd": true, "hdtv": true, "tvrip": true, "avc": true,
+			"hevc": true, "h264": true, "h265": true, "x264": true, "x265": true, "aac": true,
+			"flac": true, "ac3": true, "opus": true, "mp4": true, "mkv": true, "hdr": true,
+			"hi10p": true, "ma10p": true, "chs": true, "cht": true, "gb": true, "big5": true,
+			"jpn": true, "jp": true, "eng": true, "sub": true, "subs": true, "dual": true,
+			"audio": true, "raw": true, "raws": true, "baha": true, "crc32": true, "end": true,
+			"fin": true, "ep": true, "uhd": true, "fhd": true,
+		}
+		// 带数字的编号/规格词：1080p、10bit、4th、EP05、S02E05v2、v2、CRC32 校验串。
+		lowNumbered := func(t string) bool {
+			if allDigits(t) {
+				return true
+			}
+			i := 0
+			for i < len(t) && t[i] >= '0' && t[i] <= '9' {
+				i++
+			}
+			if i > 0 {
+				switch t[i:] {
+				case "p", "bit", "k", "fps", "st", "nd", "rd", "th":
+					return true
+				}
+				if t[i] == 'v' && allDigits(t[i+1:]) {
+					return true
+				}
+			}
+			rest := t
+			if strings.HasPrefix(rest, "s") {
+				j := 1
+				for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+					j++
+				}
+				if j > 1 {
+					if j == len(rest) {
+						return true // 单独的 S02
+					}
+					rest = rest[j:]
+				}
+			}
+			for _, pre := range []string{"ep", "e", "v"} {
+				if strings.HasPrefix(rest, pre) {
+					num := rest[len(pre):]
+					if k := strings.IndexByte(num, 'v'); k > 0 {
+						if !allDigits(num[k+1:]) {
+							return false
+						}
+						num = num[:k]
+					}
+					if allDigits(num) {
+						return true
+					}
+					break
+				}
+			}
+			if len(t) == 8 {
+				hasDigit, hasHex := false, false
+				for _, r := range t {
+					switch {
+					case r >= '0' && r <= '9':
+						hasDigit = true
+					case r >= 'a' && r <= 'f':
+						hasHex = true
+					default:
+						return false
+					}
+				}
+				return hasDigit && hasHex
+			}
+			return false
+		}
+		// CJK 元数据词表（TitleKey 已繁转简）：逐段最长匹配，数字段视为编号。
+		cjkMeta := []string{
+			"字幕组", "字幕社", "字幕屋", "汉化组", "压制组", "双语", "内嵌", "内封", "外挂", "字幕",
+			"简体", "繁体", "简繁", "中字", "中文", "日语", "国语", "粤语", "合集", "完结",
+			"总", "第", "话", "集", "全", "完", "简", "繁", "日", "中", "英", "版",
+		}
+		lowCJK := func(t string) bool {
+			rs := []rune(t)
+			for i := 0; i < len(rs); {
+				if rs[i] >= '0' && rs[i] <= '9' {
+					i++
+					continue
+				}
+				matched := 0
+				for _, w := range cjkMeta {
+					wr := []rune(w)
+					if len(wr) > matched && i+len(wr) <= len(rs) && string(rs[i:i+len(wr)]) == w {
+						matched = len(wr)
+					}
+				}
+				if matched == 0 {
+					return false
+				}
+				i += matched
+			}
+			return true
+		}
+		// 带明确字幕组标记的整串（如「爱恋字幕社」「Lilith-Raws」）。
+		fansubMarked := func(k string) bool {
+			compact := strings.Join(strings.FieldsFunc(k, isSep), "")
+			for _, suf := range []string{"字幕组", "字幕社", "字幕屋", "汉化组", "压制组", "raws", "subs"} {
+				if strings.HasSuffix(compact, suf) && compact != suf {
+					return true
+				}
+			}
+			return false
+		}
+		lowInfo := func(k string) bool {
+			if fansubMarked(k) {
+				return true
+			}
+			toks := strings.FieldsFunc(k, isSep)
+			if len(toks) == 0 {
+				return false
+			}
+			for _, t := range toks {
+				if asciiMeta[t] || lowNumbered(t) || lowCJK(t) {
+					continue
+				}
+				return false
+			}
+			return true
+		}
+		informative := make([]string, 0, len(neededLangs))
+		for _, k := range neededLangs {
+			if !lowInfo(k) {
+				informative = append(informative, k)
+			}
+		}
+		if len(informative) > 0 {
+			neededLangs = informative
+		}
+	}
 	coveredLangs := map[string]bool{}
 
 	for _, term := range terms {
