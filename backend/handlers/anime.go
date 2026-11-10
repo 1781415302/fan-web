@@ -307,12 +307,19 @@ var (
 // createAnimeFromBangumi 按 Bangumi 条目建档（Create 与 Confirm 共用）。
 // 返回值可能是唯一索引回退得到的既有行，调用方不得据此判断是否新建。
 func (h *AnimeHandler) createAnimeFromBangumi(bangumiID int, filePath string) (*models.Anime, error) {
+	anime, _, err := h.createAnimeFromBangumiReportInserted(bangumiID, filePath)
+	return anime, err
+}
+
+// createAnimeFromBangumiReportInserted 同 createAnimeFromBangumi，额外返回是否真正插入了新行
+// （命中唯一索引回退到既有记录时为 false）。
+func (h *AnimeHandler) createAnimeFromBangumiReportInserted(bangumiID int, filePath string) (*models.Anime, bool, error) {
 	subject, err := h.bangumi.GetSubject(bangumiID)
 	if err != nil {
 		log.Printf("[Anime] 获取 Bangumi 条目 %d 失败: %v", bangumiID, err)
-		return nil, fmt.Errorf("%w: %v", errCreateAnimeSubject, err)
+		return nil, false, fmt.Errorf("%w: %v", errCreateAnimeSubject, err)
 	}
-	anime, err := database.CreateAnime(&models.Anime{
+	anime, inserted, err := database.CreateAnimeReportInserted(&models.Anime{
 		Title:     subject.Name,
 		TitleCn:   subject.NameCn,
 		BangumiID: subject.ID,
@@ -322,9 +329,9 @@ func (h *AnimeHandler) createAnimeFromBangumi(bangumiID int, filePath string) (*
 		FilePath:  filePath,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errCreateAnimeInsert, err)
+		return nil, false, fmt.Errorf("%w: %v", errCreateAnimeInsert, err)
 	}
-	return anime, nil
+	return anime, inserted, nil
 }
 
 func createAnimeErrorMessage(err error) string {
@@ -660,7 +667,8 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		}
 		anime = existing
 	} else {
-		anime, err = h.createAnimeFromBangumi(request.BangumiID, request.FilePath)
+		var inserted bool
+		anime, inserted, err = h.createAnimeFromBangumiReportInserted(request.BangumiID, request.FilePath)
 		if err != nil {
 			confirmFail(c, utils.CodeInternal, confirmReasonUpstream, createAnimeErrorMessage(err), nil)
 			return
@@ -670,7 +678,8 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 			confirmFail(c, utils.CodeInternal, confirmReasonDirMismatch, animeDirMismatchMessage, nil)
 			return
 		}
-		created = true
+		// created 只取决于本次是否真正 INSERT：回退返回的同目录既有行属于其它流程，失败时不得回滚删除。
+		created = inserted
 	}
 
 	// 先只读生成整批结果并校验 file_names 全部可归入，再原子提交；校验失败时对数据库零写入。

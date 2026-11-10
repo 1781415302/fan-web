@@ -135,6 +135,13 @@ func GetEpisodeByID(id int64) (*models.Episode, error) {
 }
 
 func CreateAnime(anime *models.Anime) (*models.Anime, error) {
+	created, _, err := CreateAnimeReportInserted(anime)
+	return created, err
+}
+
+// CreateAnimeReportInserted 同 CreateAnime，额外返回本次调用是否真正 INSERT 了新行：
+// 命中 bangumi_id 唯一索引而回退返回既有记录时 inserted=false（该行属于其它流程，调用方不得回滚删除）。
+func CreateAnimeReportInserted(anime *models.Anime) (*models.Anime, bool, error) {
 	result, err := DB.Exec(
 		`INSERT INTO animes (title, title_cn, bangumi_id, cover, summary, ep_count, file_path)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -146,19 +153,20 @@ func CreateAnime(anime *models.Anime) (*models.Anime, error) {
 		if anime.BangumiID > 0 && isUniqueConstraint(err) {
 			existing, queryErr := GetAnimeByBangumiID(anime.BangumiID)
 			if queryErr != nil {
-				return nil, queryErr
+				return nil, false, queryErr
 			}
 			if existing != nil {
-				return existing, nil
+				return existing, false, nil
 			}
 		}
-		return nil, err
+		return nil, false, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
-	return GetAnimeByID(id)
+	created, err := GetAnimeByID(id)
+	return created, true, err
 }
 
 func CreateEpisode(episode *models.Episode) error {
