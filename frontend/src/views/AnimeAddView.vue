@@ -44,10 +44,10 @@ async function handleCreate() {
   creating.value = true
   createError.value = ''
   const rawPath = filePath.value.trim()
-  // 纵深防御：拒绝绝对路径与越界路径（含 /、\、..），与界面提示保持一致；
+  // 纵深防御：允许多级相对子目录（如 2026/Frieren），只拒绝空字节、绝对路径与 .. 路径段；
   // 即使后端校验缺失，也不会把非法路径入库。
-  if (rawPath && (/[/\\]/.test(rawPath) || rawPath.includes('..'))) {
-    createError.value = '文件目录名不能包含路径分隔符或 ..'
+  if (!isValidRelativeVideoPath(rawPath)) {
+    createError.value = '文件目录需为视频根目录下的相对路径，不能是绝对路径或包含 .. 路径段'
     creating.value = false
     return
   }
@@ -59,6 +59,13 @@ async function handleCreate() {
   } finally {
     creating.value = false
   }
+}
+
+function isValidRelativeVideoPath(raw: string): boolean {
+  if (!raw) return true
+  if (raw.includes('\0')) return false
+  if (raw.startsWith('/') || raw.startsWith('\\') || /^[a-zA-Z]:/.test(raw)) return false
+  return !raw.split(/[/\\]+/).some((seg) => seg === '..')
 }
 
 function displayName(item: BangumiSearchItem) {
@@ -153,8 +160,8 @@ function markCoverFailed(id: number) {
       </div>
       <div class="form-field">
         <label for="file-path">文件目录名 <span class="label-hint">可选</span></label>
-        <input id="file-path" v-model="filePath" type="text" placeholder="留空扫描根目录，如 Re_Zero" />
-        <p class="form-hint">视频根目录下的相对目录名，不能填写绝对路径或 ..。</p>
+        <input id="file-path" v-model="filePath" type="text" placeholder="留空扫描根目录，如 Re_Zero 或 2026/Frieren" />
+        <p class="form-hint">视频根目录下的相对目录，可含多级子目录，不能填写绝对路径或 .. 路径段。</p>
       </div>
       <p v-if="createError" class="error-msg" role="alert">{{ createError }}</p>
       <div class="confirm-actions">

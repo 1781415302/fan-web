@@ -110,10 +110,23 @@ async function loadInbox() {
     inboxTotal.value = 0
     return
   }
+  // 顺序拉取全部分页：同目录批量确认（siblingFileNames）依赖完整收件箱，
+  // 只拉第一页会漏掉 100 条之后的同目录文件。maxPages 防止服务端 total 异常时无限循环。
+  const pageSize = 100
+  const maxPages = 50
   try {
-    const listed = await listUnidentified(1, 100)
-    inboxItems.value = listed.items
-    inboxTotal.value = listed.total
+    const all: UnidentifiedFile[] = []
+    let total = 0
+    let page = 1
+    while (page <= maxPages) {
+      const listed = await listUnidentified(page, pageSize)
+      total = listed.total
+      all.push(...listed.items)
+      if (all.length >= total || listed.items.length === 0) break
+      page++
+    }
+    inboxItems.value = all
+    inboxTotal.value = total
   } catch (e: unknown) {
     inboxItems.value = []
     inboxTotal.value = 0

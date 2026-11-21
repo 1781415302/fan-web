@@ -558,3 +558,134 @@ describe('AnimeListView unidentified confirm', () => {
     wrapper.unmount()
   })
 })
+
+function pagedFiles(prefix: string, count: number, start = 1): UnidentifiedFile[] {
+  return Array.from({ length: count }, (_, index) =>
+    unidentifiedFile({
+      file_name: `${prefix}${String(start + index).padStart(3, '0')}.mkv`,
+      reason: 'ambiguous',
+      file_path: 'BigDir',
+      candidates: sharedCandidates,
+    }),
+  )
+}
+
+// 按 page 参数返回对应分页，total 为全量条数。
+async function mockUnidentifiedPages(pages: UnidentifiedFile[][], total: number) {
+  const { listUnidentified } = await mockedLibraryApi()
+  asMock(listUnidentified).mockImplementation(async (page: number, pageSize: number) => ({
+    items: pages[page - 1] ?? [],
+    total,
+    page,
+    page_size: pageSize,
+  }))
+}
+
+describe('AnimeListView inbox pagination', () => {
+  beforeEach(async () => {
+    window.localStorage.clear()
+    vi.clearAllMocks()
+    const { listAnimes } = await mockedAnimeApi()
+    asMock(listAnimes).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
+    const { confirmInbox } = await mockedLibraryApi()
+    asMock(confirmInbox).mockResolvedValue(confirmSuccess)
+  })
+
+  it('pulls every page sequentially until all items (>100) are loaded', async () => {
+    const { listUnidentified } = await mockedLibraryApi()
+    await mockUnidentifiedPages([pagedFiles('ep', 100, 1), pagedFiles('ep', 50, 101)], 150)
+
+    const wrapper = mountList(true)
+    await flushPromises()
+
+    expect(asMock(listUnidentified).mock.calls).toEqual([
+      [1, 100],
+      [2, 100],
+    ])
+    expect(wrapper.findAll('.inbox-card')).toHaveLength(150)
+    expect(wrapper.text()).toContain('ep001.mkv')
+    expect(wrapper.text()).toContain('ep150.mkv')
+    expect(wrapper.text()).toContain('无法识别文件（150）')
+    wrapper.unmount()
+  })
+
+  it('stops when a page comes back empty even if total says there is more', async () => {
+    const { listUnidentified } = await mockedLibraryApi()
+    await mockUnidentifiedPages([pagedFiles('ep', 100, 1)], 180)
+
+    const wrapper = mountList(true)
+    await flushPromises()
+
+    expect(listUnidentified).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('.inbox-card')).toHaveLength(100)
+    wrapper.unmount()
+  })
+
+  it('batches same-dir siblings across pages and subtracts them from the total locally', async () => {
+    const { confirmInbox, listUnidentified } = await mockedLibraryApi()
+    const otherDir = unidentifiedFile({
+      file_name: 'keep.mkv',
+      reason: 'ambiguous',
+      file_path: 'OtherDir',
+      candidates: sharedCandidates,
+    })
+    await mockUnidentifiedPages([pagedFiles('ep', 100, 1), [...pagedFiles('ep', 2, 101), otherDir]], 103)
+
+    const wrapper = mountList(true)
+    await flushPromises()
+
+    const batchBtn = rowFor(cardFor(wrapper, 'ep001.mkv'), '候选番剧').find('.candidate-btn')
+    expect(batchBtn.text()).toBe('归入此番剧（同目录 102 个文件）')
+    const callsBeforeConfirm = asMock(listUnidentified).mock.calls.length
+    await batchBtn.trigger('click')
+    await flushPromises()
+
+    const req = lastConfirmRequest(confirmInbox)
+    expect(req.bangumi_id).toBe(101)
+    expect(req.file_path).toBe('BigDir')
+    expect(req.file_names).toHaveLength(102)
+    expect(req.file_names).toContain('ep101.mkv')
+    expect(req.file_names).toContain('ep102.mkv')
+    expect(req.file_names).not.toContain('keep.mkv')
+    // 确认后从本地数组精确扣除，不重新拉取收件箱。
+    expect(asMock(listUnidentified).mock.calls.length).toBe(callsBeforeConfirm)
+    expect(wrapper.findAll('.inbox-card')).toHaveLength(1)
+    expect(wrapper.text()).toContain('keep.mkv')
+    expect(wrapper.text()).toContain('无法识别文件（1）')
+    wrapper.unmount()
+  })
+
+  it('keeps the inbox empty and shows an error when a later page fails', async () => {
+    const { listUnidentified } = await mockedLibraryApi()
+    asMock(listUnidentified)
+      .mockResolvedValueOnce({ items: pagedFiles('ep', 100, 1), total: 150, page: 1, page_size: 100 })
+      .mockRejectedValueOnce(new ApiError(9999, '收件箱第二页加载失败'))
+
+    const wrapper = mountList(true)
+    await flushPromises()
+
+    expect(listUnidentified).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('.inbox-card')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('ep001.mkv')
+    expect(wrapper.find('p.error-msg').text()).toContain('收件箱第二页加载失败')
+    wrapper.unmount()
+  })
+
+  it('stops after maxPages (50) even if the server keeps reporting more items', async () => {
+    const { listUnidentified } = await mockedLibraryApi()
+    asMock(listUnidentified).mockImplementation(async (page: number, pageSize: number) => ({
+      items: pagedFiles('p', 1, page),
+      total: 100_000,
+      page,
+      page_size: pageSize,
+    }))
+
+    const wrapper = mountList(true)
+    await flushPromises()
+
+    expect(listUnidentified).toHaveBeenCalledTimes(50)
+    expect(asMock(listUnidentified).mock.calls[49]).toEqual([50, 100])
+    expect(wrapper.findAll('.inbox-card')).toHaveLength(50)
+    wrapper.unmount()
+  })
+})
