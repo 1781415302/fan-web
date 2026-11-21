@@ -353,7 +353,7 @@ func TestHasPendingMigrations(t *testing.T) {
 		t.Fatal("期望 v1+v2 库仍有 v3 待应用")
 	}
 
-	// 写入真实 v3 名称后才无 pending。
+	// 补齐 v1~v3 后仍有 v4 待应用。
 	if _, err := db.Exec(
 		"INSERT INTO schema_migrations (version, name) VALUES (3, 'library_inbox_and_bangumi_sync')",
 	); err != nil {
@@ -363,8 +363,22 @@ func TestHasPendingMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !pending {
+		t.Fatal("期望 v1~v3 库仍有 v4 待应用")
+	}
+
+	// 写入真实 v4 名称后才无 pending。
+	if _, err := db.Exec(
+		"INSERT INTO schema_migrations (version, name) VALUES (4, 'api_keys')",
+	); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = HasPendingMigrations(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if pending {
-		t.Fatal("期望 v3 库无待应用迁移")
+		t.Fatal("期望 v4 库无待应用迁移")
 	}
 }
 

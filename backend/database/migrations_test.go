@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,7 +25,7 @@ func newTestDB(t *testing.T) {
 func TestMigrationsInitializeSchema(t *testing.T) {
 	newTestDB(t)
 
-	for _, table := range []string{"users", "animes", "episodes", "watch_progress", "schema_migrations", "unidentified_files", "user_bangumi_tokens", "bangumi_sync_outbox"} {
+	for _, table := range []string{"users", "animes", "episodes", "watch_progress", "schema_migrations", "unidentified_files", "user_bangumi_tokens", "bangumi_sync_outbox", "api_keys"} {
 		var name string
 		if err := DB.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
@@ -47,8 +48,8 @@ func TestMigrationsInitializeSchema(t *testing.T) {
 	if err := DB.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
-		t.Fatalf("期望版本 3 已记录，got %d", version)
+	if version != 4 {
+		t.Fatalf("期望版本 4 已记录，got %d", version)
 	}
 }
 
@@ -143,8 +144,8 @@ func TestMigrationsAdoptLegacyDatabase(t *testing.T) {
 	if err := DB.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
-		t.Fatalf("期望接管后记录版本 3，got %d", version)
+	if version != 4 {
+		t.Fatalf("期望接管后记录版本 4，got %d", version)
 	}
 }
 
@@ -318,6 +319,121 @@ func TestMigrationsMergeDuplicateAnimePreservesData(t *testing.T) {
 	}
 }
 
+func TestMigrationsUpgradeV3ToV4APIKeys(t *testing.T) {
+	// v3 老库首次运行新版：先产生迁移前快照，再于单事务内应用 v4 建表 api_keys，
+	// 并写入 schema_migrations(4, "api_keys")；快照仍停留在 v3。
+	dbPath := filepath.Join(t.TempDir(), "v3.db")
+	backupPath := dbPath + preMigrationBackupSuffix
+	legacy, err := sql.Open("sqlite", dbPath+"?"+sqliteConnPragmas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrationsWith(legacy, migrations[:3]); err != nil {
+		_ = legacy.Close()
+		t.Fatalf("构建 v3 老库失败: %v", err)
+	}
+	if _, err := legacy.Exec("INSERT INTO users (username, password, is_admin) VALUES ('admin', 'x', 1)"); err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	DB = nil
+	if err := Init(dbPath); err != nil {
+		t.Fatalf("v3 升级初始化失败: %v", err)
+	}
+	t.Cleanup(func() {
+		if DB != nil {
+			_ = DB.Close()
+			DB = nil
+		}
+	})
+
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("期望 v4 迁移前备份存在: %v", err)
+	}
+	backup, err := sql.Open("sqlite", backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backup.Close()
+	var backupVersion int
+	if err := backup.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&backupVersion); err != nil {
+		t.Fatal(err)
+	}
+	if backupVersion != 3 {
+		t.Fatalf("期望备份停留在 v3，got %d", backupVersion)
+	}
+	var backupTables int
+	if err := backup.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='api_keys'").Scan(&backupTables); err != nil {
+		t.Fatal(err)
+	}
+	if backupTables != 0 {
+		t.Fatalf("期望备份不含 api_keys 表，got %d", backupTables)
+	}
+
+	var name string
+	if err := DB.QueryRow("SELECT name FROM schema_migrations WHERE version = 4").Scan(&name); err != nil {
+		t.Fatalf("期望记录 v4 迁移: %v", err)
+	}
+	if name != "api_keys" {
+		t.Fatalf("期望 v4 迁移名 api_keys，got %q", name)
+	}
+	assertIndexCount(t, DB, "idx_api_keys_created_by", 1)
+
+	// key_hash 唯一，创建者删除时级联删除其密钥。
+	var userID int64
+	if err := DB.QueryRow("SELECT id FROM users WHERE username = 'admin'").Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(
+		"INSERT INTO api_keys (name, key_hash, key_prefix, created_by) VALUES ('hermes', 'h1', 'fw_0123abcd...beef', ?)", userID,
+	); err != nil {
+		t.Fatalf("插入 api_keys 失败: %v", err)
+	}
+	if _, err := DB.Exec(
+		"INSERT INTO api_keys (name, key_hash, key_prefix, created_by) VALUES ('dup', 'h1', 'fw_0123abcd...beef', ?)", userID,
+	); err == nil {
+		t.Fatal("期望重复 key_hash 被唯一约束拒绝")
+	}
+	var lastUsed sql.NullTime
+	var createdAt sql.NullTime
+	if err := DB.QueryRow("SELECT last_used_at, created_at FROM api_keys WHERE key_hash = 'h1'").Scan(&lastUsed, &createdAt); err != nil {
+		t.Fatal(err)
+	}
+	if lastUsed.Valid || !createdAt.Valid {
+		t.Fatalf("期望 last_used_at 为 NULL 且 created_at 有默认值，got %v / %v", lastUsed, createdAt)
+	}
+	if _, err := DB.Exec("DELETE FROM users WHERE id = ?", userID); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int
+	if err := DB.QueryRow("SELECT COUNT(*) FROM api_keys").Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("期望删除创建者后级联删除密钥，got %d", remaining)
+	}
+}
+
+func TestMigrationsV4DatabaseRejectsV3Binary(t *testing.T) {
+	// 已应用 v4 的库交给仅认识 v1~v3 的旧版二进制，必须被 validateAppliedMigrations 拦截。
+	dbPath := filepath.Join(t.TempDir(), "v4-downgrade.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := runMigrationsWith(db, migrations); err != nil {
+		t.Fatalf("应用全部迁移失败: %v", err)
+	}
+	if err := runMigrationsWith(db, migrations[:3]); err == nil || !strings.Contains(err.Error(), "拒绝降级启动") {
+		t.Fatalf("期望 v4 库拒绝 v3 二进制启动，got %v", err)
+	}
+}
+
 func TestMigrationsIdempotentOnReinit(t *testing.T) {
 	newTestDB(t)
 
@@ -345,8 +461,8 @@ func TestMigrationsIdempotentOnReinit(t *testing.T) {
 	if err := DB.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 3 {
-		t.Fatalf("期望迁移记录仍为 3 条，got %d", count)
+	if count != 4 {
+		t.Fatalf("期望迁移记录仍为 4 条，got %d", count)
 	}
 }
 
@@ -426,7 +542,7 @@ func TestMigrationsRejectsDatabaseNewerThanBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(
-		"INSERT INTO schema_migrations (version, name) VALUES (1, 'initial_schema'), (2, 'unique_anime_episode_keys'), (3, 'library_inbox_and_bangumi_sync'), (4, 'future_schema')",
+		"INSERT INTO schema_migrations (version, name) VALUES (1, 'initial_schema'), (2, 'unique_anime_episode_keys'), (3, 'library_inbox_and_bangumi_sync'), (4, 'api_keys'), (5, 'future_schema')",
 	); err != nil {
 		t.Fatal(err)
 	}
