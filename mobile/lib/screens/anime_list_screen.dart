@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../api/anime_api.dart';
 import '../api/library_api.dart';
 import '../models/anime.dart';
 import '../providers/anime_provider.dart';
@@ -308,18 +307,37 @@ class _AnimeListScreenState extends ConsumerState<AnimeListScreen> {
       _confirmingPath = file.filePath;
       _scanError = null;
     });
+    // 同目录下候选含该番剧的文件一并确认；被点击的文件本身必须在内。
+    final fileNames = <String>[file.fileName];
+    for (final item in _unidentified) {
+      if (item.filePath != file.filePath || item.fileName == file.fileName) {
+        continue;
+      }
+      if (item.candidates.any((c) => c.id == candidate.id) &&
+          !fileNames.contains(item.fileName)) {
+        fileNames.add(item.fileName);
+      }
+    }
     try {
-      await confirmUnidentified(
-        animeApi: ref.read(animeApiProvider),
-        bangumiId: candidate.id,
-        filePath: file.filePath,
-      );
+      await ref
+          .read(libraryApiProvider)
+          .confirmInbox(
+            bangumiId: candidate.id,
+            filePath: file.filePath,
+            fileNames: fileNames,
+          );
       if (!mounted) {
         return;
       }
+      // 仅在确认成功后移除本次已确认的文件；失败时不移除任何条目。
+      final confirmed = fileNames.toSet();
       setState(() {
         _unidentified = _unidentified
-            .where((item) => item.filePath != file.filePath)
+            .where(
+              (item) =>
+                  item.filePath != file.filePath ||
+                  !confirmed.contains(item.fileName),
+            )
             .toList(growable: false);
       });
       await ref.read(animeListProvider.notifier).refresh();

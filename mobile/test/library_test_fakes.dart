@@ -182,6 +182,68 @@ class FakeLibraryApi extends LibraryApi {
 
   @override
   Future<List<String>> listDirs() async => dirs;
+
+  /// 每次 confirmInbox 调用的参数快照。
+  final List<ConfirmInboxCall> confirmCalls = <ConfirmInboxCall>[];
+  Object? confirmError;
+  Anime confirmedAnime = const Anime(
+    id: 42,
+    title: 'Show',
+    titleCn: '番剧',
+    bangumiId: 101,
+    cover: '',
+    summary: '',
+    epCount: 12,
+    filePath: 'ShowDir',
+    createdAt: '',
+  );
+
+  @override
+  Future<ConfirmInboxResult> confirmInbox({
+    required int bangumiId,
+    required String filePath,
+    required List<String> fileNames,
+    int episodeOffset = 0,
+  }) async {
+    confirmCalls.add(
+      ConfirmInboxCall(
+        bangumiId: bangumiId,
+        filePath: filePath,
+        fileNames: List<String>.of(fileNames),
+        episodeOffset: episodeOffset,
+      ),
+    );
+    if (confirmError != null) {
+      throw confirmError!;
+    }
+    // 模拟服务端成功后清除收件箱对应行；同目录其他文件与其他目录不受影响。
+    unidentified = unidentified
+        .where(
+          (item) =>
+              item.filePath != filePath || !fileNames.contains(item.fileName),
+        )
+        .toList(growable: false);
+    return ConfirmInboxResult(
+      anime: confirmedAnime.copyWithFilePath(filePath),
+      created: true,
+      scanned: fileNames.length,
+      episodes: const <Episode>[],
+    );
+  }
+}
+
+class ConfirmInboxCall {
+  const ConfirmInboxCall({
+    required this.bangumiId,
+    required this.filePath,
+    required this.fileNames,
+    required this.episodeOffset,
+  });
+
+  final int bangumiId;
+  final String filePath;
+  final List<String> fileNames;
+  final int episodeOffset;
 }
 
 class FakeBangumiApi extends BangumiApi {

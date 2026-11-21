@@ -115,12 +115,12 @@ class DownloadIndexStore {
   }
 
   Future<void> _saveDirect(List<DownloadRecord> all) async {
+    final path = await _indexPath();
+    final tmp = File('$path.tmp');
     try {
-      final path = await _indexPath();
       final file = File(path);
       await file.parent.create(recursive: true);
       // 临时文件 + rename 原子替换，避免半写损坏。
-      final tmp = File('$path.tmp');
       await tmp.writeAsString(DownloadIndexCodec.encode(all), flush: true);
       try {
         if (await file.exists()) {
@@ -130,8 +130,16 @@ class DownloadIndexStore {
         // 旧文件删除失败不阻塞，后续 rename 会覆盖（同盘）。
       }
       await tmp.rename(path);
-    } catch (_) {
-      // 磁盘满等写入失败由调用方按 failed 处理，此处不抛。
+    } catch (e) {
+      // 磁盘满等写入失败：尽力删除残余 .tmp 后透传，由调用方按 failed 处理。
+      try {
+        if (await tmp.exists()) {
+          await tmp.delete();
+        }
+      } catch (_) {
+        // .tmp 删除失败不掩盖原始写入错误。
+      }
+      rethrow;
     }
   }
 }
@@ -326,8 +334,10 @@ class EpisodeDownloader {
     _emit(key, const DownloadTaskState(status: DownloadStatus.idle));
   }
 
-  /// 加载 index.json、剔除文件已丢失的记录、删除所有孤儿 .part。
-  /// 调用时队列为空，任何 .part 都无主。
+  /// 加载 index.json、剔除文件已丢失的记录、删除所有孤儿 .part 与
+  /// 未被有效记录引用的孤儿正式视频。调用时队列为空，任何 .part 都无主。
+  /// 只清理 `$root/downloads/<serverHashDir>/` 一级子目录内的文件，
+  /// 绝不触碰 `$root/downloads` 根目录文件（含 index.json / index.json.tmp）。
   /// 注意已知限制：App 进后台可能被系统杀死；被杀后 .part 会在下次启动
   /// 被此处清理删除，重新点击下载将从头下载；已完成的下载不受影响。
   Future<void> restoreIndex() async {
@@ -362,22 +372,47 @@ class EpisodeDownloader {
     _completed
       ..clear()
       ..addAll(valid);
-    // 孤儿 .part 清理。
+    // 保留集合：(serverHashDirName, fileName) 统一按 `/` 拼接比较，
+    // 兼容 Windows 宿主机上 Directory.list 返回 `\` 分隔的路径。
+    final keepKeys = <String>{
+      for (final record in valid.values)
+        '${_lastSegment(downloadDirFor(root, record.serverUrl))}/'
+            '${record.fileName}',
+    };
+    // 孤儿 .part 与孤儿正式视频清理：只遍历一级哈希子目录中的非目录文件。
     try {
       final downloadsDir = Directory('$root/downloads');
       if (await downloadsDir.exists()) {
-        await for (final entity in downloadsDir.list(recursive: true)) {
-          if (entity is! File || !entity.path.endsWith('.part')) continue;
+        await for (final serverDir in downloadsDir.list()) {
+          if (serverDir is! Directory) continue;
+          final hashDirName = _lastSegment(serverDir.path);
           try {
-            await entity.delete();
+            await for (final entity in serverDir.list()) {
+              if (entity is Directory) continue;
+              final name = _lastSegment(entity.path);
+              if (!name.endsWith('.part') &&
+                  keepKeys.contains('$hashDirName/$name')) {
+                continue;
+              }
+              try {
+                await entity.delete();
+              } catch (_) {
+                // 单个孤儿删除失败不阻塞。
+              }
+            }
           } catch (_) {
-            // 单个孤儿删除失败不阻塞。
+            // 单个子目录遍历失败不阻塞其余目录。
           }
         }
       }
     } catch (_) {
       // 清理失败不阻塞启动。
     }
+  }
+
+  /// 取路径最后一段，`/` 与 `\` 均视为分隔符。
+  static String _lastSegment(String path) {
+    return path.replaceAll('\\', '/').split('/').last;
   }
 
   /// 同步：completed 记录且文件存在时返回绝对路径，否则 null。
@@ -973,6 +1008,15 @@ class EpisodeDownloader {
     try {
       await _store.upsert(record);
     } catch (_) {
+      // 索引写入失败：尽力删除刚 rename 成功的正式文件，避免即刻产生孤儿视频。
+      try {
+        final target = File(targetPath);
+        if (await target.exists()) {
+          await target.delete();
+        }
+      } catch (_) {
+        // 删除失败留给下次 restoreIndex 的孤儿清理。
+      }
       _emit(
         key,
         const DownloadTaskState(

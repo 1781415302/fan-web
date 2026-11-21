@@ -445,4 +445,207 @@ void main() {
       }
     });
   });
+
+  group('DownloadIndexStore', () {
+    test('_saveDirect failure removes .tmp and rethrows', () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        // index.json 被占成非空目录：.tmp 可写但 rename 必然失败。
+        await Directory('$root/downloads/index.json/blocker')
+            .create(recursive: true);
+        final store = DownloadIndexStore(harness.container.read(_probeProvider));
+        await expectLater(
+          store.upsert(
+            const DownloadRecord(
+              serverUrl: _serverUrl,
+              animeId: 9,
+              episodeId: 23,
+              epNumber: 1,
+              animeTitle: _animeTitle,
+              fileName: '9_23.mp4',
+              fileSize: 1,
+              completedAt: '2026-09-06T21:00:00.000',
+            ),
+          ),
+          throwsA(isA<FileSystemException>()),
+        );
+        expect(await File('$root/downloads/index.json.tmp').exists(), isFalse);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  });
+
+  group('EpisodeDownloader index failure & orphan cleanup', () {
+    test('upsert failure deletes the renamed file and stays failed', () async {
+      final bytes = [1, 2, 3, 4];
+      final harness = await _setUp(
+        handler: (options) => _bytesBody(
+          bytes,
+          status: 200,
+          headers: {
+            'content-type': ['application/octet-stream'],
+            'content-length': ['4'],
+          },
+        ),
+      );
+      try {
+        final root = harness.tempDir.path;
+        await Directory('$root/downloads/index.json/blocker')
+            .create(recursive: true);
+
+        await harness.downloader.enqueue(
+          serverUrl: _serverUrl,
+          episode: _episode(),
+          animeTitle: _animeTitle,
+        );
+
+        final last = harness.stateFor(23);
+        expect(last?.status, DownloadStatus.failed);
+        expect(last?.errorMessage, '下载失败，请重试');
+        final dir = _expectedDir(root, _serverUrl);
+        expect(await File('$dir/9_23.mp4').exists(), isFalse);
+        expect(await File('$dir/9_23.mp4.part').exists(), isFalse);
+        expect(await File('$root/downloads/index.json.tmp').exists(), isFalse);
+        expect(harness.downloader.completedRecords, isEmpty);
+        expect(harness.downloader.localFilePath(_serverUrl, 23), isNull);
+      } finally {
+        await harness.dispose();
+      }
+    });
+
+    test(
+      'restoreIndex removes orphans and .part per hash dir, keeps root files',
+      () async {
+        const otherServer = 'http://10.0.0.2:8080';
+        final harness = await _setUp(
+          handler: (options) => _bytesBody([1], status: 200),
+        );
+        try {
+          final root = harness.tempDir.path;
+          final dirA = _expectedDir(root, _serverUrl);
+          final dirB = _expectedDir(root, otherServer);
+          await Directory('$dirA/nested').create(recursive: true);
+          await Directory(dirB).create(recursive: true);
+
+          const records = [
+            DownloadRecord(
+              serverUrl: _serverUrl,
+              animeId: 9,
+              episodeId: 23,
+              epNumber: 1,
+              animeTitle: _animeTitle,
+              fileName: '9_23.mp4',
+              fileSize: 3,
+              completedAt: '2026-09-06T21:00:00.000',
+            ),
+            DownloadRecord(
+              serverUrl: otherServer,
+              animeId: 1,
+              episodeId: 2,
+              epNumber: 2,
+              animeTitle: _animeTitle,
+              fileName: '1_2.mkv',
+              fileSize: 3,
+              completedAt: '2026-09-06T21:00:00.000',
+            ),
+          ];
+          final indexJson = DownloadIndexCodec.encode(records);
+          final indexFile = File('$root/downloads/index.json');
+          await indexFile.writeAsString(indexJson);
+          final indexTmp = File('$root/downloads/index.json.tmp');
+          await indexTmp.writeAsString('pending');
+          final rootStray = File('$root/downloads/stray.mp4');
+          await rootStray.writeAsBytes([7]);
+
+          // 有效记录文件。
+          final keptA = File('$dirA/9_23.mp4');
+          await keptA.writeAsBytes([1, 2, 3]);
+          final keptB = File('$dirB/1_2.mkv');
+          await keptB.writeAsBytes([1, 2, 3]);
+          // 孤儿正式视频与 .part。
+          final orphanA = File('$dirA/9_24.mp4');
+          await orphanA.writeAsBytes([1]);
+          final partA = File('$dirA/9_25.mp4.part');
+          await partA.writeAsBytes([1]);
+          final orphanB = File('$dirB/1_3.mkv');
+          await orphanB.writeAsBytes([1]);
+          // 跨 hash 子目录：同名文件只在所属服务器目录内被保留。
+          final crossHash = File('$dirB/9_23.mp4');
+          await crossHash.writeAsBytes([1]);
+          // 二级以下目录不遍历。
+          final nested = File('$dirA/nested/deep.mp4');
+          await nested.writeAsBytes([1]);
+
+          await harness.downloader.restoreIndex();
+
+          expect(await keptA.exists(), isTrue);
+          expect(await keptB.exists(), isTrue);
+          expect(await orphanA.exists(), isFalse);
+          expect(await partA.exists(), isFalse);
+          expect(await orphanB.exists(), isFalse);
+          expect(await crossHash.exists(), isFalse);
+          expect(await nested.exists(), isTrue);
+          // 根目录文件绝不清理。
+          expect(await indexFile.exists(), isTrue);
+          expect(await indexFile.readAsString(), indexJson);
+          expect(await indexTmp.exists(), isTrue);
+          expect(await rootStray.exists(), isTrue);
+
+          expect(harness.downloader.completedRecords, hasLength(2));
+          expect(
+            harness.downloader.localFilePath(_serverUrl, 23),
+            keptA.path,
+          );
+          expect(
+            harness.downloader.localFilePath(otherServer, 2),
+            keptB.path,
+          );
+        } finally {
+          await harness.dispose();
+        }
+      },
+    );
+
+    test('restoreIndex drops records whose file is missing and cleans dir',
+        () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        final dir = _expectedDir(root, _serverUrl);
+        await Directory(dir).create(recursive: true);
+        const records = [
+          DownloadRecord(
+            serverUrl: _serverUrl,
+            animeId: 9,
+            episodeId: 23,
+            epNumber: 1,
+            animeTitle: _animeTitle,
+            fileName: '9_23.mp4',
+            fileSize: 3,
+            completedAt: '2026-09-06T21:00:00.000',
+          ),
+        ];
+        final indexFile = File('$root/downloads/index.json');
+        await indexFile.writeAsString(DownloadIndexCodec.encode(records));
+        // 记录对应文件缺失；同目录仅有一个无主正式视频。
+        final orphan = File('$dir/9_30.mp4');
+        await orphan.writeAsBytes([1]);
+
+        await harness.downloader.restoreIndex();
+
+        expect(harness.downloader.completedRecords, isEmpty);
+        expect(await orphan.exists(), isFalse);
+        expect(await indexFile.exists(), isTrue);
+        expect(DownloadIndexCodec.decode(await indexFile.readAsString()), isEmpty);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  });
 }
