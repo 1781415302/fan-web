@@ -482,3 +482,77 @@ func TestListAnimesByFilePath(t *testing.T) {
 		t.Fatalf("query a must not match a/b, got %#v", exact)
 	}
 }
+
+func TestListAnimesByFilePathNormalizesSeparators(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "list-by-path-sep.db")
+	if err := Init(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if DB != nil {
+			_ = DB.Close()
+			DB = nil
+		}
+	})
+
+	backslash, err := CreateAnime(&models.Anime{Title: "WinStored", FilePath: `win\season1`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slash, err := CreateAnime(&models.Anime{Title: "UnixStored", FilePath: "unix/season2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 库里存 a\b，查询传 a/b。
+	got, err := ListAnimesByFilePath("win/season1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != backslash.ID || got[0].FilePath != `win\season1` {
+		t.Fatalf("存 \\ 查 / 应命中且原样返回存储值，got %#v", got)
+	}
+	// 原样分隔符查询仍命中。
+	got, err = ListAnimesByFilePath(`win\season1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != backslash.ID {
+		t.Fatalf("存 \\ 查 \\ 应命中，got %#v", got)
+	}
+
+	// 库里存 a/b，查询传 a\b。
+	got, err = ListAnimesByFilePath(`unix\season2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != slash.ID {
+		t.Fatalf("存 / 查 \\ 应命中，got %#v", got)
+	}
+
+	// 混存同一目录：两条都应命中且按 id 升序。
+	mixedA, err := CreateAnime(&models.Anime{Title: "MixA", FilePath: `mix\dir`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixedB, err := CreateAnime(&models.Anime{Title: "MixB", FilePath: "mix/dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = ListAnimesByFilePath("mix/dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != mixedA.ID || got[1].ID != mixedB.ID {
+		t.Fatalf("混存分隔符应全部命中并按 id 升序，got %#v", got)
+	}
+
+	// 归一化只处理分隔符，不做前缀匹配。
+	got, err = ListAnimesByFilePath("win")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("父目录不得命中子目录，got %#v", got)
+	}
+}

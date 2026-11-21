@@ -107,13 +107,16 @@ func GetAnimeByBangumiID(bangumiID int) (*models.Anime, error) {
 	return anime, err
 }
 
-// ListAnimesByFilePath 按目录（animes.file_path 精确匹配）查番剧，按 id 升序。
+// ListAnimesByFilePath 按目录（animes.file_path）查番剧，按 id 升序。
 // 无匹配返回空切片与 nil 错误。调用方仅在恰好 1 条且 BangumiID>0 时启用快通道。
-// 注意：精确匹配对分隔符/书写差异敏感（Windows "a\\b" vs 用户存储的 "a/b"），
-// 不匹配时快通道静默失效回落正常流程（安全方向），与现状
-// library.go 的 anime.FilePath != groupDir 检查同性质，不做规范化。
+// 两端路径统一把反斜杠替换为斜杠后再精确比较（与 IsFileAssociated 一致），
+// 库里存 Windows 风格 "a\\b" 与查询传 "a/b"（或反之）均可命中；除分隔符外不做
+// 其他规范化（大小写、首尾斜杠、"." 段等仍按原样比较），"a" 不会命中 "a/b"。
 func ListAnimesByFilePath(filePath string) ([]models.Anime, error) {
-	rows, err := DB.Query(animeSelect+" WHERE file_path = ? ORDER BY id ASC", filePath)
+	rows, err := DB.Query(
+		animeSelect+" WHERE REPLACE(file_path, '\\', '/') = REPLACE(?, '\\', '/') ORDER BY id ASC",
+		filePath,
+	)
 	if err != nil {
 		return nil, err
 	}
