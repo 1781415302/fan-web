@@ -745,6 +745,31 @@ func TestSceneShow2022DotSpecsYearAndGroup(t *testing.T) {
 	}
 }
 
+func TestSceneShow2022DottedXCodecYear(t *testing.T) {
+	for _, name := range []string{
+		"Show.2022.x.265-GRP.mkv",
+		"Show.2022.x.264-GRP.mkv",
+		"Show.2022.X.265-GRP.mkv",
+		"Show.2022.H.264-GRP.mkv",
+	} {
+		ev := ParseFile(FileInput{Name: name})
+		if ev.Year != 2022 {
+			t.Fatalf("%s: year=%d want 2022 titles=%#v", name, ev.Year, ev.Titles)
+		}
+		if len(ev.Titles) != 1 || ev.Titles[0].Text != "Show" {
+			t.Fatalf("%s: titles=%#v want only \"Show\"", name, ev.Titles)
+		}
+		if !isUnknownEp(ev.Episode) || len(ev.Conflicts) != 0 {
+			t.Fatalf("%s: ep=%+v conflicts=%v", name, ev.Episode, ev.Conflicts)
+		}
+	}
+	for _, low := range []string{"x.265", "x.264", "h.264", "h.265"} {
+		if !isSceneMetaAfterToken(low) {
+			t.Fatalf("isSceneMetaAfterToken(%q)=false", low)
+		}
+	}
+}
+
 func TestSplitSceneDotPartsProtectsDotSpecs(t *testing.T) {
 	got := splitSceneDotParts("Kaiju.No.8.2022.AAC2.0.H.264-GRP.12.5")
 	want := []string{"Kaiju", "No.8", "2022", "AAC2.0", "H.264-GRP", "12.5"}

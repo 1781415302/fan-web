@@ -976,7 +976,7 @@ func extractSceneYear(work string) (int, string, bool) {
 }
 
 // stripSceneDotSpecs 剥离带点的视频编码（H.264 / x.265）与音频声道复合词（AAC2.0 / DDP5.1）。
-// 须在 extractSceneYear 之前调用。仅把编码词本体替换为空格，左侧分隔符与右边界（含紧贴的 -）
+// 须在 extractSceneYear 与 SxxEyy 识别之后调用（extractSceneYear 依赖 splitSceneDotParts 占位保护带点规格）。仅把编码词本体替换为空格，左侧分隔符与右边界（含紧贴的 -）
 // 原样保留（.AAC2.0.H.264-VARYG → ". . -VARYG"，点转空格后即 " -VARYG"），
 // 既不打乱 extractSceneYear 依赖的点分段，也让 stripPublishSuffix 仍能剥离 -VARYG。
 // 无前缀的 2.0 / 5.1 / 1.0 不动；No.8 与小数集号 12.5 先占位保护，最后还原。
@@ -1080,9 +1080,10 @@ func hasSceneMetaAfter(parts []string) bool {
 	return false
 }
 
-// isSceneMetaAfterToken hasSceneMetaAfter 认可的规格段：分辨率/来源/编码/音频声道复合词（aac2.0）。
+// isSceneMetaAfterToken hasSceneMetaAfter 认可的规格段：分辨率/来源/编码（含带点 [hx].26[45]）/音频声道复合词（aac2.0）。
 func isSceneMetaAfterToken(low string) bool {
-	return reSceneResTok.MatchString(low) || reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] || reSceneAudioChannelSpec.MatchString(low)
+	return reSceneResTok.MatchString(low) || reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] ||
+		reSceneDotVideoTok.MatchString(low) || reSceneAudioChannelSpec.MatchString(low)
 }
 
 // isScenePublishGroup 发布组形态，与 stripPublishSuffix 同款护栏：
@@ -1132,7 +1133,7 @@ func stripTrailingSceneGroup(work string) string {
 	if sourceTokens[whole] || codecTokens[whole] || packagingTokens[whole] {
 		return work
 	}
-	if !isSceneMetaAfterToken(low) && !reSceneDotVideoTok.MatchString(low) {
+	if !isSceneMetaAfterToken(low) {
 		return work
 	}
 	return left
