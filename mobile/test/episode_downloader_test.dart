@@ -726,6 +726,117 @@ void main() {
       });
     }
 
+    // 计划者复审 #1：保存在“删旧 index.json → rename .tmp”之间被中断，只剩完整的 index.json.tmp。
+    test('restoreIndex recovers intact index.json.tmp when index.json missing',
+        () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        final dir = _expectedDir(root, _serverUrl);
+        await Directory(dir).create(recursive: true);
+        const record = DownloadRecord(
+          serverUrl: _serverUrl,
+          animeId: 9,
+          episodeId: 23,
+          epNumber: 1,
+          animeTitle: _animeTitle,
+          fileName: '9_23.mp4',
+          fileSize: 3,
+          completedAt: '2026-09-06T21:00:00.000',
+        );
+        final tmpJson = DownloadIndexCodec.encode(const [record]);
+        final tmp = File('$root/downloads/index.json.tmp');
+        await tmp.writeAsString(tmpJson);
+        final kept = File('$dir/9_23.mp4');
+        await kept.writeAsBytes([1, 2, 3]);
+        final orphan = File('$dir/9_24.mp4');
+        await orphan.writeAsBytes([1]);
+
+        await harness.downloader.restoreIndex();
+
+        expect(await kept.exists(), isTrue);
+        expect(await orphan.exists(), isFalse);
+        expect(harness.downloader.localFilePath(_serverUrl, 23), kept.path);
+        final index = File('$root/downloads/index.json');
+        expect(await index.exists(), isTrue);
+        expect(await index.readAsString(), tmpJson);
+        expect(await tmp.exists(), isFalse);
+
+        // 再次启动仍保留。
+        await harness.downloader.restoreIndex();
+        expect(await kept.exists(), isTrue);
+      } finally {
+        await harness.dispose();
+      }
+    });
+
+    test('restoreIndex keeps videos when index.json missing and .tmp corrupt',
+        () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        final dir = _expectedDir(root, _serverUrl);
+        await Directory(dir).create(recursive: true);
+        final tmp = File('$root/downloads/index.json.tmp');
+        await tmp.writeAsString('{"version":1,"rec');
+        final video = File('$dir/9_23.mp4');
+        await video.writeAsBytes([1, 2, 3]);
+        final part = File('$dir/9_25.mp4.part');
+        await part.writeAsBytes([1]);
+
+        await harness.downloader.restoreIndex();
+        await harness.downloader.restoreIndex();
+
+        expect(await video.exists(), isTrue);
+        expect(await part.exists(), isFalse);
+        expect(await tmp.exists(), isTrue);
+        expect(await File('$root/downloads/index.json').exists(), isFalse);
+      } finally {
+        await harness.dispose();
+      }
+    });
+
+    test('upsert replaces index.json without deleting it first', () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        final store = DownloadIndexStore(harness.container.read(_probeProvider));
+        DownloadRecord rec(int ep) => DownloadRecord(
+          serverUrl: _serverUrl,
+          animeId: 9,
+          episodeId: ep,
+          epNumber: ep,
+          animeTitle: _animeTitle,
+          fileName: '9_$ep.mp4',
+          fileSize: 1,
+          completedAt: '2026-09-06T21:00:00.000',
+        );
+        await store.upsert(rec(1));
+        final index = File('$root/downloads/index.json');
+        // 保存期间旧 index.json 不得被先删除（rename 直接覆盖即原子替换）。
+        final watcher = index.parent.watch();
+        var deletedSeen = false;
+        final sub = watcher.listen((e) {
+          if (e is FileSystemDeleteEvent && e.path.endsWith('index.json')) {
+            deletedSeen = true;
+          }
+        });
+        await store.upsert(rec(2));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await sub.cancel();
+        expect(deletedSeen, isFalse);
+        expect(DownloadIndexCodec.decode(await index.readAsString()), hasLength(2));
+      } finally {
+        await harness.dispose();
+      }
+    });
+
     test('restoreIndex without index.json still cleans orphan videos', () async {
       final harness = await _setUp(
         handler: (options) => _bytesBody([1], status: 200),

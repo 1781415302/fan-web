@@ -114,7 +114,8 @@ class DownloadIndexStore {
     }
   }
 
-  /// restoreIndex 专用：返回记录及索引是否可信。文件不存在或完整解析视为可信；
+  /// restoreIndex 专用：返回记录及索引是否可信。完整解析视为可信；
+  /// 正式索引不存在时见 [_recoverFromTmp]（无 .tmp 视为可信空索引）；
   /// 读取失败、JSON 损坏、结构不符、含无法解析或缺少必要字段
   /// （server_url / episode_id / file_name）的记录均视为不可信。
   /// 不改变 load() / DownloadIndexCodec.decode 的容错语义。
@@ -126,7 +127,7 @@ class DownloadIndexStore {
           // 仅「路径完全不存在」视为无索引；被目录等占用时按读取失败处理。
           if (await FileSystemEntity.type(path) ==
               FileSystemEntityType.notFound) {
-            return (records: <DownloadRecord>[], intact: true);
+            return await _recoverFromTmp(path);
           }
           raw = await File(path).readAsString();
         } catch (_) {
@@ -135,6 +136,35 @@ class DownloadIndexStore {
         final records = DownloadIndexCodec.decode(raw);
         return (records: records, intact: _isIntactIndex(raw, records.length));
       });
+
+  /// 正式索引缺失时处理遗留的 index.json.tmp（旧版保存在“删旧索引 → rename”之间中断）：
+  /// 无 .tmp 才是真正的空索引（首次安装）；.tmp 可信则改名恢复为正式索引；
+  /// .tmp 不可读/不可信或恢复失败均按不可信处理（不删正式视频、不改写索引）。
+  Future<({List<DownloadRecord> records, bool intact})> _recoverFromTmp(
+    String path,
+  ) async {
+    final tmpPath = '$path.tmp';
+    if (await FileSystemEntity.type(tmpPath) ==
+        FileSystemEntityType.notFound) {
+      return (records: <DownloadRecord>[], intact: true);
+    }
+    String raw;
+    try {
+      raw = await File(tmpPath).readAsString();
+    } catch (_) {
+      return (records: <DownloadRecord>[], intact: false);
+    }
+    final records = DownloadIndexCodec.decode(raw);
+    if (!_isIntactIndex(raw, records.length)) {
+      return (records: records, intact: false);
+    }
+    try {
+      await File(tmpPath).rename(path);
+    } catch (_) {
+      return (records: records, intact: false);
+    }
+    return (records: records, intact: true);
+  }
 
   static bool _isIntactIndex(String raw, int decodedCount) {
     try {
@@ -171,14 +201,9 @@ class DownloadIndexStore {
       await file.parent.create(recursive: true);
       // 临时文件 + rename 原子替换，避免半写损坏。
       await tmp.writeAsString(DownloadIndexCodec.encode(all), flush: true);
-      try {
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {
-        // 旧文件删除失败不阻塞，后续 rename 会覆盖（同盘）。
-      }
-      await tmp.rename(path);
+      // 直接 rename 覆盖旧索引（POSIX rename(2) 原子替换）；不先删旧文件，
+      // 避免中断后只剩 .tmp 而正式索引缺失。
+      await tmp.rename(file.path);
     } catch (e) {
       // 磁盘满等写入失败：尽力删除残余 .tmp 后透传，由调用方按 failed 处理。
       try {
