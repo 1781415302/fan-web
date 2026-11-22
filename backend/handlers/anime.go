@@ -671,6 +671,9 @@ type inboxCommitRequest struct {
 	EpisodeOffset int
 	// TrustedTarget 为 true 时 prepareScanV2 追加 services.WithTrustedTarget()（目标条目已由外部确定）。
 	TrustedTarget bool
+	// TrustedBindings 非空时（配合 TrustedTarget）追加 services.WithTrustedBindings：
+	// 提交沿用同一次请求预览得出的章节绑定，归属与快照校验照常进行。
+	TrustedBindings []matching.EpisodeBinding
 }
 
 // inboxCommitResult commitInboxFiles 成功提交后的结果。
@@ -731,6 +734,9 @@ func (h *AnimeHandler) commitInboxFiles(req inboxCommitRequest) (inboxCommitResu
 	}
 	if req.TrustedTarget {
 		opts = append(opts, services.WithTrustedTarget())
+		if len(req.TrustedBindings) > 0 {
+			opts = append(opts, services.WithTrustedBindings(req.TrustedBindings))
+		}
 	}
 	plan, err := h.prepareScanV2(anime, opts...)
 	if err != nil {

@@ -152,7 +152,7 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 			})
 			return
 		}
-		h.assistCommit(c, request.BangumiID, normDir, targets, request.EpisodeOffset)
+		h.assistCommit(c, request.BangumiID, normDir, targets, request.EpisodeOffset, nil)
 		return
 	}
 
@@ -182,7 +182,8 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 			})
 			return
 		}
-		h.assistCommit(c, result.Subject.ID, normDir, targets, request.EpisodeOffset)
+		// 提交沿用本次预览的章节绑定（含季锚点映射），避免受信任重解释丢失锚点而与预览结论不一致。
+		h.assistCommit(c, result.Subject.ID, normDir, targets, request.EpisodeOffset, result.Chapters.Bindings)
 		return
 	}
 
@@ -223,13 +224,15 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 // assistCommit 第 3 步：经共用 commitInboxFiles（受信任目标）原子入库。
 // 章节不可解释（review_required）或文件未能全部归入（no_match）属于匹配业务结论：
 // commitInboxFiles 已先回滚本请求新建的空番剧，再以 utils.Success 返回；其余失败走 confirmFail。
-func (h *AnimeHandler) assistCommit(c *gin.Context, bangumiID int, normDir string, fileNames []string, episodeOffset int) {
+// bindings 非空时为同一次请求预览得出的章节绑定（title_hint 路径），提交直接沿用；nil 时按目标章节受信任解释。
+func (h *AnimeHandler) assistCommit(c *gin.Context, bangumiID int, normDir string, fileNames []string, episodeOffset int, bindings []matching.EpisodeBinding) {
 	result, fail := h.commitInboxFiles(inboxCommitRequest{
-		BangumiID:     bangumiID,
-		Dir:           normDir,
-		FileNames:     fileNames,
-		EpisodeOffset: episodeOffset,
-		TrustedTarget: true,
+		BangumiID:       bangumiID,
+		Dir:             normDir,
+		FileNames:       fileNames,
+		EpisodeOffset:   episodeOffset,
+		TrustedTarget:   true,
+		TrustedBindings: bindings,
 	})
 	if fail != nil {
 		switch fail.reason {

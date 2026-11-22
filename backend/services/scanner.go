@@ -362,6 +362,9 @@ type scanOptions struct {
 	// trustedTarget 为 true 时目标条目已由外部确定（anime.BangumiID>0）：
 	// 跳过名称门闩，但仍强制详情 + 章节绑定、跨番隔离与文件合法性校验。
 	trustedTarget bool
+	// trustedBindings 非 nil 时（仅配合 trustedTarget）：未关联文件直接采用同一次请求预览得出的章节绑定，
+	// 不再重新解释章节；仍须逐个文件命中绑定，且照常经过归属过滤、查重与 Reconcile 快照校验。
+	trustedBindings []matching.EpisodeBinding
 }
 
 // errEpisodeOffsetNotApplicable 偏移适用性不满足时的说明（包装 ErrMatchReviewRequired）。
@@ -401,6 +404,19 @@ func WithEpisodeOffset(n int) ScanOption {
 func WithTrustedTarget() ScanOption {
 	return func(o *scanOptions) {
 		o.trustedTarget = true
+	}
+}
+
+// WithTrustedBindings 受信任目标模式下复用同一次请求预览（ResolveAssistByHint）已得出的章节绑定，
+// 保证预览与提交使用相同的集号映射（如季锚点 season_sort）。bindings 已含 episode_offset 平移结果。
+// 空切片等同未设置（回退为按目标章节重新解释）。
+func WithTrustedBindings(bindings []matching.EpisodeBinding) ScanOption {
+	return func(o *scanOptions) {
+		if len(bindings) == 0 {
+			o.trustedBindings = nil
+			return
+		}
+		o.trustedBindings = append([]matching.EpisodeBinding(nil), bindings...)
 	}
 }
 
@@ -585,7 +601,13 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 
 	var newBindings []matching.EpisodeBinding
 	if len(freeLeft) > 0 && options.trustedTarget {
-		bindings, err := trustedTargetBindings(anime, freeLeft, getSession(), options.episodeOffset)
+		var bindings []matching.EpisodeBinding
+		var err error
+		if options.trustedBindings != nil {
+			bindings, err = presetTrustedBindings(anime, freeLeft, options.trustedBindings, options.episodeOffset)
+		} else {
+			bindings, err = trustedTargetBindings(anime, freeLeft, getSession(), options.episodeOffset)
+		}
 		if err != nil {
 			return empty, err
 		}
@@ -708,6 +730,42 @@ func trustedTargetBindings(anime models.Anime, freeLeft []string, sess *Matching
 		return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, reason)
 	}
 	return ch.Bindings, nil
+}
+
+// presetTrustedBindings 受信任目标模式下采用预览阶段的章节绑定：偏移适用性与 trustedTargetBindings 同口径校验，
+// 每个未关联文件必须恰好命中一条 StoredNumber>0 的绑定，否则整体 ErrMatchReviewRequired。
+func presetTrustedBindings(anime models.Anime, freeLeft []string, preset []matching.EpisodeBinding, episodeOffset int) ([]matching.EpisodeBinding, error) {
+	if episodeOffset > 0 {
+		evs := make([]matching.FileEvidence, 0, len(freeLeft))
+		for _, name := range freeLeft {
+			evs = append(evs, matching.ParseFile(matching.FileInput{Name: name, Dir: anime.FilePath}))
+		}
+		if reason := assistEpisodeOffsetReason(evs, episodeOffset, anime.EpCount); reason != "" {
+			return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, reason)
+		}
+	}
+	byName := make(map[string]matching.EpisodeBinding, len(preset))
+	dup := map[string]bool{}
+	for _, b := range preset {
+		if _, ok := byName[b.FileName]; ok {
+			dup[b.FileName] = true
+		}
+		byName[b.FileName] = b
+	}
+	out := make([]matching.EpisodeBinding, 0, len(freeLeft))
+	var missing []string
+	for _, name := range freeLeft {
+		b, ok := byName[name]
+		if !ok || dup[name] || b.StoredNumber <= 0 {
+			missing = append(missing, name)
+			continue
+		}
+		out = append(out, b)
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%w: 以下文件无法确定集号：%s", ErrMatchReviewRequired, strings.Join(missing, "、"))
+	}
+	return out, nil
 }
 
 // interpretTrustedTargetChapters 取目标条目详情与章节，并按受信任模式解释文件集号（零 DB 写）。
