@@ -18,6 +18,7 @@ fan-web 诞生于对现有自托管方案的不满。此前我使用 Alist 管�
 
 - **番剧管理**：浏览、添加、编辑、删除番剧；Web 可重绑 Bangumi 元数据；手机管理员可扫描、添加、删除、单番重扫（重绑与编辑表单只在 Web）
 - **自动扫描**：全库扫描为后台作业（POST 启动 / GET 轮询）。默认使用 **v2 匹配引擎**（空/`v2`；`legacy` 回退；未知值回退 legacy 并警告），走同源解析、系列别名 catalog、多路召回与统一决策入库：支持首季兼容、完整章节覆盖下的弱副标题/Part 推论，以及对未限定查询的派生候选偏好；区间/小数/特别篇/重复版本等编号异常只隔离相关文件，不拖垮同组正常集。可选 `FAN_WEB_MATCH_ALIASES_FILE`（仅 v2，重启生效）。未识别结果持久保存；匹配失败或网络故障时保留已有收件箱，不用空失败覆盖。证据不足的文件进入未识别列表，供管理员确认。**不宣称**覆盖全部命名或达到某准确率百分比
+- **服务端辅助匹配**：下载脚本可通过 API Key 调用 fan-web，预览 Bangumi 匹配与集号，确认后直接入库。[辅助匹配 API 用法](docs/辅助匹配API.md)
 - **在线播放**：浏览器直接播放本地视频（基于 ArtPlayer），支持 HEVC/mkv
 - **内封字幕**：Web 端通过纯 Go 解析 MKV 容器提取字幕轨道并转为 VTT，默认显示字幕且可切换；移动端通过 libmpv 原生支持内封字幕
 - **观看进度**：自动记录每位用户的观看进度，观看状态不可逆（已看不会降级）；App 列表顶「继续看」（先进行中再第一集未看，全看完不出现），Web 首页仍展示最近入库
@@ -224,6 +225,7 @@ video:
 | POST | `/api/library/scan` | 管理员启动全库扫描作业（立即返回，禁止当同步 600s） |
 | GET | `/api/library/scan` | 管理员轮询全库扫描作业 |
 | GET | `/api/library/unidentified` | 管理员读取持久化未识别列表 |
+| POST | `/api/library/assist-match` | 管理员 API Key 或 JWT，预览匹配和指定文件入库。[调用示例](docs/辅助匹配API.md) |
 | GET | `/api/library/dirs` | 管理员列出一层子目录（手机添加页点选） |
 | GET | `/api/bangumi/search` `/api/bangumi/subject/:id` | 管理员使用的 Bangumi 搜索/详情 |
 | GET/PUT/DELETE | `/api/me/bangumi` | 绑定/查询/解除个人 Bangumi PAT |
