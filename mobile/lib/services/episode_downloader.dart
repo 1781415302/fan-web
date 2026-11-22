@@ -75,23 +75,26 @@ class DownloadIndexStore {
     return '$root/downloads/index.json';
   }
 
-  Future<List<DownloadRecord>> load() => _enqueue(_loadDirect);
+  Future<List<DownloadRecord>> load() =>
+      _enqueue(() async => (await _readDirect()).records);
 
   Future<void> upsert(DownloadRecord record) => _enqueue(() async {
-    final all = await _loadDirect();
+    final current = await _readDirect();
+    final all = current.records;
     all.removeWhere(
       (r) => r.serverUrl == record.serverUrl && r.episodeId == record.episodeId,
     );
     all.add(record);
-    await _saveDirect(all);
+    await _saveDirect(all, untrusted: !current.intact);
   });
 
   Future<void> remove(String serverUrl, int episodeId) => _enqueue(() async {
-    final all = await _loadDirect();
+    final current = await _readDirect();
+    final all = current.records;
     all.removeWhere(
       (r) => r.serverUrl == serverUrl && r.episodeId == episodeId,
     );
-    await _saveDirect(all);
+    await _saveDirect(all, untrusted: !current.intact);
   });
 
   Future<T> _enqueue<T>(Future<T> Function() operation) {
@@ -103,73 +106,67 @@ class DownloadIndexStore {
     return result;
   }
 
-  Future<List<DownloadRecord>> _loadDirect() async {
+  /// 读取当前索引（所有读写路径共用）：优先 index.json；仅当其路径完全不存在时
+  /// 退到遗留的 index.json.tmp（旧版保存在“删旧索引 → rename”之间中断）；两者都不存在
+  /// 才是首次安装的可信空索引。records 恒为可修改列表（损坏输入按空列表容错）。
+  /// intact=false：读取失败、JSON 损坏、结构不符、含无法解析或缺少必要字段
+  /// （server_url / episode_id / file_name）的记录，或文件带持久化的 untrusted 标记。
+  Future<({List<DownloadRecord> records, bool intact, bool fromTmp})>
+  _readDirect() async {
+    String path;
     try {
-      final file = File(await _indexPath());
-      if (!await file.exists()) return [];
-      return DownloadIndexCodec.decode(await file.readAsString());
+      path = await _indexPath();
     } catch (_) {
-      // 索引损坏按空处理，下次写入时覆盖。
-      return [];
+      return (records: <DownloadRecord>[], intact: false, fromTmp: false);
+    }
+    var fromTmp = false;
+    try {
+      var source = path;
+      // 仅「路径完全不存在」视为无索引；被目录等占用时按读取失败处理。
+      if (await FileSystemEntity.type(path) == FileSystemEntityType.notFound) {
+        final tmpPath = '$path.tmp';
+        if (await FileSystemEntity.type(tmpPath) ==
+            FileSystemEntityType.notFound) {
+          return (records: <DownloadRecord>[], intact: true, fromTmp: false);
+        }
+        source = tmpPath;
+        fromTmp = true;
+      }
+      final raw = await File(source).readAsString();
+      final records = List<DownloadRecord>.of(DownloadIndexCodec.decode(raw));
+      return (
+        records: records,
+        intact: _isIntactIndex(raw, records.length),
+        fromTmp: fromTmp,
+      );
+    } catch (_) {
+      return (records: <DownloadRecord>[], intact: false, fromTmp: fromTmp);
     }
   }
 
-  /// restoreIndex 专用：返回记录及索引是否可信。完整解析视为可信；
-  /// 正式索引不存在时见 [_recoverFromTmp]（无 .tmp 视为可信空索引）；
-  /// 读取失败、JSON 损坏、结构不符、含无法解析或缺少必要字段
-  /// （server_url / episode_id / file_name）的记录均视为不可信。
-  /// 不改变 load() / DownloadIndexCodec.decode 的容错语义。
+  /// restoreIndex 专用：返回记录及索引是否可信（判定见 [_readDirect]）。
+  /// 正式索引缺失而 .tmp 可信时改名恢复为正式索引；恢复失败按不可信处理。
   Future<({List<DownloadRecord> records, bool intact})> loadForRestore() =>
       _enqueue(() async {
-        String? raw;
-        try {
-          final path = await _indexPath();
-          // 仅「路径完全不存在」视为无索引；被目录等占用时按读取失败处理。
-          if (await FileSystemEntity.type(path) ==
-              FileSystemEntityType.notFound) {
-            return await _recoverFromTmp(path);
+        final current = await _readDirect();
+        if (current.fromTmp && current.intact) {
+          try {
+            final path = await _indexPath();
+            await File('$path.tmp').rename(path);
+          } catch (_) {
+            return (records: current.records, intact: false);
           }
-          raw = await File(path).readAsString();
-        } catch (_) {
-          return (records: <DownloadRecord>[], intact: false);
         }
-        final records = DownloadIndexCodec.decode(raw);
-        return (records: records, intact: _isIntactIndex(raw, records.length));
+        return (records: current.records, intact: current.intact);
       });
-
-  /// 正式索引缺失时处理遗留的 index.json.tmp（旧版保存在“删旧索引 → rename”之间中断）：
-  /// 无 .tmp 才是真正的空索引（首次安装）；.tmp 可信则改名恢复为正式索引；
-  /// .tmp 不可读/不可信或恢复失败均按不可信处理（不删正式视频、不改写索引）。
-  Future<({List<DownloadRecord> records, bool intact})> _recoverFromTmp(
-    String path,
-  ) async {
-    final tmpPath = '$path.tmp';
-    if (await FileSystemEntity.type(tmpPath) ==
-        FileSystemEntityType.notFound) {
-      return (records: <DownloadRecord>[], intact: true);
-    }
-    String raw;
-    try {
-      raw = await File(tmpPath).readAsString();
-    } catch (_) {
-      return (records: <DownloadRecord>[], intact: false);
-    }
-    final records = DownloadIndexCodec.decode(raw);
-    if (!_isIntactIndex(raw, records.length)) {
-      return (records: records, intact: false);
-    }
-    try {
-      await File(tmpPath).rename(path);
-    } catch (_) {
-      return (records: records, intact: false);
-    }
-    return (records: records, intact: true);
-  }
 
   static bool _isIntactIndex(String raw, int decodedCount) {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return false;
+      // 不可信状态经写入持久化：此前索引已不可信时，后续 upsert/remove 写出的索引
+      // 可能丢失了无法解析的原始条目，不能据此把未引用的视频当孤儿删除。
+      if (decoded[DownloadIndexCodec.untrustedKey] == true) return false;
       final list = decoded['records'];
       if (list is! List || list.length != decodedCount) return false;
       // 每条记录都必须带齐定位落盘文件的必要字段，否则（如 {}）视为不完整，
@@ -193,14 +190,22 @@ class DownloadIndexStore {
         fileName.isNotEmpty;
   }
 
-  Future<void> _saveDirect(List<DownloadRecord> all) async {
+  /// [untrusted] 为 true（写入前读到的索引不可信）时写出 untrusted 标记，使不可信状态跨写入、
+  /// 跨重启保持，restoreIndex 不会因索引被重写而删除未被引用的正式视频。
+  Future<void> _saveDirect(
+    List<DownloadRecord> all, {
+    bool untrusted = false,
+  }) async {
     final path = await _indexPath();
     final tmp = File('$path.tmp');
     try {
       final file = File(path);
       await file.parent.create(recursive: true);
       // 临时文件 + rename 原子替换，避免半写损坏。
-      await tmp.writeAsString(DownloadIndexCodec.encode(all), flush: true);
+      await tmp.writeAsString(
+        DownloadIndexCodec.encode(all, untrusted: untrusted),
+        flush: true,
+      );
       // 直接 rename 覆盖旧索引（POSIX rename(2) 原子替换）；不先删旧文件，
       // 避免中断后只剩 .tmp 而正式索引缺失。
       await tmp.rename(file.path);

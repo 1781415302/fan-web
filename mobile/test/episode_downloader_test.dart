@@ -832,10 +832,102 @@ void main() {
         await sub.cancel();
         expect(deletedSeen, isFalse);
         expect(DownloadIndexCodec.decode(await index.readAsString()), hasLength(2));
+        // 合法索引写入不带不可信标记。
+        expect(await index.readAsString(), isNot(contains('untrusted')));
       } finally {
         await harness.dispose();
       }
     });
+
+    // 计划者复审第四轮：真实下载第 23 集 → 索引被破坏 → 第一次 restore 保留视频 →
+    // 正常下载（或删除）另一集触发索引写入 → 第二次 restore 仍不得删除第 23 集。
+    for (final entry in <String, Future<void> Function(String root)>{
+      'episode_id is a string': (root) async {
+        final file = File('$root/downloads/index.json');
+        final doc = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        (doc['records'] as List).first['episode_id'] = 'bad';
+        await file.writeAsString(jsonEncode(doc));
+      },
+      'episode_id is negative': (root) async {
+        final file = File('$root/downloads/index.json');
+        final doc = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        (doc['records'] as List).first['episode_id'] = -1;
+        await file.writeAsString(jsonEncode(doc));
+      },
+      'index.json missing and .tmp corrupt': (root) async {
+        await File('$root/downloads/index.json').delete();
+        await File('$root/downloads/index.json.tmp')
+            .writeAsString('{"version":1,"rec');
+      },
+      'index.json garbage': (root) async {
+        await File('$root/downloads/index.json').writeAsString('{"vers');
+      },
+    }.entries) {
+      for (final viaDelete in [false, true]) {
+        test(
+          'untrusted index (${entry.key}) survives later '
+          '${viaDelete ? 'download+delete' : 'download'} and restart',
+          () async {
+            final harness = await _setUp(
+              handler: (options) => _bytesBody(
+                [1, 2, 3],
+                status: 200,
+                headers: {
+                  'content-type': ['application/octet-stream'],
+                  'content-length': ['3'],
+                },
+              ),
+            );
+            try {
+              final root = harness.tempDir.path;
+              final dir = _expectedDir(root, _serverUrl);
+              await harness.downloader.enqueue(
+                serverUrl: _serverUrl,
+                episode: _episode(),
+                animeTitle: _animeTitle,
+              );
+              final ep23 = File('$dir/9_23.mp4');
+              expect(await ep23.exists(), isTrue);
+
+              await entry.value(root);
+              await harness.downloader.restoreIndex();
+              expect(await ep23.exists(), isTrue);
+
+              await harness.downloader.enqueue(
+                serverUrl: _serverUrl,
+                episode: _episode(id: 24, epNumber: 2, filePath: '9_24.mp4'),
+                animeTitle: _animeTitle,
+              );
+              final ep24 = File('$dir/9_24.mp4');
+              expect(await ep24.exists(), isTrue);
+              if (viaDelete) {
+                await harness.downloader.delete(_serverUrl, 24);
+                expect(await ep24.exists(), isFalse);
+              }
+
+              await harness.downloader.restoreIndex();
+              expect(await ep23.exists(), isTrue);
+              if (!viaDelete) {
+                expect(await ep24.exists(), isTrue);
+                expect(
+                  harness.downloader.localFilePath(_serverUrl, 24),
+                  ep24.path,
+                );
+              }
+              // 不可信状态随写入持久化；第三次启动仍保留。
+              final index = File('$root/downloads/index.json');
+              final saved =
+                  jsonDecode(await index.readAsString()) as Map<String, dynamic>;
+              expect(saved['untrusted'], isTrue);
+              await harness.downloader.restoreIndex();
+              expect(await ep23.exists(), isTrue);
+            } finally {
+              await harness.dispose();
+            }
+          },
+        );
+      }
+    }
 
     test('restoreIndex without index.json still cleans orphan videos', () async {
       final harness = await _setUp(
