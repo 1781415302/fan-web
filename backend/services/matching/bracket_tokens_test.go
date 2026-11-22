@@ -91,7 +91,7 @@ func TestExtractEpisodeTokensBareForms(t *testing.T) {
 		{"EP01", "EP01.mkv", 1, nil},
 		{"01 - 副标题", "01 - 副标题.mkv", 1, []string{"副标题"}},
 		{"Title_Name_05_BD_1080p", "Title_Name_05_BD_1080p.mkv", 5, []string{"Title_Name"}},
-		{"Title.Name.05.1080p.BluRay-GRP", "Title.Name.05.1080p.BluRay-GRP.mkv", 5, []string{"Title Name BluRay-GRP"}},
+		{"Title.Name.05.1080p.BluRay-GRP", "Title.Name.05.1080p.BluRay-GRP.mkv", 5, []string{"Title Name"}},
 		{"括号外 EP 与括号规格共存", "[Fansub] Title Name EP05 [1080p].mkv", 5, []string{"Title Name"}},
 		{"Ep. 7", "Title Name Ep. 7 [1080p].mkv", 7, []string{"Title Name"}},
 		{"标题数字 100 不被当集号", "Mob Psycho 100 EP05.mkv", 5, []string{"Mob Psycho 100"}},

@@ -34,6 +34,7 @@ var extraGenericDirNames = map[string]bool{
 //   - 批量目录名（[组] Title [Baha][WEB-DL][规格]）：只保留标题部分。
 //
 // 只处理 parseDirectory 会读取的最内层 3 个非空段；无任何改动时原样返回 dir。
+// 目录段按 / 与 \ 双分隔符切分（与 parseDirectory 一致）。
 // 有改动时返回窗口内清洗后的段，以 filepath.Separator 连接（OS 分隔符保持），
 // 不让更外层的祖先目录因剔除而进入 parseDirectory 的窗口。
 // 多个纯季段季号不一致时季号为 0（保守，不猜）。
@@ -42,7 +43,8 @@ func preExtractDir(dir string) (cleaned string, season int) {
 		return dir, 0
 	}
 	sep := string(filepath.Separator)
-	parts := strings.Split(dir, sep)
+	// 输入按 / 与 \ 双分隔符切分；输出仍以 filepath.Separator 连接
+	parts := strings.FieldsFunc(dir, isDirSeparator)
 	var window []string // 由内向外
 	for i := len(parts) - 1; i >= 0 && len(window) < dirWindowDepth; i-- {
 		comp := strings.TrimSpace(parts[i])

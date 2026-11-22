@@ -313,3 +313,79 @@ func TestTitleCleanParallelTitlesParseFile(t *testing.T) {
 		}
 	}
 }
+
+func TestTitleCleanOrdinalPartMulti(t *testing.T) {
+	// 互斥 Part：保留原文，写 Notes + Conflicts，不写 Part
+	var ex fileExtras
+	in := "Title Part 1/Part 2 - 05"
+	if got := extractOrdinalWords(in, &ex); got != in || ex.Part != 0 {
+		t.Fatalf("conflict: got %q ex=%+v", got, ex)
+	}
+	if !reflect.DeepEqual(ex.Notes, []string{"ordinal-part-conflict"}) || !reflect.DeepEqual(ex.Conflicts, []string{"文件名存在冲突的 Part 编号"}) {
+		t.Fatalf("conflict fields: %+v", ex)
+	}
+	// ex == nil 不 panic，原文保留
+	if got := extractOrdinalWords(in, nil); got != in {
+		t.Fatalf("nil ex: got %q", got)
+	}
+	// 罗马数字与阿拉伯数字等值视为一致
+	ex = fileExtras{}
+	if got := extractOrdinalWords("Title Part II / Part 2 - 05", &ex); strings.Contains(got, "Part") || ex.Part != 2 || len(ex.Conflicts) != 0 {
+		t.Fatalf("roman equal: got %q ex=%+v", got, ex)
+	}
+	// 全部一致：写一次 Part 并移除全部重复 Part N，保留共享分隔符
+	ex = fileExtras{}
+	got := extractOrdinalWords("[Sub] Title Part 2 / 标题 Part 2 - 05", &ex)
+	if strings.Contains(got, "Part") || ex.Part != 2 || len(ex.Conflicts) != 0 || len(ex.Notes) != 0 {
+		t.Fatalf("same: got %q ex=%+v", got, ex)
+	}
+	if !strings.Contains(got, "/") || !strings.Contains(got, "标题") || !strings.Contains(got, "- 05") {
+		t.Fatalf("same: separators/title lost: %q", got)
+	}
+	ex = fileExtras{}
+	if got := extractOrdinalWords("Title Part 2/Part 2", &ex); strings.Contains(got, "Part") || got != "Title  / " || ex.Part != 2 {
+		t.Fatalf("shared slash: got %q ex=%+v", got, ex)
+	}
+	// 已有 Part 不覆盖，但仍移除
+	ex = fileExtras{Part: 3}
+	if got := extractOrdinalWords("Title Part 2 - 05", &ex); strings.Contains(got, "Part") || ex.Part != 3 {
+		t.Fatalf("existing part: got %q ex=%+v", got, ex)
+	}
+}
+
+func TestTitleCleanOrdinalPartConflictParseFile(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Title Part 1/Part 2 - 05.mkv"})
+	found := false
+	for _, c := range ev.Conflicts {
+		if c == "文件名存在冲突的 Part 编号" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Part 1/Part 2 must be a hard conflict: conflicts=%v", ev.Conflicts)
+	}
+	ev = ParseFile(FileInput{Name: "[Sub] Title Part 2 ／ 标题 Part 2 - 05.mkv"})
+	if ev.Ordinal.Part != 2 || len(ev.Conflicts) != 0 || titlesContainSub(ev, "Part") {
+		t.Fatalf("same Part: ordinal=%+v conflicts=%v titles=%v", ev.Ordinal, ev.Conflicts, cleanTitleTexts(ev))
+	}
+}
+
+func TestTitleCleanOrdinalSeasonConflictWritesConflicts(t *testing.T) {
+	ex := fileExtras{Season: 4}
+	if got := extractOrdinalWords("Title Second Season - 05", &ex); got != "Title Second Season - 05" || ex.Season != 4 {
+		t.Fatalf("got %q ex=%+v", got, ex)
+	}
+	if !reflect.DeepEqual(ex.Notes, []string{"ordinal-season-conflict"}) || !reflect.DeepEqual(ex.Conflicts, []string{"文件名存在冲突的季号（4 与 2）"}) {
+		t.Fatalf("conflict fields: %+v", ex)
+	}
+	ev := ParseFile(FileInput{Name: "Title Second Season [S04E05].mkv"})
+	found := false
+	for _, c := range ev.Conflicts {
+		if c == "文件名存在冲突的季号（4 与 2）" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("conflicts=%v", ev.Conflicts)
+	}
+}

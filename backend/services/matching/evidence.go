@@ -285,6 +285,16 @@ var (
 	reMediaPromo       = regexp.MustCompile(`(?i)\bpv\b|\bcm\b|预告|預告|\btrailer\b|\bpromo\b`)
 	reSceneResTok      = regexp.MustCompile(`(?i)^(?:\d{3,4}p|4k|2160p|1080p|720p|480p|\d{3,4}[xX×]\d{3,4})$`)
 	reDecEpisode       = regexp.MustCompile(`\b\d{1,2}\.\d{1,2}\b`)
+	// 带点规格：组 1 为左分隔、组 2 为右边界，替换时均原样写回（组 2 等价于前瞻），仅本体变空格
+	reSceneDotVideoCodec = regexp.MustCompile(`(?i)(^|[\s._])(?:[hx]\.26[45])($|[\s._-])`)
+	reSceneDotAudioCodec = regexp.MustCompile(`(?i)(^|[\s._])(?:aac|ddp|dd|ac3|eac3|flac|dts|opus|mp3|truehd|atmos)\d\.\d($|[\s._-])`)
+	// splitSceneDotParts 占位保护的带点规格本体
+	reSceneDotSpecBody = regexp.MustCompile(`(?i)(?:[hx]\.26[45]|(?:aac|ddp|dd|ac3|eac3|flac|dts|opus|mp3|truehd|atmos)\d\.\d)`)
+	// 音频声道复合词整段（aac2.0 / ddp5.1）与带点视频编码整段（h.264 / x.265）
+	reSceneAudioChannelSpec = regexp.MustCompile(`(?i)^(?:aac|ddp|dd|ac3|eac3|flac|dts|opus|mp3|truehd|atmos)\d\.\d$`)
+	reSceneDotVideoTok      = regexp.MustCompile(`(?i)^[hx]\.26[45]$`)
+	// stripTrailingSceneGroup：左侧以 <分隔符><带点规格> 结尾时取整个带点规格为 token
+	reSceneDotSpecTail = regexp.MustCompile(`(?i)[\s._]((?:[hx]\.26[45]|(?:aac|ddp|dd|ac3|eac3|flac|dts|opus|mp3|truehd|atmos)\d\.\d))$`)
 )
 
 var categoryExact = map[string]bool{
@@ -761,12 +771,14 @@ func hasTitleDigitIdentity(s string) bool {
 
 func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, title string, year, season int, media MediaKind) {
 	ep = EpisodeToken{Kind: NumberUnknown}
+	// 显式初始化：命名返回值零值 "" 与 KindUnknown 不等
+	media = KindUnknown
 	work := rest
 
 	// Parenthetical metadata dump: (CR 1920x1080 AVC AAC MKV)
 	work = stripParenMeta(work)
 
-	// scene 年份：在点号全部转空格之前，按「强标题.年份.元数据」识别
+	// scene 年份：在点号全部转空格之前、任何规格/发布组剥离之前，按「强标题.年份.元数据」识别
 	if y, w, ok := extractSceneYear(work); ok {
 		year = y
 		work = w
@@ -779,7 +791,20 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		e, _ := strconv.Atoi(m[2])
 		season = s
 		ep = EpisodeToken{Kind: NumberSingle, First: e, Last: e, Raw: m[0], Explicit: true}
-		work = removeEpisodeAt(work, loc)
+		before := work[:loc[0]]
+		after := work[loc[1]:]
+		if hasStrongSceneTitle(before) {
+			// Scene 后置截断：丢弃集号之后的单集标题与规格链，仅先从中探测媒体类型
+			if media == KindUnknown {
+				if mk, _ := stripMedia(after); mk != KindUnknown {
+					media = mk
+				}
+			}
+			work = cleanTitleSpaces(before)
+		} else {
+			// 前缀式 S05E12.Title.1080p：标题在集号之后，保持原逻辑
+			work = removeEpisodeAt(work, loc)
+		}
 	}
 
 	// 第0话 special before 第N话
@@ -826,7 +851,12 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		}
 	}
 
-	media, work = stripMedia(work)
+	// 不得把前面从 SxxEyy 之后片段识别出的 media 覆盖回 KindUnknown
+	mk2, work2 := stripMedia(work)
+	work = work2
+	if media == KindUnknown && mk2 != KindUnknown {
+		media = mk2
+	}
 
 	// Fraction then compact Range; spaced "Title 5 - 03" is dash-ep, not range.
 	if isUnknownEp(ep) {
@@ -891,6 +921,10 @@ func parseRest(rest string, keepTrailingTitleNumber bool) (ep EpisodeToken, titl
 		}
 	}
 
+	// 年份与 SxxEyy 已识别后，再剥离紧邻场景规格词的末尾 -<Group> 与带点规格
+	work = stripTrailingSceneGroup(work)
+	work = stripSceneDotSpecs(work)
+
 	// Scene dots → spaces for latin titles（在年份/数字称号处理之后）
 	work = protectThenReplaceDots(work)
 	work = stripSceneNoiseTokens(work)
@@ -941,12 +975,52 @@ func extractSceneYear(work string) (int, string, bool) {
 	return y, joinSceneDotParts(newParts), true
 }
 
+// stripSceneDotSpecs 剥离带点的视频编码（H.264 / x.265）与音频声道复合词（AAC2.0 / DDP5.1）。
+// 须在 extractSceneYear 之前调用。仅把编码词本体替换为空格，左侧分隔符与右边界（含紧贴的 -）
+// 原样保留（.AAC2.0.H.264-VARYG → ". . -VARYG"，点转空格后即 " -VARYG"），
+// 既不打乱 extractSceneYear 依赖的点分段，也让 stripPublishSuffix 仍能剥离 -VARYG。
+// 无前缀的 2.0 / 5.1 / 1.0 不动；No.8 与小数集号 12.5 先占位保护，最后还原。
+func stripSceneDotSpecs(work string) string {
+	type ph struct{ key, val string }
+	var phs []ph
+	masked := reNoTitleNum.ReplaceAllStringFunc(work, func(m string) string {
+		key := fmt.Sprintf("\x00NO%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	masked = reDecEpisode.ReplaceAllStringFunc(masked, func(m string) string {
+		key := fmt.Sprintf("\x00DEC%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	// RE2 无前瞻：左分隔 ${1} 与右边界 ${2} 均作为捕获组原样写回；被消费的右边界无法同轮充当下一处的左分隔，
+	// 故循环替换直到字符串不再变化（如 .AAC2.0.H.264 需两轮）。
+	for {
+		next := reSceneDotVideoCodec.ReplaceAllString(masked, "${1} ${2}")
+		next = reSceneDotAudioCodec.ReplaceAllString(next, "${1} ${2}")
+		if next == masked {
+			break
+		}
+		masked = next
+	}
+	for _, ph := range phs {
+		masked = strings.ReplaceAll(masked, ph.key, ph.val)
+	}
+	return masked
+}
+
 func splitSceneDotParts(s string) []string {
 	// 保护 No.8 / No. 8：先占位
 	type ph struct{ key, val string }
 	var phs []ph
 	masked := reNoTitleNum.ReplaceAllStringFunc(s, func(m string) string {
 		key := fmt.Sprintf("\x00NO%d\x00", len(phs))
+		phs = append(phs, ph{key, m})
+		return key
+	})
+	// 保护带点规格本体 H.264 / AAC2.0，避免被拆成 H/264、AAC2/0
+	masked = reSceneDotSpecBody.ReplaceAllStringFunc(masked, func(m string) string {
+		key := fmt.Sprintf("\x00SPEC%d\x00", len(phs))
 		phs = append(phs, ph{key, m})
 		return key
 	})
@@ -989,8 +1063,14 @@ func hasSceneMetaAfter(parts []string) bool {
 		if low == "" {
 			continue
 		}
-		if reSceneResTok.MatchString(low) || reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] {
+		if isSceneMetaAfterToken(low) {
 			return true
+		}
+		// <Meta>-<Group>（h.264-grp / x265-varyg）：整体是 web-dl / blu-ray / 10-bit 等规格词时不拆
+		if i := strings.LastIndex(low, "-"); i > 0 && !sourceTokens[low] && !codecTokens[low] && !packagingTokens[low] {
+			if isSceneMetaAfterToken(low[:i]) && isScenePublishGroup(low[i+1:]) {
+				return true
+			}
 		}
 		// web-dl 被拆成 web / dl 时
 		if low == "web" || low == "dl" || low == "webrip" || low == "webdl" {
@@ -998,6 +1078,64 @@ func hasSceneMetaAfter(parts []string) bool {
 		}
 	}
 	return false
+}
+
+// isSceneMetaAfterToken hasSceneMetaAfter 认可的规格段：分辨率/来源/编码/音频声道复合词（aac2.0）。
+func isSceneMetaAfterToken(low string) bool {
+	return reSceneResTok.MatchString(low) || reRes.MatchString(low) || sourceTokens[low] || codecTokens[low] || reSceneAudioChannelSpec.MatchString(low)
+}
+
+// isScenePublishGroup 发布组形态，与 stripPublishSuffix 同款护栏：
+// 满足 reFansubToken、至少 3 个字符、不是结构词。
+func isScenePublishGroup(tail string) bool {
+	switch strings.ToLower(tail) {
+	case "season", "part", "final", "ova", "oad", "movie", "film", "tv", "bd", "sp", "ncop", "nced":
+		return false
+	}
+	return reFansubToken.MatchString(tail) && utf8.RuneCountInString(tail) >= 3
+}
+
+// stripTrailingSceneGroup 受限剥离末尾发布组：仅当 work 末尾形如
+// <...><分隔符><SceneMetaToken>-<PublishGroup> 时移除 -<PublishGroup>。护栏：
+//  1. <SceneMetaToken>-<PublishGroup> 整体不在 sourceTokens/codecTokens/packagingTokens（WEB-DL、Blu-Ray、10-bit）；
+//  2. <SceneMetaToken> 是已识别场景元数据词（codec/source/分辨率、[hx].26[45]、音频声道复合词）；
+//  3. <PublishGroup> 通过 stripPublishSuffix 同款护栏；
+//  4. 只移除 -<PublishGroup>；Fate-Zero、K-ON 左侧不是元数据词，不受影响。
+func stripTrailingSceneGroup(work string) string {
+	trimmed := strings.TrimRightFunc(work, unicode.IsSpace)
+	dash := strings.LastIndex(trimmed, "-")
+	if dash <= 0 {
+		return work
+	}
+	group := trimmed[dash+1:]
+	if !isScenePublishGroup(group) || strings.ContainsAny(group, "._") {
+		return work
+	}
+	left := trimmed[:dash]
+	// 带点规格（H.264 / AAC2.0）整体作为一个 token，否则取最后一个分隔符之后的段
+	var token string
+	if loc := reSceneDotSpecTail.FindStringSubmatchIndex(left); loc != nil {
+		token = left[loc[2]:loc[3]]
+	} else {
+		sep := strings.LastIndexAny(left, " \t._")
+		if sep < 0 {
+			return work
+		}
+		token = left[sep+1:]
+	}
+	if token == "" || len(token) == len(left) {
+		// 须有 <...><分隔符> 前缀
+		return work
+	}
+	low := strings.ToLower(token)
+	whole := low + "-" + strings.ToLower(group)
+	if sourceTokens[whole] || codecTokens[whole] || packagingTokens[whole] {
+		return work
+	}
+	if !isSceneMetaAfterToken(low) && !reSceneDotVideoTok.MatchString(low) {
+		return work
+	}
+	return left
 }
 
 func protectThenReplaceDots(work string) string {
@@ -1072,6 +1210,10 @@ func stripSceneNoiseTokens(work string) string {
 			continue
 		}
 		if low == "web" || low == "dl" {
+			continue
+		}
+		// DUAL / MULTI / DUB / SUB 等拉丁组合元数据词与无点音频编码
+		if latinFansubMeta[low] || low == "ddp" || low == "eac3" || low == "truehd" || low == "atmos" {
 			continue
 		}
 		out = append(out, f)
@@ -1657,7 +1799,8 @@ func parseDirectory(relDir string) (titles []string, season, year int, media Med
 	if relDir == "" {
 		return nil, 0, 0, KindUnknown
 	}
-	parts := strings.Split(relDir, string(filepath.Separator))
+	// 按 / 与 \ 双分隔符切分（兼容 Windows 上的 / 相对目录与 Linux 上的 \ 数据）
+	parts := strings.FieldsFunc(relDir, isDirSeparator)
 	depth := 0
 	for i := len(parts) - 1; i >= 0 && depth < 3; i-- {
 		comp := strings.TrimSpace(parts[i])
@@ -1692,6 +1835,11 @@ func parseDirectory(relDir string) (titles []string, season, year int, media Med
 		}
 	}
 	return titles, season, year, media
+}
+
+// isDirSeparator 目录段分隔符：/ 与 \ 一律视为分隔。
+func isDirSeparator(r rune) bool {
+	return r == '/' || r == '\\'
 }
 
 func dirComponentSurvives(comp string) bool {

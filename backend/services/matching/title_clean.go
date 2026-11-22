@@ -1,6 +1,7 @@
 package matching
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -320,18 +321,51 @@ func isNumberingField(f string) bool {
 
 // extractOrdinalWords 预抽取 Part N、Second/Third/Final Season 等序数词。
 // Part N / 序数词 Season 从串中移除并写入 extras；Final Season 只标记 Final、不猜季号、不移除文字。
+// 多个 Part N：取值不一致时保留原文并记冲突；取值一致时写入一次并移除全部重复 Part N。
 func extractOrdinalWords(stem string, ex *fileExtras) string {
-	if m := reOrdinalPart.FindStringSubmatchIndex(stem); m != nil {
-		numText := strings.ToLower(stem[m[4]:m[5]])
+	type partHit struct{ val, start, end int }
+	var hits []partHit
+	// reOrdinalPart 末尾会消耗右边界字符，用游标偏移续扫：从核心数字末尾继续，
+	// 保留共享分隔符（如 "Part 1/Part 2" 中的 /）供下一处作左边界。
+	offset := 0
+	for offset < len(stem) {
+		m := reOrdinalPart.FindStringSubmatchIndex(stem[offset:])
+		if m == nil {
+			break
+		}
+		numText := strings.ToLower(stem[offset+m[4] : offset+m[5]])
 		n := partRomanNum[numText]
 		if n == 0 {
 			n = parseChineseOrASCIINum(numText)
 		}
 		if n > 0 {
-			if ex != nil && ex.Part == 0 {
-				ex.Part = n
+			// [m[3], m[6])：Part 本体到数字末尾（m[6]==m[5]），右边界字符不移除
+			hits = append(hits, partHit{val: n, start: offset + m[3], end: offset + m[6]})
+		}
+		offset += m[5]
+	}
+	if len(hits) > 0 {
+		conflict := false
+		for _, h := range hits[1:] {
+			if h.val != hits[0].val {
+				conflict = true
+				break
 			}
-			stem = stem[:m[3]] + " " + stem[m[6]:]
+		}
+		if conflict {
+			// 互斥的 Part 编号：不猜、不移除原文，记为硬冲突走 Review
+			if ex != nil {
+				ex.Notes = append(ex.Notes, "ordinal-part-conflict")
+				ex.Conflicts = append(ex.Conflicts, "文件名存在冲突的 Part 编号")
+			}
+		} else {
+			if ex != nil && ex.Part == 0 {
+				ex.Part = hits[0].val
+			}
+			// 从右向左倒序移除，前面区间的下标不受影响
+			for i := len(hits) - 1; i >= 0; i-- {
+				stem = stem[:hits[i].start] + " " + stem[hits[i].end:]
+			}
 		}
 	}
 	if m := reOrdinalSeasonWord.FindStringSubmatchIndex(stem); m != nil {
@@ -342,8 +376,9 @@ func extractOrdinalWords(stem string, ex *fileExtras) string {
 				ex.Season = n
 				stem = stem[:m[3]] + " " + stem[m[6]:]
 			default:
-				// 与前序 pass 已抽出的季号不一致：不覆盖、不移除原文，仅记诊断（保守）
+				// 与前序 pass 已抽出的季号不一致：不覆盖、不移除原文，记诊断并写入硬冲突
 				ex.Notes = append(ex.Notes, "ordinal-season-conflict")
+				ex.Conflicts = append(ex.Conflicts, fmt.Sprintf("文件名存在冲突的季号（%d 与 %d）", ex.Season, n))
 			}
 		}
 	}

@@ -186,3 +186,31 @@ func TestDirExistingBehaviorKept(t *testing.T) {
 		t.Fatalf("plain bracket title dir changed: %v", got)
 	}
 }
+
+func TestPreExtractDirBothSeparators(t *testing.T) {
+	sep := string(filepath.Separator)
+	for _, dir := range []string{"A/Title/Season 2", `A\Title\Season 2`, `A/Title\Season 2`, `A\\Title//Season 2\`} {
+		got, season := preExtractDir(dir)
+		if got != "A"+sep+"Title" || season != 2 {
+			t.Fatalf("%q: got %q season=%d", dir, got, season)
+		}
+	}
+	// 无改动时原样返回输入
+	for _, dir := range []string{`Anime\Title`, "Anime/Title"} {
+		if got, season := preExtractDir(dir); got != dir || season != 0 {
+			t.Fatalf("%q: got %q season=%d", dir, got, season)
+		}
+	}
+	ev := ParseFile(FileInput{Name: "05.mkv", Dir: `Root\Title\Season 2`})
+	if ev.Ordinal.Season != 2 || ev.Episode.First != 5 {
+		t.Fatalf("season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if got := dirTitleTexts(ev); len(got) == 0 || got[0] != "Title" || ev.Titles[0].Source != SourceDirectory {
+		t.Fatalf("titles=%#v", ev.Titles)
+	}
+	ev2 := ParseFile(FileInput{Name: "05.mkv", Dir: "Title/S02"})
+	assertOnlyDirTitle(t, ev2, "Title")
+	if ev2.Ordinal.Season != 2 {
+		t.Fatalf("season=%d", ev2.Ordinal.Season)
+	}
+}
