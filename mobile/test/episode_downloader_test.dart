@@ -647,5 +647,85 @@ void main() {
         await harness.dispose();
       }
     });
+
+    // 计划者 review #4：index.json 存在但损坏/读失败时只清 .part，不删正式视频。
+    for (final entry in <String, Future<void> Function(String)>{
+      'garbage json': (path) => File(path).writeAsString('{"version":1,"rec'),
+      'records not a list': (path) =>
+          File(path).writeAsString('{"version":1,"records":{}}'),
+      'partially corrupt record': (path) => File(path).writeAsString(
+        jsonEncode({
+          'version': 1,
+          'records': [
+            jsonDecode(
+              DownloadIndexCodec.encode(const [
+                DownloadRecord(
+                  serverUrl: _serverUrl,
+                  animeId: 9,
+                  episodeId: 23,
+                  epNumber: 1,
+                  animeTitle: _animeTitle,
+                  fileName: '9_23.mp4',
+                  fileSize: 3,
+                  completedAt: '2026-09-06T21:00:00.000',
+                ),
+              ]),
+            )['records'][0],
+            'broken',
+          ],
+        }),
+      ),
+      'unreadable (directory)': (path) =>
+          Directory('$path/blocker').create(recursive: true),
+    }.entries) {
+      test('restoreIndex keeps videos when index is ${entry.key}', () async {
+        final harness = await _setUp(
+          handler: (options) => _bytesBody([1], status: 200),
+        );
+        try {
+          final root = harness.tempDir.path;
+          final dir = _expectedDir(root, _serverUrl);
+          await Directory(dir).create(recursive: true);
+          await entry.value('$root/downloads/index.json');
+          final kept = File('$dir/9_23.mp4');
+          await kept.writeAsBytes([1, 2, 3]);
+          final video = File('$dir/9_24.mp4');
+          await video.writeAsBytes([1]);
+          final part = File('$dir/9_25.mp4.part');
+          await part.writeAsBytes([1]);
+
+          await harness.downloader.restoreIndex();
+
+          expect(await kept.exists(), isTrue);
+          expect(await video.exists(), isTrue);
+          expect(await part.exists(), isFalse);
+        } finally {
+          await harness.dispose();
+        }
+      });
+    }
+
+    test('restoreIndex without index.json still cleans orphan videos', () async {
+      final harness = await _setUp(
+        handler: (options) => _bytesBody([1], status: 200),
+      );
+      try {
+        final root = harness.tempDir.path;
+        final dir = _expectedDir(root, _serverUrl);
+        await Directory(dir).create(recursive: true);
+        final orphan = File('$dir/9_24.mp4');
+        await orphan.writeAsBytes([1]);
+        final part = File('$dir/9_25.mp4.part');
+        await part.writeAsBytes([1]);
+
+        await harness.downloader.restoreIndex();
+
+        expect(await File('$root/downloads/index.json').exists(), isFalse);
+        expect(await orphan.exists(), isFalse);
+        expect(await part.exists(), isFalse);
+      } finally {
+        await harness.dispose();
+      }
+    });
   });
 }

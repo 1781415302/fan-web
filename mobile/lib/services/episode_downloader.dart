@@ -114,6 +114,38 @@ class DownloadIndexStore {
     }
   }
 
+  /// restoreIndex 专用：返回记录及索引是否可信。文件不存在或完整解析视为可信；
+  /// 读取失败、JSON 损坏、结构不符或含无法解析的记录均视为不可信。
+  /// 不改变 load() / DownloadIndexCodec.decode 的容错语义。
+  Future<({List<DownloadRecord> records, bool intact})> loadForRestore() =>
+      _enqueue(() async {
+        String? raw;
+        try {
+          final path = await _indexPath();
+          // 仅「路径完全不存在」视为无索引；被目录等占用时按读取失败处理。
+          if (await FileSystemEntity.type(path) ==
+              FileSystemEntityType.notFound) {
+            return (records: <DownloadRecord>[], intact: true);
+          }
+          raw = await File(path).readAsString();
+        } catch (_) {
+          return (records: <DownloadRecord>[], intact: false);
+        }
+        final records = DownloadIndexCodec.decode(raw);
+        return (records: records, intact: _isIntactIndex(raw, records.length));
+      });
+
+  static bool _isIntactIndex(String raw, int decodedCount) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return false;
+      final list = decoded['records'];
+      return list is List && list.length == decodedCount;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _saveDirect(List<DownloadRecord> all) async {
     final path = await _indexPath();
     final tmp = File('$path.tmp');
@@ -340,8 +372,11 @@ class EpisodeDownloader {
   /// 绝不触碰 `$root/downloads` 根目录文件（含 index.json / index.json.tmp）。
   /// 注意已知限制：App 进后台可能被系统杀死；被杀后 .part 会在下次启动
   /// 被此处清理删除，重新点击下载将从头下载；已完成的下载不受影响。
+  /// index.json 存在但读取失败/损坏时只清 .part，不删任何正式视频（避免误删离线视频）。
   Future<void> restoreIndex() async {
-    final records = await _store.load();
+    final loaded = await _store.loadForRestore();
+    final records = loaded.records;
+    final indexIntact = loaded.intact;
     String root;
     try {
       root = await _resolveRoot();
@@ -391,7 +426,7 @@ class EpisodeDownloader {
               if (entity is Directory) continue;
               final name = _lastSegment(entity.path);
               if (!name.endsWith('.part') &&
-                  keepKeys.contains('$hashDirName/$name')) {
+                  (!indexIntact || keepKeys.contains('$hashDirName/$name'))) {
                 continue;
               }
               try {
