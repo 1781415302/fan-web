@@ -637,3 +637,66 @@ func TestResolveAssistByHintReviewAndValidation(t *testing.T) {
 		t.Fatal("legacy 引擎应报错")
 	}
 }
+
+// 计划者 review #1：预览（PreviewAssistByBangumiID / ResolveAssistByHint）与受信任提交（trustedTargetBindings）
+// 的 episode_offset 校验同口径：集号须 > offset 且话数已知、集号 > 话数。
+func TestAssistEpisodeOffsetPreviewMatchesTrustedCommit(t *testing.T) {
+	cases := []struct {
+		name   string
+		file   string
+		offset int
+		reason string
+	}{
+		{name: "集号未超过话数", file: "CodeX.S02E10.mkv", offset: 5, reason: errEpisodeOffsetNotApplicable},
+		{name: "偏移不小于集号", file: "CodeX.S02E13.mkv", offset: 20, reason: errAssistOffsetTooLarge},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupLibraryDB(t)
+			root := t.TempDir()
+			dir := "offset-consistency"
+			writeScanVideos(t, filepath.Join(root, dir), tc.file)
+			f := newFakeSessionProvider()
+			putTrustedProvider(f, 13001, 12, true)
+			withScanSession(t, f)
+			withFileAssociated(t, func(string, string) (bool, error) { return false, nil })
+			sc := newV2Scanner(t, root)
+
+			res, err := sc.PreviewAssistByBangumiID(context.Background(), dir, []string{tc.file}, 13001, tc.offset)
+			if err != nil {
+				t.Fatalf("预览业务复核不应返回 error: %v", err)
+			}
+			if res.Decision.Code != matching.Review || res.Decision.Reason != tc.reason || res.Candidate != nil || len(res.Bindings) != 0 {
+				t.Fatalf("预览应 Review %q: %#v", tc.reason, res)
+			}
+
+			_, err = sc.ScanForAnime(trustedAnime(13001, 12, dir), nil, nil, WithTrustedTarget(), WithEpisodeOffset(tc.offset))
+			if !errors.Is(err, ErrMatchReviewRequired) || !strings.HasSuffix(err.Error(), tc.reason) {
+				t.Fatalf("受信任提交应 ReviewRequired %q，got %v", tc.reason, err)
+			}
+		})
+	}
+}
+
+func TestResolveAssistByHintEpisodeOffsetRequiresCumulative(t *testing.T) {
+	f := newFakeSessionProvider()
+	putHintSeries(f, 4344, "Opt Show", 12, "Opt Show")
+	withScanSession(t, f)
+	sc := newV2Scanner(t, t.TempDir())
+	for _, input := range []AssistHintInput{
+		{RelDir: "d", FileNames: []string{"[Group] Opt Show - 10 [1080p].mkv"}, EpisodeOffset: 5},
+		{RelDir: "d", TitleHint: "Opt Show", FileNames: []string{"[Group] Opt Show - 10 [1080p].mkv"}, EpisodeOffset: 5},
+	} {
+		res, err := sc.ResolveAssistByHint(context.Background(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Decision.Code != matching.Review || res.Decision.Reason != errEpisodeOffsetNotApplicable ||
+			res.Subject != nil || res.Candidate != nil || len(res.Bindings) != 0 {
+			t.Fatalf("hint=%q 集号未超过话数应 Review %q: %#v", input.TitleHint, errEpisodeOffsetNotApplicable, res)
+		}
+		if len(res.Candidates) != 1 || res.Candidates[0].ID != 4344 {
+			t.Fatalf("复核应带回命中条目候选: %#v", res.Candidates)
+		}
+	}
+}

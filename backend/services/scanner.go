@@ -420,6 +420,23 @@ func episodeOffsetApplicable(g matching.Group, epCount int) bool {
 	return true
 }
 
+// assistEpisodeOffsetReason 辅助匹配预览（PreviewAssistByBangumiID / ResolveAssistByHint）与受信任提交
+// （trustedTargetBindings）共用的偏移校验，保证同一输入两边结论一致。files 为未平移的原始证据：
+// 先要求每个 NumberSingle 集号 > offset，再要求 episodeOffsetApplicable（话数已知且集号 > 话数）。
+// 返回空串表示适用；offset<=0 不校验。
+func assistEpisodeOffsetReason(files []matching.FileEvidence, offset, epCount int) string {
+	if offset <= 0 {
+		return ""
+	}
+	if !assistOffsetApplicable(files, offset) {
+		return errAssistOffsetTooLarge
+	}
+	if !episodeOffsetApplicable(matching.Group{Files: files}, epCount) {
+		return errEpisodeOffsetNotApplicable
+	}
+	return ""
+}
+
 // ScanForAnime 生成目标条目的安全 Inventory；生产 v2 单番重扫必须走此入口。
 // 旧 Scan(dir) 语义不变。error 时调用方应零写入。
 // opts：WithOnlyFiles 限定未关联文件集；WithEpisodeOffset 在分组后平移集号（仅累计编号）。
@@ -674,8 +691,8 @@ func trustedTargetBindings(anime models.Anime, freeLeft []string, sess *Matching
 	}
 	g := matching.Group{Files: evs}
 	if episodeOffset > 0 {
-		if !episodeOffsetApplicable(g, anime.EpCount) {
-			return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, errEpisodeOffsetNotApplicable)
+		if reason := assistEpisodeOffsetReason(evs, episodeOffset, anime.EpCount); reason != "" {
+			return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, reason)
 		}
 		g = matching.ShiftGroupEpisodes(g, episodeOffset)
 	}

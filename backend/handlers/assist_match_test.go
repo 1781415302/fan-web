@@ -765,3 +765,48 @@ func TestAssistRouteJWTScope(t *testing.T) {
 		t.Fatalf("管理员 JWT 应可访问 /admin/api-keys: %#v", resp)
 	}
 }
+
+// 计划者 review #1：同一输入下 auto_commit=false 预览与 auto_commit=true 提交对 episode_offset 的结论一致。
+func TestAssistEpisodeOffsetPreviewAndCommitConsistent(t *testing.T) {
+	xianWang := "The.Daily.Life.of.the.Immortal.King.S05E10.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv"
+	cases := []struct {
+		name   string
+		seed   bangumiSeed
+		file   string
+		req    models.AssistMatchRequest
+		reason string
+	}{
+		{name: "bangumi_id 集号未超过话数", seed: assistCodeXSeed(), file: "CodeX.S02E10.mkv",
+			req:    models.AssistMatchRequest{BangumiID: assistCodeXID, EpisodeOffset: 5},
+			reason: "集号偏移仅适用于累计编号（集号需大于该条目话数）"},
+		{name: "bangumi_id 偏移不小于集号", seed: assistCodeXSeed(), file: "CodeX.S02E13.mkv",
+			req:    models.AssistMatchRequest{BangumiID: assistCodeXID, EpisodeOffset: 20},
+			reason: "episode_offset 不能大于或等于文件集号"},
+		{name: "title_hint 集号未超过话数", seed: assistXianWangSeed(), file: xianWang,
+			req:    models.AssistMatchRequest{TitleHint: "仙王的日常生活", SeasonHint: 5, EpisodeOffset: 5},
+			reason: "集号偏移仅适用于累计编号（集号需大于该条目话数）"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			relDir := "OffsetDir"
+			writeVideos(t, filepath.Join(root, relDir), tc.file)
+			handler := setupScanHandlerV2(t, root, tc.seed)
+			for _, auto := range []bool{false, true} {
+				req := tc.req
+				req.FilePath = relDir
+				req.FileNames = []string{tc.file}
+				req.AutoCommit = boolPtr(auto)
+				data := decodeAssistSuccess(t, postAssist(t, handler, req))
+				// 提交路径经 commitInboxFiles 包装（前缀「匹配需要人工确认: 」、后缀「（未写入任何变更）」），核心原因须一致
+				if data.Status != "review_required" || !strings.Contains(data.Reason, tc.reason) {
+					t.Fatalf("auto_commit=%v 应 review_required %q: %#v", auto, tc.reason, data)
+				}
+				if c := countAssistTables(t); c.animes != 0 || c.episodes != 0 {
+					t.Fatalf("auto_commit=%v 不得建番/写剧集: %#v", auto, c)
+				}
+			}
+		})
+	}
+}
+

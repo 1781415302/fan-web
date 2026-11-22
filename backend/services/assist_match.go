@@ -265,6 +265,7 @@ func (s *ScannerService) PreviewAssistByBangumiID(ctx context.Context, relDir st
 	for _, fn := range fileNames {
 		files = append(files, matching.ParseFile(matching.FileInput{Name: fn, Dir: relDir}))
 	}
+	origFiles := files
 	if episodeOffset > 0 {
 		if !assistOffsetApplicable(files, episodeOffset) {
 			out.Decision = reviewDecision(errAssistOffsetTooLarge)
@@ -288,6 +289,12 @@ func (s *ScannerService) PreviewAssistByBangumiID(ctx context.Context, relDir st
 	out.Chapters = ch
 	subCopy := sub
 	out.Subject = &subCopy
+	// 与受信任提交（trustedTargetBindings）同口径：拿到详情话数后补齐累计编号适用性校验
+	if reason := assistEpisodeOffsetReason(origFiles, episodeOffset, sub.EpisodeCount); reason != "" {
+		out.Decision = reviewDecision(reason)
+		out.Candidates = []models.MatchCandidate{modelCandidateFromSubject(sub, 1.0)}
+		return out, nil
+	}
 	if reason := trustedChapterReviewReason(ch, files); reason != "" {
 		out.Decision = reviewDecision(reason)
 		out.Candidates = []models.MatchCandidate{modelCandidateFromSubject(sub, 1.0)}
@@ -337,6 +344,16 @@ func (s *ScannerService) ResolveAssistByHint(ctx context.Context, input AssistHi
 	}
 	out.Subject = res.Subject
 	out.Chapters = res.Chapters
+	if res.Decision.Code == matching.Accepted && res.Subject != nil && input.EpisodeOffset > 0 {
+		// 与受信任提交同口径：胜者详情话数已知后补齐累计编号适用性校验（group 已平移，还原原始集号）
+		if reason := assistEpisodeOffsetReason(unshiftAssistFiles(group.Files, input.EpisodeOffset), input.EpisodeOffset, res.Subject.EpisodeCount); reason != "" {
+			out.Decision = reviewDecision(reason)
+			out.Subject = nil
+			out.Chapters = emptyAssistHintResult().Chapters
+			out.Candidates = []models.MatchCandidate{modelCandidateFromSubject(*res.Subject, 1.0)}
+			return out, nil
+		}
+	}
 	if res.Decision.Code == matching.Accepted && res.Subject != nil {
 		score := 1.0
 		for _, c := range res.Decision.Candidates {
@@ -512,6 +529,19 @@ func assistOffsetApplicable(files []matching.FileEvidence, offset int) bool {
 		}
 	}
 	return true
+}
+
+// unshiftAssistFiles 还原已平移（且已通过 assistOffsetApplicable）的 NumberSingle 集号，供偏移适用性复核。
+func unshiftAssistFiles(shifted []matching.FileEvidence, offset int) []matching.FileEvidence {
+	out := make([]matching.FileEvidence, len(shifted))
+	for i, f := range shifted {
+		if f.Episode.Kind == matching.NumberSingle {
+			f.Episode.First += offset
+			f.Episode.Last += offset
+		}
+		out[i] = f
+	}
+	return out
 }
 
 func isSeasonConflict(c string) bool {
