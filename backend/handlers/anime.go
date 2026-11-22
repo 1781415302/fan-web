@@ -734,7 +734,7 @@ func (h *AnimeHandler) commitInboxFiles(req inboxCommitRequest) (inboxCommitResu
 	}
 	plan, err := h.prepareScanV2(anime, opts...)
 	if err != nil {
-		h.rollbackConfirmedAnime(anime.ID, created, nil)
+		h.rollbackConfirmedAnime(anime.ID, created)
 		return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmScanErrorReason(err), message: scanV2ErrorMessage(err)}
 	}
 
@@ -752,7 +752,7 @@ func (h *AnimeHandler) commitInboxFiles(req inboxCommitRequest) (inboxCommitResu
 		missing = append(missing, name)
 	}
 	if len(missing) > 0 {
-		h.rollbackConfirmedAnime(anime.ID, created, nil)
+		h.rollbackConfirmedAnime(anime.ID, created)
 		return inboxCommitResult{}, &inboxCommitError{
 			code: utils.CodeInternal, reason: confirmReasonNoMatch,
 			message: "这些文件未能归入该条目：" + strings.Join(missing, "、"), fileNames: missing,
@@ -761,8 +761,8 @@ func (h *AnimeHandler) commitInboxFiles(req inboxCommitRequest) (inboxCommitResu
 
 	episodes, err := h.commitScanV2(plan)
 	if err != nil {
-		// commitScanV2 失败时传入 plan.inv.Desired：ID==0 的待新增剧集按 FilePath 识别本请求写入。
-		h.rollbackConfirmedAnime(anime.ID, created, plan.inv.Desired)
+		// 只清理仍为空的新建番剧；已有剧集（含其它流程并发写入）一律保留。
+		h.rollbackConfirmedAnime(anime.ID, created)
 		return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmScanErrorReason(err), message: scanV2ErrorMessage(err)}
 	}
 
@@ -789,48 +789,21 @@ func confirmScanErrorReason(err error) string {
 }
 
 // rollbackConfirmedAnime 回滚本请求新建的番剧：created=false 不删任何数据。
-// 剧集为空，或剧集全部是本请求刚写入的（ours）时才删除番剧（剧集随外键级联）；
-// ours 中 ID>0 的条目按 ID 匹配，ID==0 且 FilePath 非空的待新增条目（plan.inv.Desired）按 / 归一后的 FilePath 匹配。
-// 出现本请求之外的剧集则保留并记录日志，避免误删其它流程写入的数据。
-func (h *AnimeHandler) rollbackConfirmedAnime(animeID int64, created bool, ours []models.Episode) {
+// 仅当番剧在数据库中仍没有任何剧集时，以单条语句原子删除；只要已有剧集
+// （无论是否本请求写入，含其它流程并发写入的同名剧集）就保留并记录日志。
+// ReconcileEpisodes 为单事务，失败时本请求对剧集零写入，故无需也不得按文件名推断写入归属。
+func (h *AnimeHandler) rollbackConfirmedAnime(animeID int64, created bool) {
 	if !created {
 		return
 	}
-	current, err := database.ListEpisodesByAnimeID(animeID)
+	deleted, err := database.DeleteAnimeIfNoEpisodes(animeID)
 	if err != nil {
-		log.Printf("[Anime] 收件箱确认回滚读取番剧 %d 剧集失败，保留番剧: %v", animeID, err)
+		log.Printf("[Anime] 收件箱确认回滚删除番剧 %d 失败: %v", animeID, err)
 		return
 	}
-	if len(current) > 0 {
-		ownIDs := make(map[int64]bool, len(ours))
-		ownPaths := make(map[string]bool, len(ours))
-		for _, ep := range ours {
-			switch {
-			case ep.ID > 0:
-				ownIDs[ep.ID] = true
-			case ep.FilePath != "":
-				ownPaths[rollbackEpisodePathKey(ep.FilePath)] = true
-			}
-		}
-		for _, ep := range current {
-			if ownIDs[ep.ID] {
-				continue
-			}
-			if ep.FilePath != "" && ownPaths[rollbackEpisodePathKey(ep.FilePath)] {
-				continue
-			}
-			log.Printf("[Anime] 收件箱确认回滚：番剧 %d 含非本请求剧集，保留", animeID)
-			return
-		}
+	if !deleted {
+		log.Printf("[Anime] 收件箱确认回滚：番剧 %d 已含剧集或已不存在，保留", animeID)
 	}
-	if err := database.DeleteAnime(animeID); err != nil {
-		log.Printf("[Anime] 收件箱确认回滚删除番剧 %d 失败: %v", animeID, err)
-	}
-}
-
-// rollbackEpisodePathKey 回滚比对用的剧集文件路径键：\ 统一为 /。
-func rollbackEpisodePathKey(p string) string {
-	return strings.ReplaceAll(p, "\\", "/")
 }
 
 func scanV2ErrorMessage(err error) string {

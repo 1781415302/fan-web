@@ -851,3 +851,63 @@ func TestAssistHintExplicitOwnedByOtherAnimeConflict(t *testing.T) {
 		t.Fatalf("仅未归属文件应 committed: %#v", data)
 	}
 }
+
+// PR #20 复审问题 1：本请求建档后、提交前，另一流程先向该番剧写入同名剧集；
+// 提交因快照变化返回 conflict 时，回滚不得把另一流程已写入的剧集连同番剧一起删除。
+func TestAssistCASConflictKeepsEpisodesWrittenByOtherFlow(t *testing.T) {
+	root := t.TempDir()
+	relDir := "ObscureDir"
+	name := "CodeX.S01E03.mkv"
+	writeVideos(t, filepath.Join(root, relDir), name)
+	handler, fix := setupScanHandlerV2WithFixture(t, root, assistCodeXSeed())
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v0/episodes" {
+			first := false
+			once.Do(func() { first = true })
+			if first {
+				close(entered)
+				<-release
+			}
+		}
+		fix.serve(w, r)
+	}))
+	t.Cleanup(proxy.Close)
+	fix.bangumi.SetBaseURL(proxy.URL)
+
+	done := make(chan confirmResponse, 1)
+	go func() {
+		done <- postAssist(t, handler, models.AssistMatchRequest{FilePath: relDir, FileNames: []string{name}, BangumiID: assistCodeXID})
+	}()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("章节请求未发生")
+	}
+	created, err := database.GetAnimeByBangumiID(assistCodeXID)
+	if err != nil || created == nil {
+		t.Fatalf("本请求应已建档: %v %#v", err, created)
+	}
+	// 另一流程先写入同名剧集。
+	if err := database.CreateEpisode(&models.Episode{AnimeID: created.ID, EpNumber: 3, FilePath: name}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	resp := <-done
+
+	data := decodeConfirmError(t, resp)
+	if resp.Code != utils.CodeInternal || data.Reason != confirmReasonConflict {
+		t.Fatalf("快照变化应 9999 conflict: code=%d %#v", resp.Code, data)
+	}
+	got, err := database.GetAnimeByID(created.ID)
+	if err != nil || got == nil {
+		t.Fatalf("含另一流程剧集的番剧不得被回滚删除: %v %#v", err, got)
+	}
+	eps, err := database.ListEpisodesByAnimeID(created.ID)
+	if err != nil || len(eps) != 1 || eps[0].FilePath != name {
+		t.Fatalf("另一流程写入的剧集应保留: %v %#v", err, eps)
+	}
+}

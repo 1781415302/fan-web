@@ -606,46 +606,33 @@ func animeExists(t *testing.T, id int64) bool {
 	return n == 1
 }
 
-// §7.2-1：ours 中 ID==0 的待新增剧集（plan.inv.Desired）按 / 归一后的 FilePath 识别本请求写入。
-func TestRollbackConfirmedAnimeMatchesZeroIDByFilePath(t *testing.T) {
+func TestRollbackConfirmedAnimeDeletesEmptyCreated(t *testing.T) {
+	handler := setupCreateHandler(t)
+	empty := seedRollbackAnime(t)
+	handler.rollbackConfirmedAnime(empty.ID, true)
+	if animeExists(t, empty.ID) {
+		t.Fatal("本请求新建且仍无剧集的番剧应被删除")
+	}
+}
+
+// PR #20 复审问题 1：已有剧集（即使文件名与本请求待写入清单相同）一律视为非本请求写入，保留番剧与剧集。
+func TestRollbackConfirmedAnimeKeepsAnyEpisodes(t *testing.T) {
 	handler := setupCreateHandler(t)
 	anime := seedRollbackAnime(t, "a.mkv", "sub\\b.mkv")
-	handler.rollbackConfirmedAnime(anime.ID, true, []models.Episode{
-		{ID: 0, FilePath: "a.mkv"},
-		{ID: 0, FilePath: "sub/b.mkv"},
-	})
-	if animeExists(t, anime.ID) {
-		t.Fatal("剧集全部是本请求写入（ID==0 按 FilePath 匹配）时应删除新建番剧")
-	}
-}
-
-func TestRollbackConfirmedAnimeKeepsForeignEpisodes(t *testing.T) {
-	handler := setupCreateHandler(t)
-	anime := seedRollbackAnime(t, "a.mkv", "foreign.mkv")
-	handler.rollbackConfirmedAnime(anime.ID, true, []models.Episode{{ID: 0, FilePath: "a.mkv"}})
+	handler.rollbackConfirmedAnime(anime.ID, true)
 	if !animeExists(t, anime.ID) {
-		t.Fatal("含非本请求剧集时必须保留番剧")
+		t.Fatal("含剧集时必须保留番剧")
 	}
-}
-
-func TestRollbackConfirmedAnimeMatchesPositiveID(t *testing.T) {
-	handler := setupCreateHandler(t)
-	anime := seedRollbackAnime(t, "a.mkv")
 	eps, err := database.ListEpisodesByAnimeID(anime.ID)
-	if err != nil || len(eps) != 1 {
-		t.Fatalf("%v %#v", err, eps)
-	}
-	// ID>0 按 ID 匹配（FilePath 不同也算本请求）
-	handler.rollbackConfirmedAnime(anime.ID, true, []models.Episode{{ID: eps[0].ID, FilePath: "other.mkv"}})
-	if animeExists(t, anime.ID) {
-		t.Fatal("ID 匹配时应删除新建番剧")
+	if err != nil || len(eps) != 2 {
+		t.Fatalf("剧集应保留: %v %#v", err, eps)
 	}
 }
 
 func TestRollbackConfirmedAnimeNotCreatedNeverDeletes(t *testing.T) {
 	handler := setupCreateHandler(t)
 	empty := seedRollbackAnime(t)
-	handler.rollbackConfirmedAnime(empty.ID, false, nil)
+	handler.rollbackConfirmedAnime(empty.ID, false)
 	if !animeExists(t, empty.ID) {
 		t.Fatal("created=false 绝不删除任何番剧")
 	}

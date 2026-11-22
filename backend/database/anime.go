@@ -227,6 +227,20 @@ func DeleteAnime(id int64) error {
 	return nil
 }
 
+// DeleteAnimeIfNoEpisodes 单条语句原子地删除没有任何剧集的番剧；
+// 番剧已含剧集（含其它流程并发写入的）或已不存在时不删除，返回 deleted=false。
+func DeleteAnimeIfNoEpisodes(id int64) (bool, error) {
+	result, err := DB.Exec("DELETE FROM animes WHERE id = ? AND NOT EXISTS (SELECT 1 FROM episodes WHERE anime_id = ?)", id, id)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 func ListEpisodesByAnimeID(animeID int64) ([]models.Episode, error) {
 	rows, err := DB.Query(episodeSelect+" WHERE anime_id = ? ORDER BY ep_number ASC, id ASC", animeID)
 	if err != nil {
