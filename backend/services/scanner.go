@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 
 	"fan-web/database"
 	"fan-web/models"
@@ -93,14 +95,35 @@ func ValidateRelativeVideoPath(dirPath string) error {
 	if filepath.IsAbs(dirPath) {
 		return ErrInvalidVideoPath
 	}
-	// 反斜杠与正斜杠一视同仁：Windows 下库扫描/历史数据中的相对路径可能含 \，
-	// 统一按文件系统分隔符解释后再做穿越校验（转换本身不会产生新的穿越风险，
-	// 因为 Windows 上 filepath 同时识别两种分隔符，Linux 上 \ 只是普通文件名字符）。
-	clean := filepath.Clean(strings.TrimSpace(filepath.FromSlash(dirPath)))
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	// 反斜杠与正斜杠一视同仁：显式把 \ 转成 / 后再检查前导斜杠、盘符与 .. 段。
+	// Linux 上 filepath.FromSlash 不会替换 \，若依赖它会让 "..\\outside" 绕过穿越校验。
+	slashed := strings.ReplaceAll(strings.TrimSpace(dirPath), "\\", "/")
+	if strings.HasPrefix(slashed, "/") {
 		return ErrInvalidVideoPath
 	}
+	if len(slashed) >= 2 && unicode.IsLetter(rune(slashed[0])) && slashed[1] == ':' {
+		return ErrInvalidVideoPath
+	}
+	for _, seg := range strings.Split(slashed, "/") {
+		if strings.TrimSpace(seg) == ".." {
+			return ErrInvalidVideoPath
+		}
+	}
 	return nil
+}
+
+// NormalizeRelDir 把相对目录统一为以 / 分隔的规范形式：TrimSpace → \ 转 / → path.Clean
+// （"." 归一为 ""）→ 去掉前导与末尾 /。"a\\b/" 与 "a/b" 同为 "a/b"，根目录为 ""。
+func NormalizeRelDir(dirPath string) string {
+	s := strings.ReplaceAll(strings.TrimSpace(dirPath), "\\", "/")
+	if s == "" {
+		return ""
+	}
+	s = path.Clean(s)
+	if s == "." {
+		return ""
+	}
+	return strings.Trim(s, "/")
 }
 
 func (s *ScannerService) Scan(dirPath string) ([]models.Episode, error) {
@@ -280,7 +303,7 @@ func (s *ScannerService) resolveDirectory(dirPath string) (string, error) {
 		return "", fmt.Errorf("解析视频根目录失败: %w", err)
 	}
 
-	clean := filepath.Clean(strings.TrimSpace(dirPath))
+	clean := filepath.Clean(filepath.FromSlash(NormalizeRelDir(dirPath)))
 	if clean == "." {
 		clean = ""
 	}
@@ -336,6 +359,9 @@ type scanOptions struct {
 	onlyFiles map[string]bool
 	// episodeOffset >0 时在 GroupFiles 之后、Resolve 之前平移 Single 集号。
 	episodeOffset int
+	// trustedTarget 为 true 时目标条目已由外部确定（anime.BangumiID>0）：
+	// 跳过名称门闩，但仍强制详情 + 章节绑定、跨番隔离与文件合法性校验。
+	trustedTarget bool
 }
 
 // errEpisodeOffsetNotApplicable 偏移适用性不满足时的说明（包装 ErrMatchReviewRequired）。
@@ -366,6 +392,15 @@ func WithEpisodeOffset(n int) ScanOption {
 			n = 0
 		}
 		o.episodeOffset = n
+	}
+}
+
+// WithTrustedTarget 启用受信任目标模式：仅配合已由外部确定 anime.BangumiID>0 使用。
+// 未关联文件不再走自动识别/名称门闩，直接按目标条目详情与章节解释集号；
+// 任一文件无法被章节解释（冲突/拒绝/无集号被跳过）即整体 ErrMatchReviewRequired。
+func WithTrustedTarget() ScanOption {
+	return func(o *scanOptions) {
+		o.trustedTarget = true
 	}
 }
 
@@ -532,7 +567,13 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 	}
 
 	var newBindings []matching.EpisodeBinding
-	if len(freeLeft) > 0 {
+	if len(freeLeft) > 0 && options.trustedTarget {
+		bindings, err := trustedTargetBindings(anime, freeLeft, getSession(), options.episodeOffset)
+		if err != nil {
+			return empty, err
+		}
+		newBindings = bindings
+	} else if len(freeLeft) > 0 {
 		inputs := make([]matching.FileInput, 0, len(freeLeft))
 		for _, name := range freeLeft {
 			inputs = append(inputs, matching.FileInput{Name: name, Dir: anime.FilePath})
@@ -622,6 +663,96 @@ func (s *ScannerService) ScanForAnime(anime models.Anime, existing []models.Epis
 		PresentFiles: append([]string(nil), present...),
 		Renames:      renames,
 	}, nil
+}
+
+// trustedTargetBindings 受信任目标模式下解释未关联文件（§4.5 ScanForAnime 受信任规则 2–5）：
+// 逐个构建 FileEvidence → 可选集号偏移 → 目标详情 → 章节解释 → 全量绑定校验。
+func trustedTargetBindings(anime models.Anime, freeLeft []string, sess *MatchingSession, episodeOffset int) ([]matching.EpisodeBinding, error) {
+	evs := make([]matching.FileEvidence, 0, len(freeLeft))
+	for _, name := range freeLeft {
+		evs = append(evs, matching.ParseFile(matching.FileInput{Name: name, Dir: anime.FilePath}))
+	}
+	g := matching.Group{Files: evs}
+	if episodeOffset > 0 {
+		if !episodeOffsetApplicable(g, anime.EpCount) {
+			return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, errEpisodeOffsetNotApplicable)
+		}
+		g = matching.ShiftGroupEpisodes(g, episodeOffset)
+	}
+	shiftedFiles := g.Files
+	if sess == nil || sess.provider == nil {
+		return nil, fmt.Errorf("ScanForAnime: MatchingSession/Provider 不可用")
+	}
+	_, ch, err := interpretTrustedTargetChapters(sess, anime.BangumiID, shiftedFiles)
+	if err != nil {
+		return nil, err
+	}
+	if reason := trustedChapterReviewReason(ch, shiftedFiles); reason != "" {
+		return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, reason)
+	}
+	return ch.Bindings, nil
+}
+
+// interpretTrustedTargetChapters 取目标条目详情与章节，并按受信任模式解释文件集号（零 DB 写）。
+// 绕过 interpretWithAnchor 季锚点推算：Bangumi 累计编号季番须由调用方传 episode_offset。
+// 条目 404 → ErrMatchReviewRequired；章节 404 且话数已知 → 按话数拟合；
+// 章节 404 且话数未知 → ErrMatchReviewRequired；其他上游错误原样返回。
+func interpretTrustedTargetChapters(sess *MatchingSession, bangumiID int, files []matching.FileEvidence) (matching.Subject, matching.ChapterDecision, error) {
+	if sess.ctx == nil {
+		sess.ctx = context.Background()
+	}
+	if err := sess.ensureDetailed(bangumiID); err != nil {
+		if isSubjectNotFound(err) {
+			return matching.Subject{}, matching.ChapterDecision{}, fmt.Errorf("%w: 目标条目不存在或不可访问", ErrMatchReviewRequired)
+		}
+		return matching.Subject{}, matching.ChapterDecision{}, err
+	}
+	detailedSub := sess.pool[bangumiID]
+	chs, chErr := sess.provider.Chapters(sess.ctx, bangumiID)
+	switch {
+	case chErr == nil:
+		return detailedSub, matching.InterpretChapters(files, detailedSub, chs, true), nil
+	case isSubjectNotFound(chErr) && detailedSub.EpisodeCount > 0:
+		return detailedSub, matching.InterpretChapters(files, detailedSub, nil, true), nil
+	case isSubjectNotFound(chErr):
+		return detailedSub, matching.ChapterDecision{}, fmt.Errorf("%w: 目标条目无章节且话数未知", ErrMatchReviewRequired)
+	default:
+		return detailedSub, matching.ChapterDecision{}, chErr
+	}
+}
+
+// trustedChapterReviewReason 受信任模式绝不静默跳过：章节冲突、任一文件被拒绝，
+// 或绑定数与文件数不一致（InterpretChapters 对无集号非电影文件既不绑定也不拒绝）时返回原因。
+func trustedChapterReviewReason(ch matching.ChapterDecision, files []matching.FileEvidence) string {
+	if ch.State != matching.ChapterConflict && len(ch.Rejected) == 0 && len(ch.Bindings) == len(files) {
+		return ""
+	}
+	if len(ch.Rejected) > 0 {
+		names := make([]string, 0, len(ch.Rejected))
+		for name := range ch.Rejected {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, name := range names {
+			parts = append(parts, fmt.Sprintf("%s（%s）", name, ch.Rejected[name]))
+		}
+		return "章节无法解释文件：" + strings.Join(parts, "；")
+	}
+	bound := make(map[string]bool, len(ch.Bindings))
+	for _, b := range ch.Bindings {
+		bound[b.FileName] = true
+	}
+	var missing []string
+	for _, f := range files {
+		if !bound[f.Name] {
+			missing = append(missing, f.Name)
+		}
+	}
+	if len(missing) > 0 {
+		return "以下文件无法确定集号：" + strings.Join(missing, "、")
+	}
+	return "章节或编号冲突，需要人工确认"
 }
 
 // targetChapterNumbers 目标条目章节中可作为“文件原始号直接命中”的编号集合（整数 Ep 与整数 Sort，>=1），
