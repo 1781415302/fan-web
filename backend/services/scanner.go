@@ -744,17 +744,27 @@ func presetTrustedBindings(anime models.Anime, freeLeft []string, preset []match
 			return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, reason)
 		}
 	}
-	byName := make(map[string]matching.EpisodeBinding, len(preset))
+	out, missing := bindingsForEveryFile(freeLeft, preset)
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrMatchReviewRequired, missingBindingsReason(missing))
+	}
+	return out, nil
+}
+
+// bindingsForEveryFile 辅助匹配预览与受信任提交共用的“每个文件都必须有有效绑定”检查：
+// files 中每个文件须恰好命中一条 StoredNumber>0 的绑定。返回按 files 顺序的绑定，以及未满足的文件。
+func bindingsForEveryFile(files []string, bindings []matching.EpisodeBinding) ([]matching.EpisodeBinding, []string) {
+	byName := make(map[string]matching.EpisodeBinding, len(bindings))
 	dup := map[string]bool{}
-	for _, b := range preset {
+	for _, b := range bindings {
 		if _, ok := byName[b.FileName]; ok {
 			dup[b.FileName] = true
 		}
 		byName[b.FileName] = b
 	}
-	out := make([]matching.EpisodeBinding, 0, len(freeLeft))
+	out := make([]matching.EpisodeBinding, 0, len(files))
 	var missing []string
-	for _, name := range freeLeft {
+	for _, name := range files {
 		b, ok := byName[name]
 		if !ok || dup[name] || b.StoredNumber <= 0 {
 			missing = append(missing, name)
@@ -762,10 +772,12 @@ func presetTrustedBindings(anime models.Anime, freeLeft []string, preset []match
 		}
 		out = append(out, b)
 	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("%w: 以下文件无法确定集号：%s", ErrMatchReviewRequired, strings.Join(missing, "、"))
-	}
-	return out, nil
+	return out, missing
+}
+
+// missingBindingsReason 缺少有效绑定时的复核原因。
+func missingBindingsReason(missing []string) string {
+	return "以下文件无法确定集号：" + strings.Join(missing, "、")
 }
 
 // interpretTrustedTargetChapters 取目标条目详情与章节，并按受信任模式解释文件集号（零 DB 写）。

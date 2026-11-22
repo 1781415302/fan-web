@@ -362,6 +362,15 @@ func (s *ScannerService) ResolveAssistByHint(ctx context.Context, input AssistHi
 				break
 			}
 		}
+		// 与受信任提交（presetTrustedBindings）同口径：整批每个文件都必须有有效绑定，否则整体复核，
+		// 避免部分文件（如 4.5 这类无法解释的集号）未绑定时预览仍报 matched。
+		if _, missing := bindingsForEveryFile(input.FileNames, res.Chapters.Bindings); len(missing) > 0 {
+			out.Decision = reviewDecision(missingBindingsReason(missing))
+			out.Subject = nil
+			out.Chapters = emptyAssistHintResult().Chapters
+			out.Candidates = []models.MatchCandidate{modelCandidateFromSubject(*res.Subject, score)}
+			return out, nil
+		}
 		out.Candidate = assistCandidatePtr(modelCandidateFromSubject(*res.Subject, score))
 		out.Bindings = assistBindings(res.Chapters.Bindings)
 		return out, nil

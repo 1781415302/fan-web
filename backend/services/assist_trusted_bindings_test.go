@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fan-web/models"
@@ -76,4 +77,46 @@ func TestPresetTrustedBindingsRequiresEveryFile(t *testing.T) {
 
 func animeForPreset() models.Anime {
 	return models.Anime{ID: 1, BangumiID: 1, EpCount: 8, FilePath: "a"}
+}
+
+// PR #20 复审问题 2（仙王的日常生活 第五季 回放）：第 3 集与 4.5 集同批预览时，4.5 无有效绑定，
+// 预览必须与受信任提交同口径整体复核，而不是只给出第 3 集绑定并报 matched。
+func TestAssistHintPreviewRequiresBindingForEveryFileXianWangReplay(t *testing.T) {
+	setupLibraryDB(t)
+	root := t.TempDir()
+	dir := filepath.Join("仙王", "S5")
+	names := []string{
+		"[GM-Team][国漫][仙王的日常生活 第5季][Xian Wang De Ri Chang Sheng Huo Ⅴ][2025][03][AVC][GB][1080P].mp4",
+		"[GM-Team][国漫][仙王的日常生活 第5季][Xian Wang De Ri Chang Sheng Huo Ⅴ][2025][04.5][AVC][GB][1080P].mp4",
+	}
+	writeScanVideos(t, filepath.Join(root, dir), names...)
+	fake := newFixtureProvider(t, loadProviderReplayDoc(t))
+	withFileAssociated(t, func(string, string) (bool, error) { return false, nil })
+	prev := scanSessionHook
+	scanSessionHook = func(ctx context.Context, r *MatchingRuntime) *MatchingSession {
+		return newMatchingSessionForTest(ctx, r, fake)
+	}
+	t.Cleanup(func() { scanSessionHook = prev })
+	sc := newV2Scanner(t, root)
+
+	for _, hint := range []string{"", "仙王的日常生活 第五季"} {
+		res, err := sc.ResolveAssistByHint(context.Background(), AssistHintInput{RelDir: filepath.ToSlash(dir), TitleHint: hint, FileNames: names})
+		if err != nil {
+			t.Fatalf("hint=%q: %v", hint, err)
+		}
+		if res.Decision.Code != matching.Review || res.Subject != nil || res.Candidate != nil || len(res.Chapters.Bindings) != 0 {
+			t.Fatalf("hint=%q: 部分文件无绑定时预览应整体复核，got code=%v bindings=%+v", hint, res.Decision.Code, res.Chapters.Bindings)
+		}
+		if !strings.Contains(res.Decision.Reason, names[1]) {
+			t.Fatalf("hint=%q: 复核原因应列出 4.5 集文件，got %q", hint, res.Decision.Reason)
+		}
+		if len(res.Candidates) != 1 || res.Candidates[0].ID != 529875 {
+			t.Fatalf("hint=%q: 应给出第五季候选供人工确认，got %+v", hint, res.Candidates)
+		}
+	}
+	// 只含第 3 集时预览仍正常 matched。
+	res, err := sc.ResolveAssistByHint(context.Background(), AssistHintInput{RelDir: filepath.ToSlash(dir), FileNames: names[:1]})
+	if err != nil || res.Decision.Code != matching.Accepted || len(res.Chapters.Bindings) != 1 || res.Chapters.Bindings[0].StoredNumber != 3 {
+		t.Fatalf("单文件预览应 matched ep3: %v %+v", err, res.Decision)
+	}
 }

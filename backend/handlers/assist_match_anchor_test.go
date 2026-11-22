@@ -92,3 +92,77 @@ func TestAssistHintCommitUsesPreviewSeasonAnchorBindings(t *testing.T) {
 		}
 	}
 }
+
+// 仙王的日常生活 第三～五季（条目、话数与章节规则取自 services/testdata/matching/provider_replay.json）。
+func xianWangSeeds() []bangumiSeed {
+	out := make([]bangumiSeed, 0, 3)
+	for _, s := range []struct {
+		id, year int
+		name     string
+	}{
+		{358742, 2022, "仙王的日常生活 第三季"},
+		{405214, 2023, "仙王的日常生活 第四季"},
+		{529875, 2025, "仙王的日常生活 第五季"},
+	} {
+		out = append(out, bangumiSeed{
+			Subject: matching.Subject{
+				ID: s.id, Name: s.name, NameCn: s.name, Year: s.year,
+				Media: matching.KindSeries, EpisodeCount: 12, Platform: "WEB", Detailed: true,
+			},
+			SearchKeys: []string{"仙王的日常生活"},
+			Chapters:   seriesChapters(s.id, 12),
+		})
+	}
+	return out
+}
+
+// PR #20 复审问题 2：第五季第 3 集与 4.5 集同批预览，4.5 无有效绑定 → 预览须 review_required（旧实现报 matched
+// 且只给出第 3 集绑定）；同批提交同样 review_required 且零写入番剧/剧集。
+func TestAssistHintPreviewPartialBindingsReviewRequired(t *testing.T) {
+	root := t.TempDir()
+	relDir := "XianWang/S5"
+	names := []string{
+		"[GM-Team][国漫][仙王的日常生活 第5季][Xian Wang De Ri Chang Sheng Huo Ⅴ][2025][03][AVC][GB][1080P].mp4",
+		"[GM-Team][国漫][仙王的日常生活 第5季][Xian Wang De Ri Chang Sheng Huo Ⅴ][2025][04.5][AVC][GB][1080P].mp4",
+	}
+	writeVideos(t, filepath.Join(root, relDir), names...)
+	handler := setupScanHandlerV2(t, root, xianWangSeeds()...)
+
+	decode := func(resp confirmResponse) models.AssistMatchResponse {
+		t.Helper()
+		if resp.Code != utils.CodeSuccess {
+			t.Fatalf("应 code=0: %d %q %s", resp.Code, resp.Message, resp.Data)
+		}
+		var out models.AssistMatchResponse
+		if err := json.Unmarshal(resp.Data, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	pv := decode(postAssist(t, handler, models.AssistMatchRequest{FilePath: relDir, FileNames: names, AutoCommit: boolPtr(false)}))
+	if pv.Status != assistStatusReviewRequired || pv.Candidate != nil || len(pv.Bindings) != 0 {
+		t.Fatalf("部分文件无绑定时预览不得报 matched: %+v", pv)
+	}
+	if len(pv.Candidates) != 1 || pv.Candidates[0].ID != 529875 {
+		t.Fatalf("预览复核应给出第五季候选: %+v", pv.Candidates)
+	}
+
+	cm := decode(postAssist(t, handler, models.AssistMatchRequest{FilePath: relDir, FileNames: names}))
+	if cm.Status != assistStatusReviewRequired {
+		t.Fatalf("提交同批文件应 review_required: %+v", cm)
+	}
+	if n := countAnimesByBangumiID(t, 529875); n != 0 {
+		t.Fatalf("复核不得建档，got %d", n)
+	}
+	var eps int
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM episodes").Scan(&eps); err != nil || eps != 0 {
+		t.Fatalf("复核不得写剧集: %v %d", err, eps)
+	}
+
+	// 只含第 3 集时仍 matched 并绑定 ep3。
+	one := decode(postAssist(t, handler, models.AssistMatchRequest{FilePath: relDir, FileNames: names[:1], AutoCommit: boolPtr(false)}))
+	if one.Status != assistStatusMatched || one.Candidate == nil || one.Candidate.ID != 529875 || len(one.Bindings) != 1 || one.Bindings[0].EpNumber != 3 {
+		t.Fatalf("单文件预览应 matched ep3: %+v", one)
+	}
+}
