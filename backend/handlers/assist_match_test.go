@@ -810,3 +810,44 @@ func TestAssistEpisodeOffsetPreviewAndCommitConsistent(t *testing.T) {
 	}
 }
 
+// 计划者 review #2：显式 file_names 混传「已属番 A + 未归属」时，title_hint 解析到番 B 须与 bangumi_id 路径同样 conflict。
+func TestAssistHintExplicitOwnedByOtherAnimeConflict(t *testing.T) {
+	root := t.TempDir()
+	relDir := "XianWangS5"
+	owned := "The.Daily.Life.of.the.Immortal.King.S05E01.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv"
+	free := "The.Daily.Life.of.the.Immortal.King.S05E02.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv"
+	writeVideos(t, filepath.Join(root, relDir), owned, free)
+	handler := setupScanHandlerV2(t, root, assistXianWangSeed())
+	other, err := database.CreateAnime(&models.Anime{Title: "Other", BangumiID: 999, EpCount: 12, FilePath: relDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateEpisode(&models.Episode{AnimeID: other.ID, EpNumber: 1, FilePath: owned}); err != nil {
+		t.Fatal(err)
+	}
+	before := countAssistTables(t)
+
+	for _, req := range []models.AssistMatchRequest{
+		{FilePath: relDir, FileNames: []string{owned, free}, BangumiID: assistXianWangID},
+		{FilePath: relDir, FileNames: []string{owned, free}, TitleHint: "仙王的日常生活", SeasonHint: 5},
+		{FilePath: relDir, FileNames: []string{owned, free}, TitleHint: "仙王的日常生活", SeasonHint: 5, AutoCommit: boolPtr(false)},
+	} {
+		resp := postAssist(t, handler, req)
+		data := decodeConfirmError(t, resp)
+		if resp.Code != utils.CodeInternal || data.Reason != confirmReasonConflict || resp.Message != "文件已归属其他番剧" ||
+			len(data.FileNames) != 1 || data.FileNames[0] != owned {
+			t.Fatalf("应 9999 conflict 且列出已属他番文件: req=%#v code=%d %#v", req, resp.Code, data)
+		}
+	}
+	if after := countAssistTables(t); after != before {
+		t.Fatalf("冲突不得写库: %#v → %#v", before, after)
+	}
+
+	// 未混入已属他番文件时 title_hint 照常入库
+	data := decodeAssistSuccess(t, postAssist(t, handler, models.AssistMatchRequest{
+		FilePath: relDir, FileNames: []string{free}, TitleHint: "仙王的日常生活", SeasonHint: 5,
+	}))
+	if data.Status != "committed" || data.Anime == nil || data.Anime.BangumiID != assistXianWangID {
+		t.Fatalf("仅未归属文件应 committed: %#v", data)
+	}
+}

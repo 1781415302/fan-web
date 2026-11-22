@@ -76,6 +76,9 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 
 	targets := resolved.FreeFiles
 	explicit := len(request.FileNames) > 0 || resolved.IsSingleFilePath
+	// 显式文件中已归属的番剧（仅显式模式）：title_hint 路径解析出其他条目时须与 bangumi_id 路径同样判冲突。
+	var explicitOwned *models.Anime
+	var explicitOwnedFiles []string
 	switch {
 	case explicit:
 		owned, err := h.scanner.InspectAssistFilesOwnership(normDir, resolved.FreeFiles)
@@ -97,6 +100,10 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 			return
 		}
 		targets = owned.Unassociated
+		if owned.OwnedAnime != nil {
+			explicitOwned = owned.OwnedAnime
+			explicitOwnedFiles = assistOwnedFileNames(resolved.FreeFiles, owned.Unassociated)
+		}
 	case len(resolved.FreeFiles) == 0:
 		// 目录模式且全部文件已关联：仅 1 部番剧认领全部文件且与请求目标一致时幂等返回，否则视为冲突。
 		owned, err := h.scanner.InspectAssistFilesOwnership(normDir, resolved.PresentFiles)
@@ -161,6 +168,10 @@ func (h *AnimeHandler) AssistMatch(c *gin.Context) {
 		return
 	}
 	if result.Decision.Code == matching.Accepted && result.Subject != nil {
+		if explicitOwned != nil && explicitOwned.BangumiID != result.Subject.ID {
+			confirmFail(c, utils.CodeInternal, confirmReasonConflict, "文件已归属其他番剧", explicitOwnedFiles)
+			return
+		}
 		if !autoCommit {
 			utils.Success(c, models.AssistMatchResponse{
 				Status:    assistStatusMatched,
