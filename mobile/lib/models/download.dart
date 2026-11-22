@@ -95,10 +95,14 @@ class DownloadRecord {
 class DownloadIndexCodec {
   static const int version = 1;
 
-  static String encode(List<DownloadRecord> records) {
+  /// 不可信标记键：仅在索引曾不可信后写出（`"untrusted": true`），合法索引不含此键。
+  static const String untrustedKey = 'untrusted';
+
+  static String encode(List<DownloadRecord> records, {bool untrusted = false}) {
     return jsonEncode({
       'version': version,
       'records': [for (final r in records) r.toJson()],
+      if (untrusted) untrustedKey: true,
     });
   }
 

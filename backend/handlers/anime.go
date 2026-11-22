@@ -267,13 +267,15 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 		utils.Error(c, utils.CodeInvalidParams, err.Error())
 		return
 	}
+	// 统一为 / 分隔的规范相对目录后再比较与落库（Windows \ 与 Linux / 混合数据一致）。
+	request.FilePath = services.NormalizeRelDir(request.FilePath)
 
 	existing, err := database.GetAnimeByBangumiID(request.BangumiID)
 	if err != nil {
 		utils.Error(c, utils.CodeInternal, "查询已有番剧失败")
 		return
 	}
-	if existing != nil && existing.FilePath != request.FilePath {
+	if existing != nil && services.NormalizeRelDir(existing.FilePath) != request.FilePath {
 		utils.Error(c, utils.CodeInvalidParams, animeDirMismatchMessage)
 		return
 	}
@@ -289,7 +291,7 @@ func (h *AnimeHandler) Create(c *gin.Context) {
 	}
 	// 仅在并发 TOCTOU 竞态时触发：并发请求于两次查询之间插入了相同 bangumi_id
 	// 但不同路径的记录，CreateAnime 的唯一索引回退返回既有行；正常流程不可达。
-	if anime.FilePath != request.FilePath {
+	if services.NormalizeRelDir(anime.FilePath) != request.FilePath {
 		utils.Error(c, utils.CodeInvalidParams, animeDirMismatchMessage)
 		return
 	}
@@ -593,11 +595,6 @@ func confirmFail(c *gin.Context, code int, reason, message string, fileNames []s
 	utils.ErrorWithData(c, code, message, confirmErrorData{Reason: reason, Message: message, FileNames: fileNames})
 }
 
-// normalizeConfirmDir 目录比较前统一分隔符（与 IsFileAssociated 同做法）。
-func normalizeConfirmDir(p string) string {
-	return strings.ReplaceAll(p, "\\", "/")
-}
-
 func validateConfirmFileName(name string) bool {
 	if strings.TrimSpace(name) == "" {
 		return false
@@ -648,49 +645,103 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		return
 	}
 
-	lock := h.confirmLock(request.BangumiID)
+	result, fail := h.commitInboxFiles(inboxCommitRequest{
+		BangumiID:     request.BangumiID,
+		Dir:           services.NormalizeRelDir(request.FilePath),
+		FileNames:     request.FileNames,
+		EpisodeOffset: request.EpisodeOffset,
+	})
+	if fail != nil {
+		confirmFail(c, fail.code, fail.reason, fail.message, fail.fileNames)
+		return
+	}
+	utils.Success(c, gin.H{
+		"anime":    result.anime,
+		"created":  result.created,
+		"scanned":  len(result.episodes),
+		"episodes": result.episodes,
+	})
+}
+
+// inboxCommitRequest commitInboxFiles 的入参：Dir 须已经 services.NormalizeRelDir 归一。
+type inboxCommitRequest struct {
+	BangumiID     int
+	Dir           string
+	FileNames     []string
+	EpisodeOffset int
+	// TrustedTarget 为 true 时 prepareScanV2 追加 services.WithTrustedTarget()（目标条目已由外部确定）。
+	TrustedTarget bool
+	// TrustedBindings 非空时（配合 TrustedTarget）追加 services.WithTrustedBindings：
+	// 提交沿用同一次请求预览得出的章节绑定，归属与快照校验照常进行。
+	TrustedBindings []matching.EpisodeBinding
+}
+
+// inboxCommitResult commitInboxFiles 成功提交后的结果。
+type inboxCommitResult struct {
+	anime    *models.Anime
+	created  bool
+	episodes []models.Episode
+}
+
+// inboxCommitError commitInboxFiles 的失败描述：code/reason/message/fileNames 与 confirmFail 参数一一对应；
+// 进入此结构前已按需回滚本请求新建的番剧。
+type inboxCommitError struct {
+	code      int
+	reason    string
+	message   string
+	fileNames []string
+}
+
+// commitInboxFiles 收件箱确认与辅助匹配共用的原子提交（Confirm 与 AssistMatch 共用）：
+// 按 bangumi_id 加进程内互斥 → 查/建番剧（目录以 NormalizeRelDir 比较）→ prepareScanV2(WithOnlyFiles,
+// WithEpisodeOffset[, WithTrustedTarget])（只读）→ 校验 file_names 全部进入 plan.inv.Desired →
+// commitScanV2 原子提交 → 精确清收件箱。失败时回滚本请求新建的番剧，created=false 不删任何数据。
+func (h *AnimeHandler) commitInboxFiles(req inboxCommitRequest) (inboxCommitResult, *inboxCommitError) {
+	lock := h.confirmLock(req.BangumiID)
 	lock.Lock()
 	defer lock.Unlock()
 
-	existing, err := database.GetAnimeByBangumiID(request.BangumiID)
+	existing, err := database.GetAnimeByBangumiID(req.BangumiID)
 	if err != nil {
-		log.Printf("[Anime] 收件箱确认查询番剧 %d 失败: %v", request.BangumiID, err)
-		confirmFail(c, utils.CodeInternal, confirmReasonUpstream, "查询已有番剧失败", nil)
-		return
+		log.Printf("[Anime] 收件箱确认查询番剧 %d 失败: %v", req.BangumiID, err)
+		return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmReasonUpstream, message: "查询已有番剧失败"}
 	}
 	var anime *models.Anime
 	created := false
 	if existing != nil {
-		if normalizeConfirmDir(existing.FilePath) != normalizeConfirmDir(request.FilePath) {
-			confirmFail(c, utils.CodeInternal, confirmReasonDirMismatch, animeDirMismatchMessage, nil)
-			return
+		if services.NormalizeRelDir(existing.FilePath) != req.Dir {
+			return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmReasonDirMismatch, message: animeDirMismatchMessage}
 		}
 		anime = existing
 	} else {
 		var inserted bool
-		anime, inserted, err = h.createAnimeFromBangumiReportInserted(request.BangumiID, request.FilePath)
+		anime, inserted, err = h.createAnimeFromBangumiReportInserted(req.BangumiID, req.Dir)
 		if err != nil {
-			confirmFail(c, utils.CodeInternal, confirmReasonUpstream, createAnimeErrorMessage(err), nil)
-			return
+			return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmReasonUpstream, message: createAnimeErrorMessage(err)}
 		}
 		// 唯一索引回退返回了其它目录的既有行（并发入库竞态）：不是本请求所建，不得回滚。
-		if normalizeConfirmDir(anime.FilePath) != normalizeConfirmDir(request.FilePath) {
-			confirmFail(c, utils.CodeInternal, confirmReasonDirMismatch, animeDirMismatchMessage, nil)
-			return
+		if services.NormalizeRelDir(anime.FilePath) != req.Dir {
+			return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmReasonDirMismatch, message: animeDirMismatchMessage}
 		}
 		// created 只取决于本次是否真正 INSERT：回退返回的同目录既有行属于其它流程，失败时不得回滚删除。
 		created = inserted
 	}
 
 	// 先只读生成整批结果并校验 file_names 全部可归入，再原子提交；校验失败时对数据库零写入。
-	plan, err := h.prepareScanV2(anime,
-		services.WithOnlyFiles(request.FileNames),
-		services.WithEpisodeOffset(request.EpisodeOffset),
-	)
+	opts := []services.ScanOption{
+		services.WithOnlyFiles(req.FileNames),
+		services.WithEpisodeOffset(req.EpisodeOffset),
+	}
+	if req.TrustedTarget {
+		opts = append(opts, services.WithTrustedTarget())
+		if len(req.TrustedBindings) > 0 {
+			opts = append(opts, services.WithTrustedBindings(req.TrustedBindings))
+		}
+	}
+	plan, err := h.prepareScanV2(anime, opts...)
 	if err != nil {
-		h.rollbackConfirmedAnime(anime.ID, created, nil)
-		confirmFail(c, utils.CodeInternal, confirmScanErrorReason(err), scanV2ErrorMessage(err), nil)
-		return
+		h.rollbackConfirmedAnime(anime.ID, created)
+		return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmScanErrorReason(err), message: scanV2ErrorMessage(err)}
 	}
 
 	stored := make(map[string]bool, len(plan.inv.Desired))
@@ -699,7 +750,7 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 	}
 	var missing []string
 	seenMissing := map[string]bool{}
-	for _, name := range request.FileNames {
+	for _, name := range req.FileNames {
 		if stored[name] || seenMissing[name] {
 			continue
 		}
@@ -707,30 +758,26 @@ func (h *AnimeHandler) Confirm(c *gin.Context) {
 		missing = append(missing, name)
 	}
 	if len(missing) > 0 {
-		h.rollbackConfirmedAnime(anime.ID, created, nil)
-		confirmFail(c, utils.CodeInternal, confirmReasonNoMatch,
-			"这些文件未能归入该条目："+strings.Join(missing, "、"), missing)
-		return
+		h.rollbackConfirmedAnime(anime.ID, created)
+		return inboxCommitResult{}, &inboxCommitError{
+			code: utils.CodeInternal, reason: confirmReasonNoMatch,
+			message: "这些文件未能归入该条目：" + strings.Join(missing, "、"), fileNames: missing,
+		}
 	}
 
 	episodes, err := h.commitScanV2(plan)
 	if err != nil {
-		h.rollbackConfirmedAnime(anime.ID, created, nil)
-		confirmFail(c, utils.CodeInternal, confirmScanErrorReason(err), scanV2ErrorMessage(err), nil)
-		return
+		// 只清理仍为空的新建番剧；已有剧集（含其它流程并发写入）一律保留。
+		h.rollbackConfirmedAnime(anime.ID, created)
+		return inboxCommitResult{}, &inboxCommitError{code: utils.CodeInternal, reason: confirmScanErrorReason(err), message: scanV2ErrorMessage(err)}
 	}
 
 	if names := storedEpisodeFileNames(episodes); len(names) > 0 {
-		if err := database.DeleteUnidentifiedFiles(request.FilePath, names); err != nil {
-			log.Printf("[Anime] 精确清除目录 %q 未识别失败: %v", request.FilePath, err)
+		if err := database.DeleteUnidentifiedFiles(req.Dir, names); err != nil {
+			log.Printf("[Anime] 精确清除目录 %q 未识别失败: %v", req.Dir, err)
 		}
 	}
-	utils.Success(c, gin.H{
-		"anime":    anime,
-		"created":  created,
-		"scanned":  len(episodes),
-		"episodes": episodes,
-	})
+	return inboxCommitResult{anime: anime, created: created, episodes: episodes}, nil
 }
 
 // confirmScanErrorReason 将 runScanV2 错误映射为 ConfirmErrorData.reason。
@@ -748,31 +795,20 @@ func confirmScanErrorReason(err error) string {
 }
 
 // rollbackConfirmedAnime 回滚本请求新建的番剧：created=false 不删任何数据。
-// 剧集为空，或剧集全部是本请求 runScanV2 刚写入的（ours，按 ID）时才删除番剧（剧集随外键级联）；
-// 出现本请求之外的剧集则保留并记录日志，避免误删其它流程写入的数据。
-func (h *AnimeHandler) rollbackConfirmedAnime(animeID int64, created bool, ours []models.Episode) {
+// 仅当番剧在数据库中仍没有任何剧集时，以单条语句原子删除；只要已有剧集
+// （无论是否本请求写入，含其它流程并发写入的同名剧集）就保留并记录日志。
+// ReconcileEpisodes 为单事务，失败时本请求对剧集零写入，故无需也不得按文件名推断写入归属。
+func (h *AnimeHandler) rollbackConfirmedAnime(animeID int64, created bool) {
 	if !created {
 		return
 	}
-	current, err := database.ListEpisodesByAnimeID(animeID)
+	deleted, err := database.DeleteAnimeIfNoEpisodes(animeID)
 	if err != nil {
-		log.Printf("[Anime] 收件箱确认回滚读取番剧 %d 剧集失败，保留番剧: %v", animeID, err)
+		log.Printf("[Anime] 收件箱确认回滚删除番剧 %d 失败: %v", animeID, err)
 		return
 	}
-	if len(current) > 0 {
-		own := make(map[int64]bool, len(ours))
-		for _, ep := range ours {
-			own[ep.ID] = true
-		}
-		for _, ep := range current {
-			if !own[ep.ID] {
-				log.Printf("[Anime] 收件箱确认回滚：番剧 %d 含非本请求剧集，保留", animeID)
-				return
-			}
-		}
-	}
-	if err := database.DeleteAnime(animeID); err != nil {
-		log.Printf("[Anime] 收件箱确认回滚删除番剧 %d 失败: %v", animeID, err)
+	if !deleted {
+		log.Printf("[Anime] 收件箱确认回滚：番剧 %d 已含剧集或已不存在，保留", animeID)
 	}
 }
 

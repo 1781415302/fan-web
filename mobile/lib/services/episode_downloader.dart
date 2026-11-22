@@ -75,23 +75,26 @@ class DownloadIndexStore {
     return '$root/downloads/index.json';
   }
 
-  Future<List<DownloadRecord>> load() => _enqueue(_loadDirect);
+  Future<List<DownloadRecord>> load() =>
+      _enqueue(() async => (await _readDirect()).records);
 
   Future<void> upsert(DownloadRecord record) => _enqueue(() async {
-    final all = await _loadDirect();
+    final current = await _readDirect();
+    final all = current.records;
     all.removeWhere(
       (r) => r.serverUrl == record.serverUrl && r.episodeId == record.episodeId,
     );
     all.add(record);
-    await _saveDirect(all);
+    await _saveDirect(all, untrusted: !current.intact);
   });
 
   Future<void> remove(String serverUrl, int episodeId) => _enqueue(() async {
-    final all = await _loadDirect();
+    final current = await _readDirect();
+    final all = current.records;
     all.removeWhere(
       (r) => r.serverUrl == serverUrl && r.episodeId == episodeId,
     );
-    await _saveDirect(all);
+    await _saveDirect(all, untrusted: !current.intact);
   });
 
   Future<T> _enqueue<T>(Future<T> Function() operation) {
@@ -103,35 +106,119 @@ class DownloadIndexStore {
     return result;
   }
 
-  Future<List<DownloadRecord>> _loadDirect() async {
+  /// 读取当前索引（所有读写路径共用）：优先 index.json；仅当其路径完全不存在时
+  /// 退到遗留的 index.json.tmp（旧版保存在“删旧索引 → rename”之间中断）；两者都不存在
+  /// 才是首次安装的可信空索引。records 恒为可修改列表（损坏输入按空列表容错）。
+  /// intact=false：读取失败、JSON 损坏、结构不符、含无法解析或缺少必要字段
+  /// （server_url / episode_id / file_name）的记录，或文件带持久化的 untrusted 标记。
+  Future<({List<DownloadRecord> records, bool intact, bool fromTmp})>
+  _readDirect() async {
+    String path;
     try {
-      final file = File(await _indexPath());
-      if (!await file.exists()) return [];
-      return DownloadIndexCodec.decode(await file.readAsString());
+      path = await _indexPath();
     } catch (_) {
-      // 索引损坏按空处理，下次写入时覆盖。
-      return [];
+      return (records: <DownloadRecord>[], intact: false, fromTmp: false);
+    }
+    var fromTmp = false;
+    try {
+      var source = path;
+      // 仅「路径完全不存在」视为无索引；被目录等占用时按读取失败处理。
+      if (await FileSystemEntity.type(path) == FileSystemEntityType.notFound) {
+        final tmpPath = '$path.tmp';
+        if (await FileSystemEntity.type(tmpPath) ==
+            FileSystemEntityType.notFound) {
+          return (records: <DownloadRecord>[], intact: true, fromTmp: false);
+        }
+        source = tmpPath;
+        fromTmp = true;
+      }
+      final raw = await File(source).readAsString();
+      final records = List<DownloadRecord>.of(DownloadIndexCodec.decode(raw));
+      return (
+        records: records,
+        intact: _isIntactIndex(raw, records.length),
+        fromTmp: fromTmp,
+      );
+    } catch (_) {
+      return (records: <DownloadRecord>[], intact: false, fromTmp: fromTmp);
     }
   }
 
-  Future<void> _saveDirect(List<DownloadRecord> all) async {
+  /// restoreIndex 专用：返回记录及索引是否可信（判定见 [_readDirect]）。
+  /// 正式索引缺失而 .tmp 可信时改名恢复为正式索引；恢复失败按不可信处理。
+  Future<({List<DownloadRecord> records, bool intact})> loadForRestore() =>
+      _enqueue(() async {
+        final current = await _readDirect();
+        if (current.fromTmp && current.intact) {
+          try {
+            final path = await _indexPath();
+            await File('$path.tmp').rename(path);
+          } catch (_) {
+            return (records: current.records, intact: false);
+          }
+        }
+        return (records: current.records, intact: current.intact);
+      });
+
+  static bool _isIntactIndex(String raw, int decodedCount) {
     try {
-      final path = await _indexPath();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return false;
+      // 不可信状态经写入持久化：此前索引已不可信时，后续 upsert/remove 写出的索引
+      // 可能丢失了无法解析的原始条目，不能据此把未引用的视频当孤儿删除。
+      if (decoded[DownloadIndexCodec.untrustedKey] == true) return false;
+      final list = decoded['records'];
+      if (list is! List || list.length != decodedCount) return false;
+      // 每条记录都必须带齐定位落盘文件的必要字段，否则（如 {}）视为不完整，
+      // 避免因空字段记录被剔除而把其对应视频当孤儿删除。
+      return list.every(_hasRequiredFields);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _hasRequiredFields(Object? item) {
+    if (item is! Map) return false;
+    final serverUrl = item['server_url'];
+    final episodeId = item['episode_id'];
+    final fileName = item['file_name'];
+    return serverUrl is String &&
+        serverUrl.isNotEmpty &&
+        episodeId is int &&
+        episodeId > 0 &&
+        fileName is String &&
+        fileName.isNotEmpty;
+  }
+
+  /// [untrusted] 为 true（写入前读到的索引不可信）时写出 untrusted 标记，使不可信状态跨写入、
+  /// 跨重启保持，restoreIndex 不会因索引被重写而删除未被引用的正式视频。
+  Future<void> _saveDirect(
+    List<DownloadRecord> all, {
+    bool untrusted = false,
+  }) async {
+    final path = await _indexPath();
+    final tmp = File('$path.tmp');
+    try {
       final file = File(path);
       await file.parent.create(recursive: true);
       // 临时文件 + rename 原子替换，避免半写损坏。
-      final tmp = File('$path.tmp');
-      await tmp.writeAsString(DownloadIndexCodec.encode(all), flush: true);
+      await tmp.writeAsString(
+        DownloadIndexCodec.encode(all, untrusted: untrusted),
+        flush: true,
+      );
+      // 直接 rename 覆盖旧索引（POSIX rename(2) 原子替换）；不先删旧文件，
+      // 避免中断后只剩 .tmp 而正式索引缺失。
+      await tmp.rename(file.path);
+    } catch (e) {
+      // 磁盘满等写入失败：尽力删除残余 .tmp 后透传，由调用方按 failed 处理。
       try {
-        if (await file.exists()) {
-          await file.delete();
+        if (await tmp.exists()) {
+          await tmp.delete();
         }
       } catch (_) {
-        // 旧文件删除失败不阻塞，后续 rename 会覆盖（同盘）。
+        // .tmp 删除失败不掩盖原始写入错误。
       }
-      await tmp.rename(path);
-    } catch (_) {
-      // 磁盘满等写入失败由调用方按 failed 处理，此处不抛。
+      rethrow;
     }
   }
 }
@@ -326,12 +413,17 @@ class EpisodeDownloader {
     _emit(key, const DownloadTaskState(status: DownloadStatus.idle));
   }
 
-  /// 加载 index.json、剔除文件已丢失的记录、删除所有孤儿 .part。
-  /// 调用时队列为空，任何 .part 都无主。
+  /// 加载 index.json、剔除文件已丢失的记录、删除所有孤儿 .part 与
+  /// 未被有效记录引用的孤儿正式视频。调用时队列为空，任何 .part 都无主。
+  /// 只清理 `$root/downloads/<serverHashDir>/` 一级子目录内的文件，
+  /// 绝不触碰 `$root/downloads` 根目录文件（含 index.json / index.json.tmp）。
   /// 注意已知限制：App 进后台可能被系统杀死；被杀后 .part 会在下次启动
   /// 被此处清理删除，重新点击下载将从头下载；已完成的下载不受影响。
+  /// index.json 存在但读取失败/损坏时只清 .part，不删任何正式视频（避免误删离线视频）。
   Future<void> restoreIndex() async {
-    final records = await _store.load();
+    final loaded = await _store.loadForRestore();
+    final records = loaded.records;
+    final indexIntact = loaded.intact;
     String root;
     try {
       root = await _resolveRoot();
@@ -351,7 +443,9 @@ class EpisodeDownloader {
       }
       if (exists) {
         valid[DownloadKey(record.serverUrl, record.episodeId)] = record;
-      } else {
+      } else if (indexIntact) {
+        // 索引不可信时不改写 index.json：remove 会按解析结果整体重写，
+        // 丢掉无法解析的原始条目，下次启动便会把对应视频当孤儿删除。
         try {
           await _store.remove(record.serverUrl, record.episodeId);
         } catch (_) {
@@ -362,22 +456,47 @@ class EpisodeDownloader {
     _completed
       ..clear()
       ..addAll(valid);
-    // 孤儿 .part 清理。
+    // 保留集合：(serverHashDirName, fileName) 统一按 `/` 拼接比较，
+    // 兼容 Windows 宿主机上 Directory.list 返回 `\` 分隔的路径。
+    final keepKeys = <String>{
+      for (final record in valid.values)
+        '${_lastSegment(downloadDirFor(root, record.serverUrl))}/'
+            '${record.fileName}',
+    };
+    // 孤儿 .part 与孤儿正式视频清理：只遍历一级哈希子目录中的非目录文件。
     try {
       final downloadsDir = Directory('$root/downloads');
       if (await downloadsDir.exists()) {
-        await for (final entity in downloadsDir.list(recursive: true)) {
-          if (entity is! File || !entity.path.endsWith('.part')) continue;
+        await for (final serverDir in downloadsDir.list()) {
+          if (serverDir is! Directory) continue;
+          final hashDirName = _lastSegment(serverDir.path);
           try {
-            await entity.delete();
+            await for (final entity in serverDir.list()) {
+              if (entity is Directory) continue;
+              final name = _lastSegment(entity.path);
+              if (!name.endsWith('.part') &&
+                  (!indexIntact || keepKeys.contains('$hashDirName/$name'))) {
+                continue;
+              }
+              try {
+                await entity.delete();
+              } catch (_) {
+                // 单个孤儿删除失败不阻塞。
+              }
+            }
           } catch (_) {
-            // 单个孤儿删除失败不阻塞。
+            // 单个子目录遍历失败不阻塞其余目录。
           }
         }
       }
     } catch (_) {
       // 清理失败不阻塞启动。
     }
+  }
+
+  /// 取路径最后一段，`/` 与 `\` 均视为分隔符。
+  static String _lastSegment(String path) {
+    return path.replaceAll('\\', '/').split('/').last;
   }
 
   /// 同步：completed 记录且文件存在时返回绝对路径，否则 null。
@@ -973,6 +1092,15 @@ class EpisodeDownloader {
     try {
       await _store.upsert(record);
     } catch (_) {
+      // 索引写入失败：尽力删除刚 rename 成功的正式文件，避免即刻产生孤儿视频。
+      try {
+        final target = File(targetPath);
+        if (await target.exists()) {
+          await target.delete();
+        }
+      } catch (_) {
+        // 删除失败留给下次 restoreIndex 的孤儿清理。
+      }
       _emit(
         key,
         const DownloadTaskState(

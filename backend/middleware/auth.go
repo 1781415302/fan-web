@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -19,6 +23,13 @@ const (
 	userIDContextKey = "auth_user_id"
 )
 
+const (
+	// APIKeyHeader 外部工具（如 Hermes）携带 API Key 的请求头。
+	APIKeyHeader = "X-API-Key"
+	// APIKeyTokenPrefix API Key 明文前缀；Authorization: Bearer 携带该前缀时按 API Key 校验。
+	APIKeyTokenPrefix = "fw_"
+)
+
 func JWTAuth(authService *services.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := strings.TrimSpace(c.GetHeader("Authorization"))
@@ -29,33 +40,121 @@ func JWTAuth(authService *services.AuthService) gin.HandlerFunc {
 			return
 		}
 
-		claims, err := authService.ParseToken(parts[1])
-		if err != nil {
-			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
-			c.Abort()
+		if !authenticateJWT(c, authService, parts[1]) {
 			return
 		}
-
-		// 校验用户仍存在：管理员删除用户后，已签发的 token 立即失效。
-		user, err := database.GetUserByID(claims.UserID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
-			} else {
-				utils.Error(c, utils.CodeInternal, "查询用户失败")
-			}
-			c.Abort()
-			return
-		}
-
-		// 用数据库中的最新信息覆盖 claims，避免误用过期角色。
-		claims.Username = user.Username
-		claims.IsAdmin = user.IsAdmin
-
-		c.Set(claimsContextKey, claims)
-		c.Set(userIDContextKey, user.ID)
 		c.Next()
 	}
+}
+
+// JWTOrAPIKeyAuth 同时接受 JWT 与管理员 API Key 的认证中间件：
+//  1. X-API-Key 非空时优先按 API Key 校验；
+//  2. 否则解析 Authorization: Bearer <token>，token 以 fw_ 开头按 API Key 校验，其余按 JWT 校验。
+//
+// 仅用于番剧只读组与媒体库管理组；严禁挂载到 /api/admin/*、/api/auth/*、/api/me/*、/api/progress/*。
+func JWTOrAPIKeyAuth(authService *services.AuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if xKey := strings.TrimSpace(c.GetHeader(APIKeyHeader)); xKey != "" {
+			if !authenticateAPIKey(c, xKey) {
+				return
+			}
+			c.Next()
+			return
+		}
+
+		header := strings.TrimSpace(c.GetHeader("Authorization"))
+		parts := strings.Fields(header)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			utils.Error(c, utils.CodeUnauthenticated, "未登录")
+			c.Abort()
+			return
+		}
+
+		var ok bool
+		if strings.HasPrefix(parts[1], APIKeyTokenPrefix) {
+			ok = authenticateAPIKey(c, parts[1])
+		} else {
+			ok = authenticateJWT(c, authService, parts[1])
+		}
+		if !ok {
+			return
+		}
+		c.Next()
+	}
+}
+
+// authenticateJWT 校验 JWT 并写入认证上下文；失败时已写出错误响应并 Abort，返回 false。
+// JWTAuth 与 JWTOrAPIKeyAuth 共用，保证两者对 JWT 的处理完全一致。
+func authenticateJWT(c *gin.Context, authService *services.AuthService, token string) bool {
+	claims, err := authService.ParseToken(token)
+	if err != nil {
+		utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+		c.Abort()
+		return false
+	}
+
+	// 校验用户仍存在：管理员删除用户后，已签发的 token 立即失效。
+	user, err := database.GetUserByID(claims.UserID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			utils.Error(c, utils.CodeUnauthenticated, "登录状态已失效")
+		} else {
+			utils.Error(c, utils.CodeInternal, "查询用户失败")
+		}
+		c.Abort()
+		return false
+	}
+
+	// 用数据库中的最新信息覆盖 claims，避免误用过期角色。
+	claims.Username = user.Username
+	claims.IsAdmin = user.IsAdmin
+
+	c.Set(claimsContextKey, claims)
+	c.Set(userIDContextKey, user.ID)
+	return true
+}
+
+// authenticateAPIKey 按 SHA-256 哈希校验 API Key，并复查创建者仍存在且仍为管理员；
+// 失败时已写出错误响应并 Abort，返回 false。
+// 已吊销、创建者被删除或被降权统一返回 2001，避免泄露密钥状态细节。
+func authenticateAPIKey(c *gin.Context, rawKey string) bool {
+	sum := sha256.Sum256([]byte(rawKey))
+	keyHash := hex.EncodeToString(sum[:])
+
+	rec, err := database.GetAPIKeyByHash(keyHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.Error(c, utils.CodeUnauthenticated, "API Key 无效或已失效")
+		} else {
+			utils.Error(c, utils.CodeInternal, "查询 API Key 失败")
+		}
+		c.Abort()
+		return false
+	}
+
+	user, err := database.GetUserByID(rec.CreatedBy)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.Error(c, utils.CodeUnauthenticated, "API Key 无效或已失效")
+		} else {
+			utils.Error(c, utils.CodeInternal, "查询用户失败")
+		}
+		c.Abort()
+		return false
+	}
+	if !user.IsAdmin {
+		utils.Error(c, utils.CodeUnauthenticated, "API Key 无效或已失效")
+		c.Abort()
+		return false
+	}
+
+	c.Set(claimsContextKey, &services.Claims{UserID: user.ID, Username: user.Username, IsAdmin: user.IsAdmin})
+	c.Set(userIDContextKey, user.ID)
+
+	if err := database.TouchAPIKeyLastUsed(rec.ID); err != nil {
+		log.Printf("[Auth] 更新 API Key %d 最近使用时间失败: %v", rec.ID, err)
+	}
+	return true
 }
 
 func RequireAdmin(c *gin.Context) {

@@ -25,6 +25,11 @@ var migrations = []migration{
 		name:    "library_inbox_and_bangumi_sync",
 		fn:      migrateLibraryInboxAndBangumiSync,
 	},
+	{
+		version: 4,
+		name:    "api_keys",
+		fn:      migrateAPIKeys,
+	},
 }
 
 // migrateInitialSchema 建立初始业务表与索引。

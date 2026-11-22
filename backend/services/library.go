@@ -476,7 +476,7 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 		addGroupUnidentified(result, files, "查询已有番剧失败")
 		return
 	}
-	if anime != nil && anime.FilePath != groupDir {
+	if anime != nil && NormalizeRelDir(anime.FilePath) != NormalizeRelDir(groupDir) {
 		addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
 		return
 	}
@@ -508,7 +508,7 @@ func (s *LibraryService) processGroup(key groupKey, files []parsedLibraryFile, c
 		addGroupUnidentified(result, files, "创建番剧失败")
 		return
 	}
-	if anime.FilePath != groupDir {
+	if NormalizeRelDir(anime.FilePath) != NormalizeRelDir(groupDir) {
 		addGroupUnidentified(result, files, fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, groupDir))
 		return
 	}
@@ -920,7 +920,7 @@ func (s *LibraryService) persistSubjectV2(
 		addBindingsUnidentified(result, dir, bindings, "查询已有番剧失败", cands)
 		return nil
 	}
-	if anime != nil && anime.FilePath != dir {
+	if anime != nil && NormalizeRelDir(anime.FilePath) != NormalizeRelDir(dir) {
 		reason := fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, dir)
 		addBindingsUnidentified(result, dir, bindings, reason, cands)
 		return nil
@@ -945,7 +945,7 @@ func (s *LibraryService) persistSubjectV2(
 			addBindingsUnidentified(result, dir, bindings, "创建番剧失败", cands)
 			return nil
 		}
-		if anime.FilePath != dir {
+		if NormalizeRelDir(anime.FilePath) != NormalizeRelDir(dir) {
 			reason := fmt.Sprintf("番剧已存在但目录不同（已有: %s，当前: %s）", anime.FilePath, dir)
 			addBindingsUnidentified(result, dir, bindings, reason, cands)
 			return nil

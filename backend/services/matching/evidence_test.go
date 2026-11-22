@@ -579,3 +579,265 @@ func TestRecallParseSxxEyyRevisionSuffix(t *testing.T) {
 		t.Fatalf("bracket 05v2: %+v", br.Episode)
 	}
 }
+
+func TestSceneSxxEyyTruncatesEpisodeTitleAndSpecs(t *testing.T) {
+	name := "The.Daily.Life.of.the.Immortal.King.S05E12.Siblings.Alliance.1080p.CR.WEB-DL.DUAL.AAC2.0.H.264-VARYG.mkv"
+	ev := ParseFile(FileInput{Name: name})
+	if ev.Name != name {
+		t.Fatalf("Name mutated: %q", ev.Name)
+	}
+	if ev.Ordinal.Season != 5 || ev.Episode.Kind != NumberSingle || ev.Episode.First != 12 || ev.Episode.Last != 12 {
+		t.Fatalf("want S5E12, got season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if len(ev.Titles) != 1 || ev.Titles[0].Text != "The Daily Life of the Immortal King" || ev.Titles[0].Source != SourceFile {
+		t.Fatalf("titles=%#v", ev.Titles)
+	}
+	for _, leak := range []string{"Siblings", "Alliance", "DUAL", "AAC", "264", "VARYG"} {
+		if titlesContainSub(ev, leak) {
+			t.Fatalf("%q leaked into titles: %#v", leak, ev.Titles)
+		}
+	}
+	if len(ev.Conflicts) != 0 {
+		t.Fatalf("conflicts=%v", ev.Conflicts)
+	}
+}
+
+func TestSceneSxxEyyPrefixFormKeepsTitleAfter(t *testing.T) {
+	// hasStrongSceneTitle(before) 为假：前缀式保持 removeEpisodeAt 原逻辑
+	ev := ParseFile(FileInput{Name: "S05E12.Title.1080p.mkv"})
+	if ev.Ordinal.Season != 5 || ev.Episode.First != 12 {
+		t.Fatalf("season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if len(ev.Titles) != 1 || ev.Titles[0].Text != "Title" {
+		t.Fatalf("titles=%#v", ev.Titles)
+	}
+}
+
+func TestSceneSxxEyyMediaFromTruncatedTail(t *testing.T) {
+	// 截断前先从 after 探测 media，且后续 stripMedia 不得把它覆盖回 KindUnknown
+	ev := ParseFile(FileInput{Name: "Title.Name.S01E03.OVA.1080p.WEB-DL.mkv"})
+	if ev.Media != KindOVA {
+		t.Fatalf("media=%v want ova", ev.Media)
+	}
+	if ev.Ordinal.Season != 1 || ev.Episode.First != 3 {
+		t.Fatalf("season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if len(ev.Titles) != 1 || ev.Titles[0].Text != "Title Name" {
+		t.Fatalf("titles=%#v", ev.Titles)
+	}
+	// parseRest 直接调用：无任何媒体标记时返回 KindUnknown 而非零值 ""
+	_, _, _, _, media := parseRest("Plain Title - 05", false)
+	if media != KindUnknown {
+		t.Fatalf("parseRest media=%q want KindUnknown", media)
+	}
+	// 集号之前的媒体标记仍由原 stripMedia 识别
+	_, _, _, _, media = parseRest("Title Movie S01E01", false)
+	if media != KindMovie {
+		t.Fatalf("parseRest media=%q want movie", media)
+	}
+}
+
+func TestSceneSxxEyyProtectsNoAndDecimal(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Kaiju.No.8.S01E05.1080p.WEB-DL.AAC2.0.H.264-GRP.mkv"})
+	if ev.Ordinal.Season != 1 || ev.Episode.First != 5 {
+		t.Fatalf("season=%d ep=%+v", ev.Ordinal.Season, ev.Episode)
+	}
+	if len(ev.Titles) != 1 || ev.Titles[0].Text != "Kaiju No. 8" {
+		t.Fatalf("titles=%#v", ev.Titles)
+	}
+	frac := ParseFile(FileInput{Name: "Show - 12.5.mkv"})
+	if frac.Episode.Kind != NumberFraction || frac.Episode.Raw != "12.5" {
+		t.Fatalf("fraction=%+v", frac.Episode)
+	}
+}
+
+func TestStripSceneDotSpecs(t *testing.T) {
+	cases := []struct{ in, want string }{
+		// 仅本体变空格，左分隔与右侧紧贴的 - 保留，需循环两轮
+		{".AAC2.0.H.264-VARYG", ". . -VARYG"},
+		{"Title.1080p.AAC2.0.H.264-VARYG", "Title.1080p. . -VARYG"},
+		{"Title.DDP5.1.x.265", "Title. . "},
+		{"Title EAC3 5.1 h.264", "Title EAC3 5.1  "},
+		{"aac2.0", " "},
+		// 年份与发布组 token 本身不被吞掉
+		{"Show.2022.AAC2.0.H.264-GRP", "Show.2022. . -GRP"},
+		// 无前缀的 2.0 / 5.1 / 1.0 不动
+		{"Evangelion 2.0", "Evangelion 2.0"},
+		{"Evangelion.2.0.You.Can.Not.Advance.2009.1080p.BluRay", "Evangelion.2.0.You.Can.Not.Advance.2009.1080p.BluRay"},
+		{"Movie 5.1 Title 1.0", "Movie 5.1 Title 1.0"},
+		// No.8 / 12.5 占位保护
+		{"Kaiju.No.8.H.264", "Kaiju.No.8. "},
+		{"Show - 12.5 AAC2.0", "Show - 12.5  "},
+		// 单词内部不命中
+		{"Title.FLAC2.0x264", "Title.FLAC2.0x264"},
+		{"Bach.264", "Bach.264"},
+	}
+	for _, tc := range cases {
+		if got := stripSceneDotSpecs(tc.in); got != tc.want {
+			t.Fatalf("stripSceneDotSpecs(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestSceneDotSpecsKeepSceneYearWithResolution(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Show.2022.1080p.AAC2.0.H.264-GRP.mkv"})
+	if ev.Year != 2022 {
+		t.Fatalf("year=%d want 2022 titles=%#v", ev.Year, ev.Titles)
+	}
+	for _, leak := range []string{"2022", "AAC", "264", "1080"} {
+		if titlesContainSub(ev, leak) {
+			t.Fatalf("%q leaked into titles: %#v", leak, ev.Titles)
+		}
+	}
+}
+
+func TestSceneDotSpecsEvangelionRegression(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Evangelion.2.0.You.Can.Not.Advance.2009.1080p.BluRay.mkv"})
+	if ev.Year != 2009 {
+		t.Fatalf("year=%d", ev.Year)
+	}
+	if len(ev.Titles) != 1 || !strings.HasPrefix(ev.Titles[0].Text, "Evangelion 2 0") {
+		t.Fatalf("2.0 must stay in title: %#v", ev.Titles)
+	}
+	ev2 := ParseFile(FileInput{Name: "Evangelion 2.0 You Can (Not) Advance.mkv"})
+	if ev2.Episode.Raw != "2.0" {
+		t.Fatalf("2.0 must not be stripped before numbering: ep=%+v titles=%#v", ev2.Episode, ev2.Titles)
+	}
+}
+
+func TestStripSceneNoiseTokensLatinMeta(t *testing.T) {
+	got := stripSceneNoiseTokens("Title DUAL MULTI Sub Dub DDP EAC3 TrueHD Atmos 1080p WEB-DL")
+	if got != "Title" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestParseDirectoryBothSeparators(t *testing.T) {
+	for _, dir := range []string{"Anime/Title", `Anime\Title`, `Anime/Title\`, `\Anime//Title`} {
+		titles, _, _, _ := parseDirectory(dir)
+		if len(titles) != 1 || titles[0] != "Title" {
+			t.Fatalf("%q: titles=%v", dir, titles)
+		}
+	}
+	titles, season, _, _ := parseDirectory(`Title\第2季`)
+	if season != 2 || len(titles) != 1 || titles[0] != "Title" {
+		t.Fatalf("titles=%v season=%d", titles, season)
+	}
+	if titles, _, _, _ := parseDirectory(filepath.FromSlash("Anime/Title")); len(titles) != 1 || titles[0] != "Title" {
+		t.Fatalf("OS separator: %v", titles)
+	}
+}
+
+func TestSceneShow2022DotSpecsYearAndGroup(t *testing.T) {
+	ev := ParseFile(FileInput{Name: "Show.2022.AAC2.0.H.264-GRP.mkv"})
+	if ev.Year != 2022 {
+		t.Fatalf("year=%d want 2022 titles=%#v", ev.Year, ev.Titles)
+	}
+	if len(ev.Titles) != 1 || ev.Titles[0].Text != "Show" || ev.Titles[0].Source != SourceFile {
+		t.Fatalf("titles=%#v want only \"Show\"", ev.Titles)
+	}
+	if !isUnknownEp(ev.Episode) || len(ev.Conflicts) != 0 {
+		t.Fatalf("ep=%+v conflicts=%v", ev.Episode, ev.Conflicts)
+	}
+	ev2 := ParseFile(FileInput{Name: "Show.2022.1080p.WEB-DL.DDP5.1.x265-VARYG.mkv"})
+	if ev2.Year != 2022 || len(ev2.Titles) != 1 || ev2.Titles[0].Text != "Show" {
+		t.Fatalf("year=%d titles=%#v", ev2.Year, ev2.Titles)
+	}
+}
+
+func TestSceneShow2022DottedXCodecYear(t *testing.T) {
+	for _, name := range []string{
+		"Show.2022.x.265-GRP.mkv",
+		"Show.2022.x.264-GRP.mkv",
+		"Show.2022.X.265-GRP.mkv",
+		"Show.2022.H.264-GRP.mkv",
+	} {
+		ev := ParseFile(FileInput{Name: name})
+		if ev.Year != 2022 {
+			t.Fatalf("%s: year=%d want 2022 titles=%#v", name, ev.Year, ev.Titles)
+		}
+		if len(ev.Titles) != 1 || ev.Titles[0].Text != "Show" {
+			t.Fatalf("%s: titles=%#v want only \"Show\"", name, ev.Titles)
+		}
+		if !isUnknownEp(ev.Episode) || len(ev.Conflicts) != 0 {
+			t.Fatalf("%s: ep=%+v conflicts=%v", name, ev.Episode, ev.Conflicts)
+		}
+	}
+	for _, low := range []string{"x.265", "x.264", "h.264", "h.265"} {
+		if !isSceneMetaAfterToken(low) {
+			t.Fatalf("isSceneMetaAfterToken(%q)=false", low)
+		}
+	}
+}
+
+func TestSplitSceneDotPartsProtectsDotSpecs(t *testing.T) {
+	got := splitSceneDotParts("Kaiju.No.8.2022.AAC2.0.H.264-GRP.12.5")
+	want := []string{"Kaiju", "No.8", "2022", "AAC2.0", "H.264-GRP", "12.5"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("parts=%q want %q", got, want)
+	}
+	if joinSceneDotParts(got) != "Kaiju.No.8.2022.AAC2.0.H.264-GRP.12.5" {
+		t.Fatalf("join not identity: %q", joinSceneDotParts(got))
+	}
+}
+
+func TestHasSceneMetaAfterDotSpecsAndGroup(t *testing.T) {
+	for _, parts := range [][]string{
+		{"AAC2.0"}, {"DDP5.1"}, {"H.264-GRP"}, {"x265-VARYG"}, {"1080p-GRP"}, {"WEB-DL"}, {"10-bit"},
+	} {
+		if !hasSceneMetaAfter(parts) {
+			t.Fatalf("%q must count as scene meta", parts)
+		}
+	}
+	for _, parts := range [][]string{
+		{"Fate-Zero"}, {"K-ON"}, {"Title"}, {"2.0"}, {"H.264-SP"}, {"x265-ab"}, {" ", " -GRP"},
+	} {
+		if hasSceneMetaAfter(parts) {
+			t.Fatalf("%q must not count as scene meta", parts)
+		}
+	}
+}
+
+func TestStripTrailingSceneGroupGuards(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Show.AAC2.0.H.264-GRP", "Show.AAC2.0.H.264"},
+		{"Show.1080p.WEB-DL.x265-VARYG", "Show.1080p.WEB-DL.x265"},
+		{"Show 1080p-GRP", "Show 1080p"},
+		{"Show.DDP5.1-GRP", "Show.DDP5.1"},
+		{"Show.WEB-DL-GRP", "Show.WEB-DL"},
+		// 标题连字符不动
+		{"Fate-Zero", "Fate-Zero"},
+		{"K-ON", "K-ON"},
+		{"Title.K-ON", "Title.K-ON"},
+		// 整体属于规格词表
+		{"Show.1080p.WEB-DL", "Show.1080p.WEB-DL"},
+		{"Show.Blu-Ray", "Show.Blu-Ray"},
+		{"Show.10-bit", "Show.10-bit"},
+		// 发布组护栏：过短、结构词
+		{"Show.x264-AB", "Show.x264-AB"},
+		{"Show.x264-Part", "Show.x264-Part"},
+		{"Show.x264-OVA", "Show.x264-OVA"},
+		// 须有 <分隔符> 前缀
+		{"x264-GRP", "x264-GRP"},
+		// 左侧不是元数据词
+		{"Show.Title-GRP", "Show.Title-GRP"},
+	}
+	for _, tc := range cases {
+		if got := stripTrailingSceneGroup(tc.in); got != tc.want {
+			t.Fatalf("stripTrailingSceneGroup(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestSceneTrailingGroupNoMisfireParseFile(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"Fate-Zero.2011.1080p.BluRay.x264-GRP.mkv", "Fate-Zero"},
+		{"K-ON.2009.1080p.WEB-DL.mkv", "K-ON"},
+		{"Fate-Zero - 01.mkv", "Fate-Zero"},
+	} {
+		ev := ParseFile(FileInput{Name: tc.name})
+		if len(ev.Titles) != 1 || ev.Titles[0].Text != tc.want {
+			t.Fatalf("%s: titles=%#v want %q", tc.name, ev.Titles, tc.want)
+		}
+	}
+}

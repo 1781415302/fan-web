@@ -119,17 +119,6 @@ class AnimeScanResult {
   final List<Episode> episodes;
 }
 
-/// 确认未识别：先 create 再 scan。Create 抛错（含 1001）时不会调用 scan。
-Future<Anime> confirmUnidentified({
-  required AnimeApi animeApi,
-  required int bangumiId,
-  required String filePath,
-}) async {
-  final anime = await animeApi.create(bangumiId, filePath);
-  await animeApi.scanAnime(anime.id);
-  return anime;
-}
-
 int _asInt(Object? value) {
   if (value is num) {
     return value.toInt();

@@ -534,3 +534,106 @@ func TestUpdateAnimeDoesNotChangeBangumiID(t *testing.T) {
 		t.Fatalf("PUT 应更新其它字段，got %#v", after)
 	}
 }
+
+// Create 统一用 services.NormalizeRelDir：Windows \ 与尾 / 视为同一目录，新建时落库为规范形式。
+func TestCreateAnimeNormalizesRelDir(t *testing.T) {
+	handler := setupCreateHandler(t)
+	existing, err := database.CreateAnime(&models.Anime{Title: "Existing", BangumiID: 1001, FilePath: "a\\b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpCode, code, _, data := postCreateAnime(t, handler, 1001, "a/b/")
+	if httpCode != http.StatusOK || code != utils.CodeSuccess || data == nil || data.ID != existing.ID {
+		t.Fatalf("a/b/ 与 a\\b 应视为同一目录: HTTP %d code %d %#v", httpCode, code, data)
+	}
+
+	httpCode, code, _, data = postCreateAnime(t, handler, 1002, " c\\d/ ")
+	if httpCode != http.StatusOK || code != utils.CodeSuccess || data == nil || data.FilePath != "c/d" {
+		t.Fatalf("新建应落库规范目录 c/d: HTTP %d code %d %#v", httpCode, code, data)
+	}
+}
+
+// Confirm 统一用 services.NormalizeRelDir 比较既有番剧目录：\ 存量数据与 / 请求视为同一目录。
+func TestConfirmInboxNormalizesExistingDir(t *testing.T) {
+	root := t.TempDir()
+	f01 := "[Group] Confirm Show - 01 [1080p].mkv"
+	writeVideos(t, filepath.Join(root, "show", "s1"), f01)
+	handler := setupScanHandlerV2(t, root, confirmShowSeed(8701))
+	existing, err := database.CreateAnime(&models.Anime{Title: "Confirm Show", BangumiID: 8701, EpCount: 12, FilePath: "show\\s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(existing.FilePath, "/") {
+		t.Fatalf("夹具应保留反斜杠存量数据: %q", existing.FilePath)
+	}
+	resp := postConfirm(t, handler, confirmInboxRequest{BangumiID: 8701, FilePath: "show/s1/", FileNames: []string{f01}})
+	if resp.Code != utils.CodeSuccess {
+		t.Fatalf("show/s1/ 与 show\\s1 应视为同一目录，got code=%d message=%q", resp.Code, resp.Message)
+	}
+	var data struct {
+		Anime   models.Anime `json:"anime"`
+		Created bool         `json:"created"`
+		Scanned int          `json:"scanned"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Anime.ID != existing.ID || data.Created || data.Scanned != 1 {
+		t.Fatalf("应复用既有番剧: %#v", data)
+	}
+}
+
+func seedRollbackAnime(t *testing.T, files ...string) *models.Anime {
+	t.Helper()
+	anime, err := database.CreateAnime(&models.Anime{Title: "Rollback", BangumiID: 9100, EpCount: 12, FilePath: "rb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, f := range files {
+		if err := database.CreateEpisode(&models.Episode{AnimeID: anime.ID, EpNumber: i + 1, FilePath: f}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return anime
+}
+
+func animeExists(t *testing.T, id int64) bool {
+	t.Helper()
+	var n int
+	if err := database.DB.QueryRow("SELECT COUNT(*) FROM animes WHERE id = ?", id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n == 1
+}
+
+func TestRollbackConfirmedAnimeDeletesEmptyCreated(t *testing.T) {
+	handler := setupCreateHandler(t)
+	empty := seedRollbackAnime(t)
+	handler.rollbackConfirmedAnime(empty.ID, true)
+	if animeExists(t, empty.ID) {
+		t.Fatal("本请求新建且仍无剧集的番剧应被删除")
+	}
+}
+
+// PR #20 复审问题 1：已有剧集（即使文件名与本请求待写入清单相同）一律视为非本请求写入，保留番剧与剧集。
+func TestRollbackConfirmedAnimeKeepsAnyEpisodes(t *testing.T) {
+	handler := setupCreateHandler(t)
+	anime := seedRollbackAnime(t, "a.mkv", "sub\\b.mkv")
+	handler.rollbackConfirmedAnime(anime.ID, true)
+	if !animeExists(t, anime.ID) {
+		t.Fatal("含剧集时必须保留番剧")
+	}
+	eps, err := database.ListEpisodesByAnimeID(anime.ID)
+	if err != nil || len(eps) != 2 {
+		t.Fatalf("剧集应保留: %v %#v", err, eps)
+	}
+}
+
+func TestRollbackConfirmedAnimeNotCreatedNeverDeletes(t *testing.T) {
+	handler := setupCreateHandler(t)
+	empty := seedRollbackAnime(t)
+	handler.rollbackConfirmedAnime(empty.ID, false)
+	if !animeExists(t, empty.ID) {
+		t.Fatal("created=false 绝不删除任何番剧")
+	}
+}

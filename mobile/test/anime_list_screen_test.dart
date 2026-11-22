@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:fan_web/api/anime_api.dart';
 import 'package:fan_web/api/api_client.dart';
 import 'package:fan_web/api/library_api.dart';
 import 'package:fan_web/providers/anime_provider.dart';
@@ -82,38 +81,91 @@ void main() {
     expect(find.text('添加番剧'), findsOneWidget);
   });
 
-  testWidgets('admin confirm creates then scans', (tester) async {
+  testWidgets('admin confirm calls confirmInbox once without create/scan', (
+    tester,
+  ) async {
     libraryApi.unidentified = [sampleUnidentified()];
     await pumpList(tester, auth: adminAuthState());
     await tester.pumpAndSettle();
     expect(find.text('ep01.mkv'), findsOneWidget);
     await tester.tap(find.textContaining('候选番剧'));
     await tester.pumpAndSettle();
-    expect(animeApi.calls.where((item) => item.startsWith('create:')), [
-      'create:101:ShowDir',
-    ]);
-    expect(animeApi.calls.where((item) => item.startsWith('scanAnime:')), [
-      'scanAnime:42',
-    ]);
+    expect(libraryApi.confirmCalls, hasLength(1));
+    final call = libraryApi.confirmCalls.single;
+    expect(call.bangumiId, 101);
+    expect(call.filePath, 'ShowDir');
+    expect(call.fileNames, ['ep01.mkv']);
+    expect(call.episodeOffset, 0);
+    // 旧两步式 create + scan 不再调用。
     expect(
-      animeApi.calls.indexOf('create:101:ShowDir'),
-      lessThan(animeApi.calls.indexOf('scanAnime:42')),
-    );
-  });
-
-  testWidgets('create 1001 does not scan', (tester) async {
-    libraryApi.unidentified = [sampleUnidentified()];
-    animeApi.createError = const ApiException(1001, '番剧已存在但目录不同');
-    await pumpList(tester, auth: adminAuthState());
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('候选番剧'));
-    await tester.pumpAndSettle();
-    expect(find.text('番剧已存在但目录不同'), findsOneWidget);
-    expect(
-      animeApi.calls.where((item) => item.startsWith('scanAnime:')),
+      animeApi.calls.where(
+        (item) => item.startsWith('create:') || item.startsWith('scanAnime:'),
+      ),
       isEmpty,
     );
+    expect(find.text('ep01.mkv'), findsNothing);
+  });
+
+  testWidgets(
+    'confirm collects same-dir files whose candidates contain the bangumi',
+    (tester) async {
+      const other = MatchCandidate(
+        id: 202,
+        name: 'Other',
+        nameCn: '其他番剧',
+        score: 0.8,
+      );
+      libraryApi.unidentified = [
+        sampleUnidentified(fileName: 'ep01.mkv'),
+        sampleUnidentified(fileName: 'ep02.mkv'),
+        sampleUnidentified(fileName: 'ep03.mkv', candidates: const [other]),
+        sampleUnidentified(fileName: 'ep04.mkv', filePath: 'OtherDir'),
+      ];
+      await pumpList(tester, auth: adminAuthState());
+      await tester.pumpAndSettle();
+      // 点击第二个文件的候选：被点击文件本身必须包含在内。
+      await tester.tap(find.byKey(const Key('candidate-ShowDir-101')).at(1));
+      await tester.pumpAndSettle();
+      expect(libraryApi.confirmCalls, hasLength(1));
+      final call = libraryApi.confirmCalls.single;
+      expect(call.bangumiId, 101);
+      expect(call.filePath, 'ShowDir');
+      expect(call.fileNames, unorderedEquals(['ep01.mkv', 'ep02.mkv']));
+      expect(call.fileNames, contains('ep02.mkv'));
+      // 已确认文件移除；同目录候选不含该番剧的文件与其他目录文件保留。
+      expect(find.text('ep01.mkv'), findsNothing);
+      expect(find.text('ep02.mkv'), findsNothing);
+      expect(find.text('ep03.mkv'), findsOneWidget);
+      expect(find.text('ep04.mkv'), findsOneWidget);
+    },
+  );
+
+  testWidgets('confirmInbox failure keeps every item and shows the error', (
+    tester,
+  ) async {
+    libraryApi.unidentified = [
+      sampleUnidentified(fileName: 'ep01.mkv'),
+      sampleUnidentified(fileName: 'ep02.mkv'),
+    ];
+    libraryApi.confirmError = const ConfirmInboxException(
+      1001,
+      '番剧已存在但目录不同',
+      reason: 'dir_mismatch',
+    );
+    await pumpList(tester, auth: adminAuthState());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('candidate-ShowDir-101')).first);
+    await tester.pumpAndSettle();
+    expect(libraryApi.confirmCalls, hasLength(1));
+    expect(find.text('番剧已存在但目录不同'), findsOneWidget);
     expect(find.text('ep01.mkv'), findsOneWidget);
+    expect(find.text('ep02.mkv'), findsOneWidget);
+    expect(
+      animeApi.calls.where(
+        (item) => item.startsWith('create:') || item.startsWith('scanAnime:'),
+      ),
+      isEmpty,
+    );
   });
 
   testWidgets('search calls list with keyword', (tester) async {

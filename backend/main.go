@@ -61,6 +61,7 @@ func main() {
 	loginRateLimiter := middleware.NewLoginRateLimiter(5, time.Minute)
 	authHandler := handlers.NewAuthHandler(authService, loginRateLimiter)
 	adminUserHandler := handlers.NewAdminUserHandler()
+	apiKeyHandler := handlers.NewAPIKeyHandler()
 	animeHandler := handlers.NewAnimeHandler(bangumiService, scannerService)
 	bangumiHandler := handlers.NewBangumiHandler(bangumiService)
 	episodeHandler := handlers.NewEpisodeHandler(authService, scannerService)
@@ -96,6 +97,7 @@ func main() {
 		api.GET("/episodes/:id/subtitles", episodeHandler.Subtitles)
 		api.GET("/episodes/:id/download", episodeHandler.Download)
 
+		// protected 仅接受 JWT：个人进度、Bangumi PAT、登录态与 /admin/**，API Key 一律 2001。
 		protected := api.Group("")
 		protected.Use(middleware.JWTAuth(authService))
 		protected.GET("/auth/me", authHandler.Me)
@@ -110,15 +112,17 @@ func main() {
 		protected.DELETE("/me/bangumi", bangumiMeHandler.Delete)
 		protected.POST("/me/bangumi/sync", bangumiMeHandler.Sync)
 
-		// 普通用户只读媒体库与自身进度。
-		protected.GET("/animes", animeHandler.List)
-		protected.GET("/animes/:id", animeHandler.Get)
-		protected.GET("/animes/:id/cover", animeHandler.Cover)
-		protected.GET("/animes/:id/episodes", animeHandler.Episodes)
+		// catalogRead 只读媒体库：普通用户 JWT 与管理员 API Key 均可访问。
+		catalogRead := api.Group("")
+		catalogRead.Use(middleware.JWTOrAPIKeyAuth(authService))
+		catalogRead.GET("/animes", animeHandler.List)
+		catalogRead.GET("/animes/:id", animeHandler.Get)
+		catalogRead.GET("/animes/:id/cover", animeHandler.Cover)
+		catalogRead.GET("/animes/:id/episodes", animeHandler.Episodes)
 
-		// 管理写操作：媒体库管理与 Bangumi 入库存放于 RequireAdmin 组。
-		manager := protected.Group("")
-		manager.Use(middleware.RequireAdmin)
+		// manager 管理写操作：媒体库管理、Bangumi 检索与辅助匹配；管理员 JWT 或管理员 API Key + RequireAdmin。
+		manager := api.Group("")
+		manager.Use(middleware.JWTOrAPIKeyAuth(authService), middleware.RequireAdmin)
 		manager.POST("/animes", animeHandler.Create)
 		manager.PUT("/animes/:id", animeHandler.Update)
 		manager.DELETE("/animes/:id", animeHandler.Delete)
@@ -128,6 +132,7 @@ func main() {
 		manager.GET("/library/unidentified", libraryHandler.Unidentified)
 		manager.GET("/library/dirs", libraryHandler.Dirs)
 		manager.POST("/library/inbox/confirm", animeHandler.Confirm)
+		manager.POST("/library/assist-match", animeHandler.AssistMatch)
 		manager.POST("/animes/:id/rebind", animeHandler.Rebind)
 		manager.GET("/bangumi/search", bangumiHandler.Search)
 		manager.GET("/bangumi/subject/:id", bangumiHandler.Subject)
@@ -137,6 +142,9 @@ func main() {
 		admin.GET("/users", adminUserHandler.List)
 		admin.POST("/users", adminUserHandler.Create)
 		admin.DELETE("/users/:id", adminUserHandler.Delete)
+		admin.GET("/api-keys", apiKeyHandler.List)
+		admin.POST("/api-keys", apiKeyHandler.Create)
+		admin.DELETE("/api-keys/:id", apiKeyHandler.Delete)
 		admin.GET("/update/check", updateHandler.Check)
 		admin.POST("/update/perform", updateHandler.Perform)
 	}

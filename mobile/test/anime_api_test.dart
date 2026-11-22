@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fan_web/api/anime_api.dart';
-import 'package:fan_web/api/api_client.dart';
 
 import 'http_stub.dart';
 
@@ -117,59 +116,6 @@ void main() {
       expect(seen!.receiveTimeout, AnimeApi.scanTimeout);
       expect(result.scanned, 2);
       expect(result.episodes, hasLength(1));
-    });
-  });
-
-  group('confirmUnidentified', () {
-    test('creates then scans', () async {
-      final calls = <String>[];
-      final client = clientWithHandler((options) {
-        calls.add('${options.method} ${options.path}');
-        if (options.path == 'animes') {
-          return jsonBody(
-            ok(<String, dynamic>{
-              'id': 42,
-              'title': 'Show',
-              'title_cn': '番剧',
-              'bangumi_id': 101,
-              'cover': '',
-              'summary': '',
-              'ep_count': 12,
-              'file_path': 'ShowDir',
-              'created_at': '',
-            }),
-          );
-        }
-        return jsonBody(
-          ok(<String, dynamic>{'scanned': 3, 'episodes': <Object>[]}),
-        );
-      });
-      final api = AnimeApi(client);
-      final anime = await confirmUnidentified(
-        animeApi: api,
-        bangumiId: 101,
-        filePath: 'ShowDir',
-      );
-      expect(anime.id, 42);
-      expect(calls, ['POST animes', 'POST animes/42/scan']);
-    });
-
-    test('does not scan when create throws 1001', () async {
-      final calls = <String>[];
-      final client = clientWithHandler((options) {
-        calls.add('${options.method} ${options.path}');
-        return jsonBody(errorEnvelope(1001, '番剧已存在但目录不同'));
-      });
-      final api = AnimeApi(client);
-      await expectLater(
-        confirmUnidentified(animeApi: api, bangumiId: 101, filePath: 'Other'),
-        throwsA(
-          isA<ApiException>()
-              .having((error) => error.code, 'code', 1001)
-              .having((error) => error.message, 'message', '番剧已存在但目录不同'),
-        ),
-      );
-      expect(calls, ['POST animes']);
     });
   });
 }

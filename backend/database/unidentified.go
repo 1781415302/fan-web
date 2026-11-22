@@ -42,13 +42,61 @@ func ReplaceUnidentified(rows []models.UnidentifiedFile) error {
 	return tx.Commit()
 }
 
+// UpsertUnidentifiedFiles 在单个事务内增量写入未识别文件：同 (file_path, file_name)
+// 已存在时只更新 reason / candidates / updated_at，不影响表内其他条目（区别于
+// ReplaceUnidentified 的整表覆盖）。row.FilePath 先把 \ 统一替换为 / 再落库。
+// 传入空切片为零操作；任一 row.FileName Trim 后为空时返回参数错误且不写入任何行。
+func UpsertUnidentifiedFiles(rows []models.UnidentifiedFile) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	for _, row := range rows {
+		if strings.TrimSpace(row.FileName) == "" {
+			return fmt.Errorf("UpsertUnidentifiedFiles: 文件名不得为空")
+		}
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(
+		"INSERT INTO unidentified_files (file_path, file_name, reason, candidates) VALUES (?, ?, ?, ?) " +
+			"ON CONFLICT(file_path, file_name) DO UPDATE SET reason = excluded.reason, candidates = excluded.candidates, updated_at = CURRENT_TIMESTAMP",
+	)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, row := range rows {
+		candidates, err := marshalCandidates(row.Candidates)
+		if err != nil {
+			return err
+		}
+		filePath := strings.ReplaceAll(row.FilePath, "\\", "/")
+		if _, err := stmt.Exec(filePath, row.FileName, row.Reason, candidates); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DeleteUnidentifiedByDir 删除指定目录下的全部未识别条目。两端路径统一把反斜杠替换为
+// 斜杠后再比较（与 IsFileAssociated 一致），兼容 Windows（\）与类 Unix（/）分隔符混存。
 func DeleteUnidentifiedByDir(filePath string) error {
-	_, err := DB.Exec("DELETE FROM unidentified_files WHERE file_path = ?", filePath)
+	_, err := DB.Exec(
+		"DELETE FROM unidentified_files WHERE REPLACE(file_path, '\\', '/') = REPLACE(?, '\\', '/')",
+		filePath,
+	)
 	return err
 }
 
 // DeleteUnidentifiedFiles 只删除指定目录下显式列出的文件名，不清空整个目录。
-// names 为空时为零操作。含空文件名时返回错误。
+// names 为空时为零操作。含空文件名时返回错误。目录比较两端统一把反斜杠替换为斜杠
+// （与 IsFileAssociated 一致）。
 func DeleteUnidentifiedFiles(dir string, names []string) error {
 	if len(names) == 0 {
 		return nil
@@ -65,7 +113,10 @@ func DeleteUnidentifiedFiles(dir string, names []string) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`DELETE FROM unidentified_files WHERE file_path = ? AND file_name = ?`)
+	stmt, err := tx.Prepare(
+		"DELETE FROM unidentified_files " +
+			"WHERE REPLACE(file_path, '\\', '/') = REPLACE(?, '\\', '/') AND file_name = ?",
+	)
 	if err != nil {
 		return err
 	}
