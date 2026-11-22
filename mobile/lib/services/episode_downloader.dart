@@ -115,7 +115,8 @@ class DownloadIndexStore {
   }
 
   /// restoreIndex 专用：返回记录及索引是否可信。文件不存在或完整解析视为可信；
-  /// 读取失败、JSON 损坏、结构不符或含无法解析的记录均视为不可信。
+  /// 读取失败、JSON 损坏、结构不符、含无法解析或缺少必要字段
+  /// （server_url / episode_id / file_name）的记录均视为不可信。
   /// 不改变 load() / DownloadIndexCodec.decode 的容错语义。
   Future<({List<DownloadRecord> records, bool intact})> loadForRestore() =>
       _enqueue(() async {
@@ -140,10 +141,26 @@ class DownloadIndexStore {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return false;
       final list = decoded['records'];
-      return list is List && list.length == decodedCount;
+      if (list is! List || list.length != decodedCount) return false;
+      // 每条记录都必须带齐定位落盘文件的必要字段，否则（如 {}）视为不完整，
+      // 避免因空字段记录被剔除而把其对应视频当孤儿删除。
+      return list.every(_hasRequiredFields);
     } catch (_) {
       return false;
     }
+  }
+
+  static bool _hasRequiredFields(Object? item) {
+    if (item is! Map) return false;
+    final serverUrl = item['server_url'];
+    final episodeId = item['episode_id'];
+    final fileName = item['file_name'];
+    return serverUrl is String &&
+        serverUrl.isNotEmpty &&
+        episodeId is int &&
+        episodeId > 0 &&
+        fileName is String &&
+        fileName.isNotEmpty;
   }
 
   Future<void> _saveDirect(List<DownloadRecord> all) async {
@@ -396,7 +413,9 @@ class EpisodeDownloader {
       }
       if (exists) {
         valid[DownloadKey(record.serverUrl, record.episodeId)] = record;
-      } else {
+      } else if (indexIntact) {
+        // 索引不可信时不改写 index.json：remove 会按解析结果整体重写，
+        // 丢掉无法解析的原始条目，下次启动便会把对应视频当孤儿删除。
         try {
           await _store.remove(record.serverUrl, record.episodeId);
         } catch (_) {

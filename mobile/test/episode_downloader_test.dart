@@ -675,6 +675,21 @@ void main() {
           ],
         }),
       ),
+      // 计划者复审 #2：缺少必要字段的记录 {} 不能被视为完整索引。
+      'record missing required fields': (path) => File(path).writeAsString(
+        jsonEncode({
+          'version': 1,
+          'records': [<String, dynamic>{}],
+        }),
+      ),
+      'record with empty file_name': (path) => File(path).writeAsString(
+        jsonEncode({
+          'version': 1,
+          'records': [
+            {'server_url': _serverUrl, 'episode_id': 23, 'file_name': ''},
+          ],
+        }),
+      ),
       'unreadable (directory)': (path) =>
           Directory('$path/blocker').create(recursive: true),
     }.entries) {
@@ -699,6 +714,12 @@ void main() {
           expect(await kept.exists(), isTrue);
           expect(await video.exists(), isTrue);
           expect(await part.exists(), isFalse);
+
+          // 再次启动：首次 restore 不得改写不可信索引，否则第二次会误删。
+          await harness.downloader.restoreIndex();
+
+          expect(await kept.exists(), isTrue);
+          expect(await video.exists(), isTrue);
         } finally {
           await harness.dispose();
         }
